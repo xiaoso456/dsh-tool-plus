@@ -1,0 +1,13 @@
+diff --git a/native/loader-state.js b/native/loader-state.js
+index e4461e20fd88780c39aeed7c8f17f0a1abf3d01f..ac2058a3016bc07b4a7b1d063a4d081185d01b7a 100644
+--- a/native/loader-state.js
++++ b/native/loader-state.js
+@@ -753,7 +753,7 @@ export function initLoaderContext(overrides = {}) {
+ 	const platform = overrides.platform ?? process.platform;
+ 	const platformTag = `${platform}-${process.arch}`;
+ 	const packageVersion = packageJson.version;
+-	const nativeDir = overrides.nativeDir ?? path.join(import.meta.dir, "..", "native");
++	const nativeDir = overrides.nativeDir ?? path.join(import.meta.dirname, "..", "native");
+ 	const execDir = path.dirname(process.execPath);
+ 	const nativesDir = getNativesDir();
+ 	const versionedDir = path.join(nativesDir, packageVersion);

@@ -1,0 +1,18 @@
+# The dsh-bash-plus profile layer: replace the shipped bash/pwsh tool rows with
+# the Oh My Pi bash runtime. `bash-sandbox`/`pwsh-sandbox` stay mounted — they
+# serve the ctx.shell capability seam for other consumers (hooks, fs-search,
+# tmux-context); only the model-facing tool rows are swapped. The OMP executor
+# does not confine commands, so no sandbox-permission parameters are advertised.
+#
+# Applied after the dsh-base insert; the profile's own cordis.patch.yml and any
+# --patch overlays can still override the `bash-plus` row config.
+
+- id: tool-bash
+  disabled: true
+
+- id: tool-pwsh
+  disabled: true
+
+- insert:
+    - id: bash-plus
+      name: '@xiaoso/dsh-bash-plus'

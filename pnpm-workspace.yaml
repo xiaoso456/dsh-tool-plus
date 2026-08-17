@@ -1,0 +1,20 @@
+# Standalone project workspace: this directory is its own pnpm workspace so
+# installs never walk up to the deepseek-harness root workspace. All
+# @deepseek-ai/* dependencies come from the npm registry.
+packages:
+  - .
+allowBuilds:
+  # esbuild (via tsdown) ships a native binary and needs its install script.
+  esbuild: true
+  # koffi (native FFI, pulled in by fs-local for its JSONL/durability calls)
+  # needs its install script on Windows.
+  koffi: true
+minimumReleaseAgeExclude:
+  - '@oh-my-pi/pi-natives-darwin-arm64@17.3.5'
+  - '@oh-my-pi/pi-natives-darwin-x64@17.3.5'
+  - '@oh-my-pi/pi-natives-linux-arm64@17.3.5'
+  - '@oh-my-pi/pi-natives-linux-x64@17.3.5'
+  - '@oh-my-pi/pi-natives-win32-x64@17.3.5'
+  - '@oh-my-pi/pi-natives@17.3.5'
+patchedDependencies:
+  '@oh-my-pi/pi-natives': patches/@oh-my-pi__pi-natives.patch

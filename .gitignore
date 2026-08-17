@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+*.tsbuildinfo
+
+# Test artifacts
+.sessions/
+coverage/
+
+# Local logs
+debug.log
+*.log
+ORIGIN.md
