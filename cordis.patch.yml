@@ -13,6 +13,9 @@
 - id: tool-pwsh
   disabled: true
 
+- id: tool-bash-persistent
+  disabled: true
+
 - insert:
     - id: bash-plus
       name: '@xiaoso/dsh-bash-plus'
