@@ -20,7 +20,7 @@ import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as BashPlus from '../../src/index.ts'
-import { getShellConfig } from '../../src/bash-executor.ts'
+import { getShellConfig } from '../../src/bash-runtime/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
   try {
@@ -35,7 +35,7 @@ const describeBash = bashAvailable ? describe : describe.skip
 
 const testToolSignal = new AbortController().signal
 
-async function setup(autoBackgroundMs: number): Promise<{ ctx: Context; dispose: () => Promise<void> }> {
+async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: number } = {}): Promise<{ ctx: Context; dispose: () => Promise<void> }> {
   const ctx = new Context()
   const fibers = [
     await ctx.plugin(SystemPrompt),
@@ -45,7 +45,7 @@ async function setup(autoBackgroundMs: number): Promise<{ ctx: Context; dispose:
     await ctx.plugin(LocalJobRegistry),
     await ctx.plugin(ToolTasks),
     await ctx.plugin(BashEnvPlugin),
-    await ctx.plugin(BashPlus, { autoBackgroundMs }),
+    await ctx.plugin(BashPlus, { autoBackgroundMs, ...extra }),
   ]
   return {
     ctx,
@@ -207,6 +207,45 @@ describeBash('bash-plus composition', () => {
 
   it('rejects a second bash tool registration', async () => {
     await expect(ctx.plugin(BashPlus, { autoBackgroundMs: 0 })).rejects.toThrow(/already registered/)
+  })
+})
+
+/** Concurrency-capped mounting: the second concurrent job is refused at capacity. */
+describeBash('bash-plus background capacity', () => {
+  let ctx: Context
+  let agent: Agent
+  let dispose: () => Promise<void>
+  const agentFibers: Fiber[] = []
+
+  beforeEach(async () => {
+    const harness = await setup(300_000, { maxBackgroundJobs: 1 })
+    ctx = harness.ctx
+    dispose = harness.dispose
+    agent = registerFakeAgent(ctx, `boot-cap-${callCounter}`, agentFibers)
+  })
+
+  afterEach(async () => {
+    for (const fiber of agentFibers.reverse()) await fiber.dispose()
+    agentFibers.length = 0
+    await dispose()
+  })
+
+  it('refuses a second concurrent background job at the cap', async () => {
+    const first = await call(ctx, 'bash', {
+      command: 'sleep 0.5',
+      description: 'first background job',
+      run_in_background: true,
+    }, agent)
+    expect(first.isError).toBe(false)
+    const second = await call(ctx, 'bash', {
+      command: 'echo should-not-run',
+      description: 'second background job',
+      run_in_background: true,
+    }, agent)
+    expect(second.isError).toBe(true)
+    expect(textOf(second)).toContain('at capacity (maxBackgroundJobs: 1)')
+    const id = textOf(first).match(/job (bash-\d+)/)?.[1]
+    if (id !== undefined) await waitForJob(ctx, id, agent)
   })
 })
 

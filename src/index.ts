@@ -32,7 +32,6 @@ import { createWriteStream, type WriteStream } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, TerminalCallView, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -41,54 +40,23 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './bash-interceptor.ts'
-import { closeSessionShells, executeBash } from './bash-executor.ts'
-import { startBashJob } from './background.ts'
-import { setRuntimeLogger } from './logger.ts'
-import { parseExitStatus, renderBashResult } from './render.ts'
-import { cleanupSnapshots } from './shell-snapshot.ts'
-import type { BashBackgroundOutput, BashForegroundOutput, BashToolArgs, MinimizerConfig, ResolvedConfig } from './types.ts'
+import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './bash-runtime/bash-interceptor.ts'
+import { closeSessionShells, executeBash } from './bash-runtime/bash-executor.ts'
+import { startBashJob, type ManagedBashJob } from './bash-runtime/background.ts'
+import { setRuntimeLogger } from './bash-runtime/logger.ts'
+import { parseExitStatus, renderBashResult } from './bash-runtime/render.ts'
+import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
+import { applyConfiguredTruncation } from './config/truncate.ts'
+import { cleanupSnapshots } from './bash-runtime/shell-snapshot.ts'
+import type { BashBackgroundOutput, BashForegroundOutput, BashToolArgs } from './bash-runtime/types.ts'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 
 export const name = 'tool-bash-plus'
 export const inject = ['tools', 'systemPrompt', 'shellEnv']
 
-/** Plugin configuration; every field defaults inside {@link apply}. */
-export interface Config {
-  enableRunInBackground?: boolean
-  autoBackgroundMs?: number
-  defaultTimeoutMs?: number
-  maxTimeoutMs?: number
-  outputMaxBytes?: number
-  outputSinkTailBytes?: number
-  outputSinkHeadBytes?: number
-  minimizer?: MinimizerConfig
-  interceptorEnabled?: boolean
-  nonInteractiveEnv?: boolean
-  snapshotEnabled?: boolean
-  useShellCommandWrapper?: boolean
-}
-
-/** Runtime configuration schema for the plugin. */
-export const Config: z<Config> = z.object({
-  enableRunInBackground: z.boolean().default(true),
-  autoBackgroundMs: z.number().default(60_000),
-  defaultTimeoutMs: z.number().default(300_000),
-  maxTimeoutMs: z.number().default(3_600_000),
-  outputMaxBytes: z.number().default(51_200),
-  outputSinkTailBytes: z.number().default(51_200),
-  outputSinkHeadBytes: z.number().default(20_480),
-  minimizer: z.object({
-    enabled: z.boolean().default(true),
-    only: z.array(z.string()).default([]),
-    except: z.array(z.string()).default([]),
-    maxCaptureBytes: z.number().default(512 * 1024),
-  }),
-  interceptorEnabled: z.boolean().default(true),
-  nonInteractiveEnv: z.boolean().default(true),
-  snapshotEnabled: z.boolean().default(true),
-  useShellCommandWrapper: z.boolean().default(false),
-})
+// The configuration schema and `Config` type are owned by the settings surface
+// (src/settings.ts); re-exporting keeps the entry's plugin contract stable.
+export { Config } from './config/settings.ts'
 
 const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** Matches a leading `cd path && cmd`; the captured path must stay free of `$`, backtick, and `(`. */
@@ -265,25 +233,15 @@ function presentBashResult(args: unknown, result: ToolResult): ToolResultView | 
 }
 
 export function apply(ctx: Context, config: Config = {}): void {
-  const cfg: ResolvedConfig = {
-    enableRunInBackground: config.enableRunInBackground ?? true,
-    autoBackgroundMs: config.autoBackgroundMs ?? 60_000,
-    defaultTimeoutMs: config.defaultTimeoutMs ?? 300_000,
-    maxTimeoutMs: config.maxTimeoutMs ?? 3_600_000,
-    outputMaxBytes: config.outputMaxBytes ?? 51_200,
-    outputSinkTailBytes: config.outputSinkTailBytes ?? 51_200,
-    outputSinkHeadBytes: config.outputSinkHeadBytes ?? 20_480,
-    minimizer: {
-      enabled: config.minimizer?.enabled ?? true,
-      only: config.minimizer?.only ?? [],
-      except: config.minimizer?.except ?? [],
-      maxCaptureBytes: config.minimizer?.maxCaptureBytes ?? 512 * 1024,
-    },
-    interceptorEnabled: config.interceptorEnabled ?? true,
-    nonInteractiveEnv: config.nonInteractiveEnv ?? true,
-    snapshotEnabled: config.snapshotEnabled ?? true,
-    useShellCommandWrapper: config.useShellCommandWrapper ?? false,
-  }
+  // Authoritative config source: the `bash-plus` settings document while one
+  // is mounted, the composition entry otherwise. Consumers read `cfg` per
+  // call, so a committed change applies without a reload. `setSource` fires at
+  // attach/detach; the SettingsScope thunk resolves the full runtime config
+  // (schema defaults → composition entry `base` → user document).
+  let cfg: RuntimeConfig = resolveConfig(config)
+  installBashPlusSettings(ctx, config, (current) => {
+    cfg = current()
+  })
 
   setRuntimeLogger(ctx.logger)
 
@@ -434,6 +392,33 @@ export function apply(ctx: Context, config: Config = {}): void {
       const env = { ...dshEnv, ...commandEnv }
 
       const jobs = ctx.get('jobs')
+      // Admission gate for background work: refuse new jobs at the configured
+      // concurrency cap (OMP `bashMaxBackgroundJobs` parity). Live = running or
+      // stopping; a missing controller or a non-positive cap means unlimited.
+      const backgroundSlotsAvailable = (): boolean => {
+        if (jobs === undefined || cfg.maxBackgroundJobs <= 0) return true
+        const live = jobs.list(exec.agent).filter(j => j.status === 'running' || j.status === 'stopping').length
+        return live < cfg.maxBackgroundJobs
+      }
+      // Managed background job with the OMP-parity completion truncation
+      // applied to the settled preview only (the final `job_output` read);
+      // live streaming reads stay raw. The seam lives here, not in
+      // background.ts, so the ported runtime module stays pristine.
+      const startManagedJob = (): ManagedBashJob => {
+        const managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs, env, config: cfg })
+        let settled = false
+        void managed.completion.then(() => { settled = true }, () => { settled = true })
+        return {
+          hooks: {
+            ...managed.hooks,
+            readOutput: () => {
+              const text = managed.hooks.readOutput?.() ?? ''
+              return settled ? applyConfiguredTruncation(text, undefined, cfg.outputTruncate) : text
+            },
+          },
+          completion: managed.completion,
+        }
+      }
       const backgroundRequested = args.run_in_background === true
       if (backgroundRequested) {
         if (!cfg.enableRunInBackground) {
@@ -442,14 +427,17 @@ export function apply(ctx: Context, config: Config = {}): void {
         if (jobs === undefined) {
           throw new Error('background jobs unavailable: load @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs')
         }
+        if (!backgroundSlotsAvailable()) {
+          throw new Error(`background jobs at capacity (maxBackgroundJobs: ${cfg.maxBackgroundJobs})`)
+        }
         if (exec.signal.aborted) throw abortError()
-        let managed: ReturnType<typeof startBashJob>
+        let managed: ManagedBashJob
         const id = jobs.start({
           kind: 'bash',
           label: command,
           ...exec.agent !== undefined ? { owner: exec.agent } : {},
           run: () => {
-            managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs, env, config: cfg })
+            managed = startManagedJob()
             return managed.hooks
           },
         })
@@ -459,12 +447,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       // Auto-backgrounding: start the job immediately (its own shell), wait up
       // to the threshold; finish inside the window → foreground result with the
       // job marked reported (suppresses the completion notice), else hand back
-      // the job id and let the notice arrive later.
-      if (cfg.autoBackgroundMs > 0 && jobs !== undefined && !exec.signal.aborted) {
+      // the job id and let the notice arrive later. At capacity the command
+      // simply runs in the foreground.
+      if (cfg.autoBackgroundMs > 0 && jobs !== undefined && backgroundSlotsAvailable() && !exec.signal.aborted) {
         const autoBgWaitMs = timeoutMs === undefined
           ? cfg.autoBackgroundMs
           : Math.max(0, Math.min(cfg.autoBackgroundMs, timeoutMs - 1_000))
-        let managed: ReturnType<typeof startBashJob>
+        let managed: ManagedBashJob
         let id: JobId
         try {
           id = jobs.start({
@@ -472,7 +461,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             label: command,
             ...exec.agent !== undefined ? { owner: exec.agent } : {},
             run: () => {
-              managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs, env, config: cfg })
+              managed = startManagedJob()
               return managed.hooks
             },
           })

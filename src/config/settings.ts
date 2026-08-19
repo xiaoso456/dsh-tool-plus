@@ -1,0 +1,219 @@
+/**
+ * Plugin-owned settings surface for the ported bash tool: the `bash-plus`
+ * namespace, a FLAT settings schema (OMP `bash*`-style scalar keys — the
+ * client scope writes scalar fields only), its defaults, the mapping onto the
+ * nested {@link RuntimeConfig} the runtime consumes, and the optional-settings
+ * consumer wiring. Keeping the whole config-export surface here lets the
+ * ported OMP runtime stay pristine — the entry only calls
+ * {@link installBashPlusSettings} and re-exports this module's `Config`.
+ * @module @xiaoso/dsh-bash-plus/settings
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { MinimizerConfig } from '../bash-runtime/types.ts'
+
+/** Truncation strategy for background→foreground completion messages (OMP config parity). */
+export type OutputTruncateStrategy = 'bytes' | 'lines'
+
+/** Retention mode for a truncated completion message: head, tail, or middle (head+tail). */
+export type OutputRetentionMode = 'head' | 'tail' | 'middle'
+
+/** Byte-based retention settings; `middle` keeps head+tail, `head`/`tail` keep one window. */
+export interface ByteRetentionConfig {
+  mode: OutputRetentionMode
+  headBytes: number
+  tailBytes: number
+}
+
+/** Line-based retention settings, mirroring the byte-based structure. */
+export interface LineRetentionConfig {
+  mode: OutputRetentionMode
+  headLines: number
+  tailLines: number
+}
+
+/**
+ * Background-job completion text truncation (mirrors the OMP `bashOutputTruncate*`
+ * family). Only the settled preview text is affected; streaming reads and the
+ * completion notice are untouched.
+ */
+export interface OutputTruncateConfig {
+  strategy: OutputTruncateStrategy
+  /** Threshold (in `strategy` units) below which the text is kept intact. */
+  triggerBytes: number
+  triggerLines: number
+  bytes: ByteRetentionConfig
+  lines: LineRetentionConfig
+}
+
+/**
+ * The resolved runtime configuration, nested for the OMP runtime consumers.
+ * {@link RuntimeConfig} is built from the flat {@link Config} by
+ * {@link resolveConfig}; the OMP-ported runtime files never see the flat shape.
+ */
+export interface RuntimeConfig {
+  enableRunInBackground: boolean
+  autoBackgroundMs: number
+  defaultTimeoutMs: number
+  maxTimeoutMs: number
+  outputMaxBytes: number
+  outputSinkTailBytes: number
+  outputSinkHeadBytes: number
+  minimizer: MinimizerConfig
+  interceptorEnabled: boolean
+  nonInteractiveEnv: boolean
+  snapshotEnabled: boolean
+  useShellCommandWrapper: boolean
+  maxBackgroundJobs: number
+  outputTruncate: OutputTruncateConfig
+}
+
+/** Settings namespace of this plugin, served to the web Plugins page. */
+export const BASH_PLUS_SETTINGS_NS = settingsNamespace('bash-plus')
+
+/** OMP-parity defaults for the completion-message truncation policy. */
+export const DEFAULT_OUTPUT_TRUNCATE: OutputTruncateConfig = {
+  strategy: 'bytes',
+  triggerBytes: 10_240,
+  triggerLines: 100,
+  bytes: { mode: 'middle', headBytes: 4_096, tailBytes: 4_096 },
+  lines: { mode: 'middle', headLines: 50, tailLines: 100 },
+}
+
+/** OMP-parity defaults for the timing knobs (timeouts in ms; OMP uses seconds). */
+export const DEFAULT_TIMEOUT_MS = 3_600_000
+export const DEFAULT_MAX_TIMEOUT_MS = 3_600_000
+export const DEFAULT_AUTO_BACKGROUND_MS = 60_000
+export const DEFAULT_MAX_BACKGROUND_JOBS = 15
+
+/**
+ * Plugin settings, one scalar key per option — every field is writable through
+ * the client `SettingsScope.set`/`unset`. Defaults live in the {@link Config}
+ * schema and in {@link resolveConfig}.
+ */
+export interface Config {
+  enableRunInBackground?: boolean
+  autoBackgroundMs?: number
+  defaultTimeoutMs?: number
+  maxTimeoutMs?: number
+  outputMaxBytes?: number
+  outputSinkTailBytes?: number
+  outputSinkHeadBytes?: number
+  minimizerEnabled?: boolean
+  interceptorEnabled?: boolean
+  nonInteractiveEnv?: boolean
+  snapshotEnabled?: boolean
+  useShellCommandWrapper?: boolean
+  maxBackgroundJobs?: number
+  outputTruncateStrategy?: OutputTruncateStrategy
+  outputTruncateTriggerBytes?: number
+  outputTruncateTriggerLines?: number
+  outputTruncateByteMode?: OutputRetentionMode
+  outputTruncateByteHeadBytes?: number
+  outputTruncateByteTailBytes?: number
+  outputTruncateLineMode?: OutputRetentionMode
+  outputTruncateLineHeadLines?: number
+  outputTruncateLineTailLines?: number
+}
+
+/**
+ * Runtime configuration schema for the plugin. The namespace resolves through
+ * this flat surface; {@link resolveConfig} maps it onto {@link RuntimeConfig}.
+ */
+export const Config: z<Config> = z.object({
+  enableRunInBackground: z.boolean().default(true),
+  autoBackgroundMs: z.number().default(DEFAULT_AUTO_BACKGROUND_MS),
+  defaultTimeoutMs: z.number().default(DEFAULT_TIMEOUT_MS),
+  maxTimeoutMs: z.number().default(DEFAULT_MAX_TIMEOUT_MS),
+  outputMaxBytes: z.number().default(51_200),
+  outputSinkTailBytes: z.number().default(51_200),
+  outputSinkHeadBytes: z.number().default(20_480),
+  minimizerEnabled: z.boolean().default(true),
+  interceptorEnabled: z.boolean().default(true),
+  nonInteractiveEnv: z.boolean().default(true),
+  snapshotEnabled: z.boolean().default(true),
+  useShellCommandWrapper: z.boolean().default(false),
+  maxBackgroundJobs: z.number().default(DEFAULT_MAX_BACKGROUND_JOBS),
+  outputTruncateStrategy: z.union(['bytes', 'lines'] as const).default('bytes'),
+  outputTruncateTriggerBytes: z.number().default(10_240),
+  outputTruncateTriggerLines: z.number().default(100),
+  outputTruncateByteMode: z.union(['head', 'tail', 'middle'] as const).default('middle'),
+  outputTruncateByteHeadBytes: z.number().default(4_096),
+  outputTruncateByteTailBytes: z.number().default(4_096),
+  outputTruncateLineMode: z.union(['head', 'tail', 'middle'] as const).default('middle'),
+  outputTruncateLineHeadLines: z.number().default(50),
+  outputTruncateLineTailLines: z.number().default(100),
+})
+
+/**
+ * Resolve the flat settings (composition entry or the settings document) to
+ * the nested runtime config the ported OMP runtime consumes. A direct mount
+ * (`ctx.plugin`) skips the Loader's schema parse, so the `?? default` pass
+ * mirrors the schema; the settings namespace resolution rides the same path.
+ * @param config - flat settings, possibly partial and not schema-parsed.
+ * @returns the fully-defaulted nested runtime config.
+ */
+export function resolveConfig(config: Config): RuntimeConfig {
+  const resolveMinimizer = (): MinimizerConfig => ({
+    enabled: config.minimizerEnabled ?? true,
+    only: [],
+    except: [],
+    maxCaptureBytes: 512 * 1024,
+  })
+  return {
+    enableRunInBackground: config.enableRunInBackground ?? true,
+    autoBackgroundMs: config.autoBackgroundMs ?? DEFAULT_AUTO_BACKGROUND_MS,
+    defaultTimeoutMs: config.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxTimeoutMs: config.maxTimeoutMs ?? DEFAULT_MAX_TIMEOUT_MS,
+    outputMaxBytes: config.outputMaxBytes ?? 51_200,
+    outputSinkTailBytes: config.outputSinkTailBytes ?? 51_200,
+    outputSinkHeadBytes: config.outputSinkHeadBytes ?? 20_480,
+    minimizer: resolveMinimizer(),
+    interceptorEnabled: config.interceptorEnabled ?? true,
+    nonInteractiveEnv: config.nonInteractiveEnv ?? true,
+    snapshotEnabled: config.snapshotEnabled ?? true,
+    useShellCommandWrapper: config.useShellCommandWrapper ?? false,
+    maxBackgroundJobs: config.maxBackgroundJobs ?? DEFAULT_MAX_BACKGROUND_JOBS,
+    outputTruncate: {
+      strategy: config.outputTruncateStrategy ?? DEFAULT_OUTPUT_TRUNCATE.strategy,
+      triggerBytes: config.outputTruncateTriggerBytes ?? DEFAULT_OUTPUT_TRUNCATE.triggerBytes,
+      triggerLines: config.outputTruncateTriggerLines ?? DEFAULT_OUTPUT_TRUNCATE.triggerLines,
+      bytes: {
+        mode: config.outputTruncateByteMode ?? DEFAULT_OUTPUT_TRUNCATE.bytes.mode,
+        headBytes: config.outputTruncateByteHeadBytes ?? DEFAULT_OUTPUT_TRUNCATE.bytes.headBytes,
+        tailBytes: config.outputTruncateByteTailBytes ?? DEFAULT_OUTPUT_TRUNCATE.bytes.tailBytes,
+      },
+      lines: {
+        mode: config.outputTruncateLineMode ?? DEFAULT_OUTPUT_TRUNCATE.lines.mode,
+        headLines: config.outputTruncateLineHeadLines ?? DEFAULT_OUTPUT_TRUNCATE.lines.headLines,
+        tailLines: config.outputTruncateLineTailLines ?? DEFAULT_OUTPUT_TRUNCATE.lines.tailLines,
+      },
+    },
+  }
+}
+
+/**
+ * Install the optional-settings consumer wiring for this plugin: while a
+ * settings provider is mounted, resolve through the `bash-plus` namespace
+ * (schema defaults → composition entry `base` → user document) and forward the
+ * scope to `onSource`; when none is mounted, keep the composition entry, so
+ * the tool keeps working exactly as composed. Mirrors the official bash-local
+ * pattern so a committed change applies without a reload.
+ * @param ctx - plugin context owning the wiring.
+ * @param entry - composition entry config declared by the caller.
+ * @param onSource - receives a thunk of the currently authoritative runtime config.
+ */
+export function installBashPlusSettings(
+  ctx: Context,
+  entry: Config,
+  onSource: (current: () => RuntimeConfig) => void,
+): void {
+  installSettingsSection(ctx, BASH_PLUS_SETTINGS_NS, Config, entry, {
+    setSource: (current) => {
+      onSource(() => resolveConfig(current() as Config))
+    },
+    onChange: () => {},
+  })
+}

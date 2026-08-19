@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { buildMinimizerOptions, closeSessionShells, executeBash, getShellConfig } from '../../src/bash-executor.ts'
+import { buildMinimizerOptions, closeSessionShells, executeBash, getShellConfig } from '../../src/bash-runtime/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
   try {

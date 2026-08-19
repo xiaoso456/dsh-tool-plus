@@ -5,12 +5,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from '../../src/bash-interceptor.ts'
-import { buildNonInteractiveEnv, NON_INTERACTIVE_ENV } from '../../src/non-interactive-env.ts'
-import { parseExitStatus, renderBashResult } from '../../src/render.ts'
-import { sanitizeSnapshotForBrush } from '../../src/shell-snapshot.ts'
-import { clampTimeout } from '../../src/tool-timeouts.ts'
-import type { BashForegroundOutput } from '../../src/types.ts'
+import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from '../../src/bash-runtime/bash-interceptor.ts'
+import { buildNonInteractiveEnv, NON_INTERACTIVE_ENV } from '../../src/bash-runtime/non-interactive-env.ts'
+import { parseExitStatus, renderBashResult } from '../../src/bash-runtime/render.ts'
+import { sanitizeSnapshotForBrush } from '../../src/bash-runtime/shell-snapshot.ts'
+import { clampTimeout } from '../../src/bash-runtime/tool-timeouts.ts'
+import type { BashForegroundOutput } from '../../src/bash-runtime/types.ts'
 
 describe('checkBashInterception', () => {
   it('blocks cat/head/tail and suggests the read tool when available', () => {

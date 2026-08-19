@@ -19,7 +19,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as StrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import { describe, expect, it } from 'vitest'
 import * as BashPlus from '../../src/index.ts'
-import { getShellConfig } from '../../src/bash-executor.ts'
+import { getShellConfig } from '../../src/bash-runtime/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
   try {
