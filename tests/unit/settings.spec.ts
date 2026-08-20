@@ -23,7 +23,7 @@ describe('resolveConfig', () => {
     expect(cfg.outputSinkTailBytes).toBe(51_200)
     expect(cfg.outputSinkHeadBytes).toBe(20_480)
     expect(cfg.minimizer).toEqual({ enabled: true, only: [], except: [], maxCaptureBytes: 512 * 1024 })
-    expect(cfg.interceptorEnabled).toBe(true)
+    expect(cfg.interceptorEnabled).toBe(false)
     expect(cfg.nonInteractiveEnv).toBe(true)
     expect(cfg.snapshotEnabled).toBe(true)
     expect(cfg.useShellCommandWrapper).toBe(false)

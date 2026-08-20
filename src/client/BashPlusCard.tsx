@@ -166,7 +166,7 @@ const SCHEMA_DEFAULTS: Record<string, number | boolean | string> = {
   outputTruncateLineTailLines: 100,
   enableRunInBackground: true,
   minimizerEnabled: true,
-  interceptorEnabled: true,
+  interceptorEnabled: false,
   nonInteractiveEnv: true,
   snapshotEnabled: true,
   useShellCommandWrapper: false,
