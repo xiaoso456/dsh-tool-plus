@@ -1,7 +1,7 @@
 /**
  * Plugin configuration, tool argument, and result DTO types for the ported
  * Oh My Pi bash tool. The runtime `Config` schema lives in `index.ts`.
- * @module @xiaoso/dsh-bash-plus/types
+ * @module @xiaoso/dsh-tool-plus/types
  */
 
 /** Minimizer settings mirroring the native `MinimizerOptions` surface. */

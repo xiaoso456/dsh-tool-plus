@@ -4,10 +4,10 @@
  * `applyConfiguredTruncation` (index.ts). Pure functions over a policy value —
  * no plugin state — so the ported runtime files stay pristine and the
  * `bash-plus` settings surface drives this module.
- * @module @xiaoso/dsh-bash-plus/truncate
+ * @module @xiaoso/dsh-tool-plus/truncate
  */
 
-import { truncateHead, truncateMiddle, truncateTail, type TruncationResult } from '../bash-runtime/streaming-output.ts'
+import { truncateHead, truncateMiddle, truncateTail, type TruncationResult } from '../tools/bash/streaming-output.ts'
 import type { OutputTruncateConfig } from './settings.ts'
 
 /** Upper bound standing in for "no limit", matching the OMP helper. */

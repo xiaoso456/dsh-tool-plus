@@ -4,7 +4,7 @@
  * so background work never blocks the foreground session. The registry owns
  * identity, lifecycle state, and completion notices (`dsh-tool-jobs` injects
  * them); this module owns the execution resources and their hooks.
- * @module @xiaoso/dsh-bash-plus/background
+ * @module @xiaoso/dsh-tool-plus/background
  */
 
 import { randomBytes } from 'node:crypto'

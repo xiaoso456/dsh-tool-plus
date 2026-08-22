@@ -18,5 +18,10 @@
     "outDir": "lib/types",
     "tsBuildInfoFile": "lib/types/tsconfig.tsbuildinfo"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/tools/_raw_omp",
+    "src/tools/hashline/omp-hashline/test",
+    "src/tools/hashline/omp-hashline/bench"
+  ]
 }

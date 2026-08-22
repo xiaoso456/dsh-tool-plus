@@ -13,3 +13,15 @@ coverage/
 debug.log
 *.log
 ORIGIN.md
+
+# OMP reference copy (plan.md methodology: raw material, never committed)
+src/tools/_raw_omp/
+
+# Local reference source (refs/oh-my-pi upstream checkout)
+refs/
+
+# Local memory store
+.dsh-meow/
+
+# Working plans (draft documents, not committed)
+docs/plan/

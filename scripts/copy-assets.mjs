@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const source = join(root, 'src', 'bash-runtime', 'shell-snapshot-fn-env.sh')
+const source = join(root, 'src', 'tools', 'bash', 'shell-snapshot-fn-env.sh')
 const target = join(root, 'lib', 'shell-snapshot-fn-env.sh')
 mkdirSync(join(root, 'lib'), { recursive: true })
 copyFileSync(source, target)

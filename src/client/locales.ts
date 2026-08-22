@@ -3,7 +3,7 @@
  * for the key set; en is checked complete against it — both dictionaries are
  * `Record<BashPlusLocaleKey, string>`, so a missing or extra key in either is
  * a compile error (the official registration enforces bilingual balance).
- * @module @xiaoso/dsh-bash-plus/client
+ * @module @xiaoso/dsh-tool-plus/client
  */
 
 export type BashPlusLocaleKey =
@@ -182,6 +182,6 @@ export const en: Record<BashPlusLocaleKey, string> = {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** This plugin's own settings-card copy. */
-    'bash-plus': BashPlusLocaleKey
+    'tool-plus': BashPlusLocaleKey
   }
 }

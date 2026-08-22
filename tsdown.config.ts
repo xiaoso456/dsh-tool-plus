@@ -20,7 +20,7 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-ui-settings',
 ]
 
-const PLUGIN_ID = '@xiaoso/dsh-bash-plus'
+const PLUGIN_ID = '@xiaoso/dsh-tool-plus'
 
 export default defineConfig([
   {
@@ -36,7 +36,12 @@ export default defineConfig([
     dts: false,
     clean: false,
     deps: {
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\//],
+      // @deepseek-ai/* and pi-natives resolve through node_modules (workspace
+      // links / profile install). @oh-my-pi/pi-utils is a pure-TS source
+      // package (main: ./src/index.ts) — Node cannot strip types under
+      // node_modules, so it MUST be bundled in (deps.alwaysBundle).
+      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/],
+      alwaysBundle: [/^@oh-my-pi\/pi-utils/],
     },
   },
   {

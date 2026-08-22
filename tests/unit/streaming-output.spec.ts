@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { sanitizeText } from '../../src/bash-runtime/sanitize-text.ts'
-import { TailBuffer, truncateHead, truncateMiddle, truncateTail } from '../../src/bash-runtime/streaming-output.ts'
+import { sanitizeText } from '../../src/tools/bash/sanitize-text.ts'
+import { TailBuffer, truncateHead, truncateMiddle, truncateTail } from '../../src/tools/bash/streaming-output.ts'
 
 describe('truncateHead', () => {
   it('keeps the leading window and reports the elided tail', () => {

@@ -4,7 +4,7 @@
  * `ctx.logger` (Cordis logger), which the plugin entry installs via
  * {@link setRuntimeLogger}. Until then a console adapter is used, so the
  * modules stay usable outside a composition (unit tests, executor-only use).
- * @module @xiaoso/dsh-bash-plus/logger
+ * @module @xiaoso/dsh-tool-plus/logger
  */
 
 export interface RuntimeLogger {

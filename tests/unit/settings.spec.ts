@@ -64,7 +64,7 @@ describe('resolveConfig', () => {
 })
 
 describe('BASH_PLUS_SETTINGS_NS', () => {
-  it('is the `bash-plus` namespace used by the client card', () => {
-    expect(BASH_PLUS_SETTINGS_NS).toBe('bash-plus')
+  it('is the `tool-plus` namespace used by the client card', () => {
+    expect(BASH_PLUS_SETTINGS_NS).toBe('tool-plus')
   })
 })

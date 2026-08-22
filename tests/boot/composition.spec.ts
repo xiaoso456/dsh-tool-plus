@@ -14,13 +14,14 @@ import type { JobId } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as BashPlus from '../../src/index.ts'
-import { getShellConfig } from '../../src/bash-runtime/bash-executor.ts'
+import { getShellConfig } from '../../src/tools/bash/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
   try {
@@ -45,6 +46,7 @@ async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: numb
     await ctx.plugin(LocalJobRegistry),
     await ctx.plugin(ToolTasks),
     await ctx.plugin(BashEnvPlugin),
+    await ctx.plugin(LocalFileSystem, { cwd: process.cwd() }),
     await ctx.plugin(BashPlus, { autoBackgroundMs, ...extra }),
   ]
   return {
@@ -79,17 +81,6 @@ function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
     arguments: args,
     ...agent !== undefined ? { agent } : {},
   })
-}
-
-/** Register a minimal `read` tool so interception rules have a target. */
-function registerReadTool(ctx: Context): void {
-  ctx.tools.register(defineTool({
-    name: 'read',
-    description: 'test read tool',
-    parameters: {},
-    output: { schema: { type: 'json' }, render: () => [] },
-    execute: async () => ({ value: 'read' }),
-  }))
 }
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {
@@ -168,9 +159,9 @@ describeBash('bash-plus composition', () => {
   })
 
   it('does not intercept commands by default (interceptorEnabled defaults to false)', async () => {
-    // Interception defaults OFF: even with the dedicated `read` tool visible,
-    // `cat` runs as a normal command instead of being blocked.
-    registerReadTool(ctx)
+    // Interception defaults OFF: even with the dedicated `read` tool visible
+    // (registered by the plugin itself), `cat` runs as a normal command
+    // instead of being blocked.
     const result = await call(ctx, 'bash', { command: 'cat package.json', description: 'read file' }, agent)
     expect(result.isError).toBe(false)
     expect(textOf(result)).toContain('package.json')

@@ -15,7 +15,7 @@
  * `CardShell` type, and `PropsLocale`/`Translate`. The card's CSS is this
  * package's own (injected as one style element), referenced to the same
  * `--dsw-alias-*` tokens the shipped cards use.
- * @module @xiaoso/dsh-bash-plus/client
+ * @module @xiaoso/dsh-tool-plus/client
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -60,7 +60,7 @@ export interface BashPlusCardFace {
 /** Props the renderer binds: runtime seat, the `t` locale seat, and the scope face. */
 export type BashPlusCardProps =
   PropsRuntime<'settings.plugin.item'>
-  & PropsLocale<'bash-plus'>
+  & PropsLocale<'tool-plus'>
   & BashPlusCardFace
 
 interface NumberFieldDef {
@@ -274,10 +274,10 @@ let cssInjected = false
 function injectCardCss(): void {
   if (cssInjected || typeof document === 'undefined') return
   cssInjected = true
-  const id = 'bash-plus'
+  const id = 'tool-plus'
   if (document.querySelector('style[data-plugin-css="' + id + '"]') !== null) return
   const tag = document.createElement('style')
-  tag.dataset.plugin = '@xiaoso/dsh-bash-plus'
+  tag.dataset.plugin = '@xiaoso/dsh-tool-plus'
   tag.dataset.pluginCss = id
   tag.textContent = CSS
   document.head.appendChild(tag)
@@ -566,7 +566,7 @@ export function BashPlusCard(props: BashPlusCardProps): ReactNode {
   if (!form.shell.available) return null
   const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
   return (
-    <li data-plugin-settings="bash-plus" className={'bpc-card' + (open ? ' bpc-open' : '')}>
+    <li data-plugin-settings="tool-plus" className={'bpc-card' + (open ? ' bpc-open' : '')}>
       <button
         type="button"
         className="bpc-header"

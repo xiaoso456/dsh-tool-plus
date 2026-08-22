@@ -5,12 +5,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from '../../src/bash-runtime/bash-interceptor.ts'
-import { buildNonInteractiveEnv, NON_INTERACTIVE_ENV } from '../../src/bash-runtime/non-interactive-env.ts'
-import { parseExitStatus, renderBashResult } from '../../src/bash-runtime/render.ts'
-import { sanitizeSnapshotForBrush } from '../../src/bash-runtime/shell-snapshot.ts'
-import { clampTimeout } from '../../src/bash-runtime/tool-timeouts.ts'
-import type { BashForegroundOutput } from '../../src/bash-runtime/types.ts'
+import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from '../../src/tools/bash/bash-interceptor.ts'
+import { buildNonInteractiveEnv, NON_INTERACTIVE_ENV } from '../../src/tools/bash/non-interactive-env.ts'
+import { parseExitStatus, renderBashResult } from '../../src/tools/bash/render.ts'
+import { sanitizeSnapshotForBrush } from '../../src/tools/bash/shell-snapshot.ts'
+import { clampTimeout } from '../../src/tools/bash/tool-timeouts.ts'
+import type { BashForegroundOutput } from '../../src/tools/bash/types.ts'
 
 describe('checkBashInterception', () => {
   it('blocks cat/head/tail and suggests the read tool when available', () => {
@@ -129,11 +129,11 @@ describe('renderBashResult', () => {
       aborted: false,
       timeoutMs: 1000,
       wallTimeMs: 1005,
-      output: { text: 'partial', truncated: true, spillPath: 'C:/tmp/full.log' },
+      output: { text: 'partial', truncated: true, spillPath: 'tmp/full.log' },
     }
     const text = renderBashResult(value)
     expect(text).toContain('[timed out after 1000ms]')
-    expect(text).toContain('[output truncated; full output: C:/tmp/full.log]')
+    expect(text).toContain('[output truncated; full output: tmp/full.log]')
   })
 
   it('notes minimization facts when the minimizer rewrote output', () => {

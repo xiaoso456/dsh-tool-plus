@@ -6,7 +6,7 @@
  * Marker contract (shared with `dsh-tool-bash`): `[exit code: N]` and
  * `[killed by signal: X]` MUST be the final line of the rendered text —
  * `parseExitStatus` anchors there. Other notices stay in the body.
- * @module @xiaoso/dsh-bash-plus/render
+ * @module @xiaoso/dsh-tool-plus/render
  */
 
 import { parseExitStatus } from '@deepseek-ai/dsh-shell'
