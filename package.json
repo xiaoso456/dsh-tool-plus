@@ -65,8 +65,18 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
+    "@oh-my-pi/hashline": "link:src\\tools\\hashline\\omp-hashline",
+    "@oh-my-pi/omptype": "17.3.5",
+    "@oh-my-pi/pi-agent-core": "17.3.5",
+    "@oh-my-pi/pi-ai": "17.3.5",
+    "@oh-my-pi/pi-catalog": "17.3.5",
     "@oh-my-pi/pi-natives": "17.3.5",
-    "@oh-my-pi/pi-utils": "17.3.5"
+    "@oh-my-pi/pi-tui": "17.3.5",
+    "@oh-my-pi/pi-utils": "17.3.5",
+    "@oh-my-pi/pi-wire": "17.3.5",
+    "json5": "^2.2.3",
+    "xxhashjs": "^0.2.2",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

@@ -1,4 +1,7 @@
 import { defineConfig } from 'tsdown'
+import { fileURLToPath } from 'node:url'
+
+const SHIM = (p: string): string => fileURLToPath(new URL(`./${p}`, import.meta.url))
 
 /**
  * Browser-bundle externals the web module loader can answer from its frozen
@@ -28,7 +31,58 @@ export default defineConfig([
     // external — the Loader resolves `@deepseek-ai/dsh-*` and
     // `@oh-my-pi/pi-natives` through node_modules (workspace links / profile
     // install), so only this package's own sources are bundled.
-    entry: ['src/index.ts'],
+    entry: { index: 'src/index.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    dts: false,
+    clean: false,
+    // OMP/bundled packages read `Bun.env` at module top-level, so the shim
+    // must be installed before ANY module body in this chunk graph runs.
+    outputOptions: {
+      banner: `import { installBunShim as __installBunShim } from './bun-shim.mjs'; __installBunShim();`,
+    },
+    define: {
+      // Bun has import.meta.dir; Node 22 only has import.meta.dirname.
+      'import.meta.dir': 'import.meta.dirname',
+    },
+    // OMP imports prompt/lark/html files as text (`with { type: "text" }`).
+    loader: {
+      '.md': 'text',
+      '.lark': 'text',
+      '.html': 'text',
+    },
+    // Redirect Bun-only modules to Node shims so the OMP tool code bundled
+    // into the Node half runs unchanged under Node (absolute paths — rolldown
+    // resolves alias replacements against the importer, not the cwd).
+    alias: {
+      'bun:sqlite': SHIM('src/tools/shared/bun-sqlite-shim.ts'),
+      'node:fs/promises': SHIM('src/tools/shared/fs-promises-shim.ts'),
+      'bun': SHIM('src/tools/shared/bun-named-shim.ts'),
+      'bun:ffi': SHIM('src/tools/shared/bun-ffi-shim.ts'),
+    },
+    deps: {
+      // @deepseek-ai/* and pi-natives resolve through node_modules (workspace
+      // links / profile install). @oh-my-pi/* source packages (main →
+      // src/*.ts) are pure-TS — Node cannot strip types under node_modules,
+      // so they MUST be bundled in (deps.alwaysBundle).
+      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/],
+      alwaysBundle: [
+        /^@oh-my-pi\/pi-utils/,
+        /^@oh-my-pi\/pi-tui/,
+        /^@oh-my-pi\/pi-agent-core/,
+        /^@oh-my-pi\/pi-ai/,
+        /^@oh-my-pi\/pi-catalog/,
+        /^@oh-my-pi\/pi-wire/,
+        /^@oh-my-pi\/hashline/,
+      ],
+    },
+  },
+  {
+    // Standalone Bun-shim entry (no banner): the main bundle imports this via
+    // its banner to install the Bun global before any module body runs.
+    entry: { 'bun-shim': 'src/tools/shared/bun-shim.ts' },
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',
@@ -36,12 +90,8 @@ export default defineConfig([
     dts: false,
     clean: false,
     deps: {
-      // @deepseek-ai/* and pi-natives resolve through node_modules (workspace
-      // links / profile install). @oh-my-pi/pi-utils is a pure-TS source
-      // package (main: ./src/index.ts) — Node cannot strip types under
-      // node_modules, so it MUST be bundled in (deps.alwaysBundle).
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/],
-      alwaysBundle: [/^@oh-my-pi\/pi-utils/],
+      // json5 is CJS; keep it external so Node's ESM default-interop applies.
+      neverBundle: [/^json5/],
     },
   },
   {

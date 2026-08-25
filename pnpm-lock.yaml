@@ -23,12 +23,42 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      '@oh-my-pi/hashline':
+        specifier: link:src\tools\hashline\omp-hashline
+        version: link:src/tools/hashline/omp-hashline
+      '@oh-my-pi/omptype':
+        specifier: 17.3.5
+        version: 17.3.5
+      '@oh-my-pi/pi-agent-core':
+        specifier: 17.3.5
+        version: 17.3.5
+      '@oh-my-pi/pi-ai':
+        specifier: 17.3.5
+        version: 17.3.5
+      '@oh-my-pi/pi-catalog':
+        specifier: 17.3.5
+        version: 17.3.5
       '@oh-my-pi/pi-natives':
         specifier: 17.3.5
         version: 17.3.5(patch_hash=826c41e908ca4e15d95477ac8463f79147eaafc3642a207f09c6bf80cafb17b4)
+      '@oh-my-pi/pi-tui':
+        specifier: 17.3.5
+        version: 17.3.5
       '@oh-my-pi/pi-utils':
         specifier: 17.3.5
         version: 17.3.5
+      '@oh-my-pi/pi-wire':
+        specifier: 17.3.5
+        version: 17.3.5
+      json5:
+        specifier: ^2.2.3
+        version: 2.2.3
+      xxhashjs:
+        specifier: ^0.2.2
+        version: 0.2.2
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
@@ -128,9 +158,12 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.8
-        version: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
 
 packages:
+
+  '@bufbuild/protobuf@2.14.0':
+    resolution: {integrity: sha512-C3UGsiCwSprE2NKIIFA3hCDlpXTMCAXRZuEVp88L1GY36Y41+rYL5fryE+nOFhp4p4JPQvdV8PQ4DWgHgeTE+w==}
 
   '@deepseek-ai/cordis-plugin-include@1.0.6':
     resolution: {integrity: sha512-i1VXrZCbv6tk/iUgedCNjrxxArbWT3IvRZGB5sdqJ3ectnihivXXQbRZ8JJ73DSmAPvlMGmrbtjFAfm10yvXRg==}
@@ -1044,6 +1077,22 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@oh-my-pi/omptype@17.3.5':
+    resolution: {integrity: sha512-pa/rUbWNj0H0ha/oDCNI3pIbS4TL35Ikx4LlxGnr9u1rUPJEDgOX3TR0XmUMBnxojICN+ZD/7E+I00NlDRgKag==}
+    engines: {bun: '>=1.3.14', node: '>=20'}
+
+  '@oh-my-pi/pi-agent-core@17.3.5':
+    resolution: {integrity: sha512-dEAISRslbFlnZyx+iovxCSx4Co+3Ga0O8wexntNFUF3jEnozLSdOoRadvgVqK3vHk0WeNsEEpMSz5mQKHdFxMQ==}
+    engines: {bun: '>=1.3.14'}
+
+  '@oh-my-pi/pi-ai@17.3.5':
+    resolution: {integrity: sha512-R7hnXFEfOi2pYudKTCY9hw0axDxCHuaYVDbjED612Nd9SEz4qQwURZIuJyh5QR/zVnBdQ9Tw8Z3qezninJVbUQ==}
+    engines: {bun: '>=1.3.14'}
+
+  '@oh-my-pi/pi-catalog@17.3.5':
+    resolution: {integrity: sha512-ioleJ119y3A79Za1iWoV54lKFu74wYt71MqNd5MBHwqxSemQatqeoVfKcFpfeR6Wg/GVusf1VmhdN9Rbw25peQ==}
+    engines: {bun: '>=1.3.14'}
+
   '@oh-my-pi/pi-natives-darwin-arm64@17.3.5':
     resolution: {integrity: sha512-XdkR3VD8KJ6zL6p5ea4PbAxE1ebdebl0BINJM7+SxtPigQVNpzMt7iw6u2XKjm2RXzkP5P0zeFwHNr+aFSgS6Q==}
     engines: {bun: '>=1.3.14'}
@@ -1078,9 +1127,25 @@ packages:
     resolution: {integrity: sha512-RyplNSt/mkpell1oFl5U5+zjUnXVfz0HQWm3dCXo5to4NByY7rvIsWAD30M4Nhmp0v8ohJe+84YtDBlZNqQuEQ==}
     engines: {bun: '>=1.3.14'}
 
+  '@oh-my-pi/pi-tui@17.3.5':
+    resolution: {integrity: sha512-s84gsmYVlul9MNQNqccHf1iM8RXnybhaonnW9MfeYOU4e2VmsFeIP3PrsshXdCLNaCMYeQInkRji4QyMmzzx1A==}
+    engines: {bun: '>=1.3.14'}
+
   '@oh-my-pi/pi-utils@17.3.5':
     resolution: {integrity: sha512-w6wQu4LRdCQPGh31qe7X0XNBPSz1n28zLoAW0jZGVR5ePsddEbO3743L/9QRqgDlPxwYWJnRH14SVqkBOBbJBg==}
     engines: {bun: '>=1.3.14'}
+
+  '@oh-my-pi/pi-wire@17.3.5':
+    resolution: {integrity: sha512-qDOqIpTPjq+k7kcUtaWc3NawMHXFZTolyIryprxkjWT0IU0FgJaI/l1az18ihESDAbK9LLsDfYa8qbibjbdx1g==}
+    engines: {bun: '>=1.3.14'}
+
+  '@oh-my-pi/snapcompact@17.3.5':
+    resolution: {integrity: sha512-dDnTDYh9gG0o/y9pXTqYU5zVDZ9HcRKWWaRJHiBQlv3lH1wyZKZb6qKLC9fhezNvSSWii2LrwvNFjAhviM2gZw==}
+    engines: {bun: '>=1.3.14'}
+
+  '@opentelemetry/api@1.9.1':
+    resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
+    engines: {node: '>=8.0.0'}
 
   '@oxc-project/types@0.144.0':
     resolution: {integrity: sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg==}
@@ -1478,6 +1543,9 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
+  cuint@0.2.2:
+    resolution: {integrity: sha512-d4ZVpCW31eWwCMe1YT3ur7mUDnTXbgwyzaL320DrcRT45rfjYxkt5QWLrmOJ+/UEAI2+fQgKe/fCjR8l4TpRgw==}
+
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
     engines: {node: '>=6.0'}
@@ -1609,6 +1677,11 @@ packages:
 
   js-yaml@4.3.1:
     resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
+    hasBin: true
+
+  json5@2.2.3:
+    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
+    engines: {node: '>=6'}
     hasBin: true
 
   katex@0.16.47:
@@ -2194,6 +2267,14 @@ packages:
       utf-8-validate:
         optional: true
 
+  xxhashjs@0.2.2:
+    resolution: {integrity: sha512-AkTuIuVTET12tpsVIQo+ZU6f/qDmKuRUcjaqR+OIvm+aCBsZ95i7UVY5WJ9TMsSaZ0DA2WxoZ4acu0sPH+OKAw==}
+
+  yaml@2.9.0:
+    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   yoctocolors@2.2.0:
     resolution: {integrity: sha512-xYqdZFUK/VYazNl/oCDYN+3WloWQwMfZxBoiNt6qNyk+xfOdi598muWE42rNZFp1kNOiqW936q5RhUdnpqElSg==}
     engines: {node: '>=18'}
@@ -2229,6 +2310,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@bufbuild/protobuf@2.14.0': {}
 
   '@deepseek-ai/cordis-plugin-include@1.0.6(@deepseek-ai/cordis-plugin-loader@1.0.2)(@deepseek-ai/cordis@4.0.1)':
     dependencies:
@@ -3065,6 +3148,32 @@ snapshots:
   '@koromix/koffi-win32-x64@3.1.5':
     optional: true
 
+  '@oh-my-pi/omptype@17.3.5': {}
+
+  '@oh-my-pi/pi-agent-core@17.3.5':
+    dependencies:
+      '@oh-my-pi/pi-ai': 17.3.5
+      '@oh-my-pi/pi-catalog': 17.3.5
+      '@oh-my-pi/pi-natives': 17.3.5(patch_hash=826c41e908ca4e15d95477ac8463f79147eaafc3642a207f09c6bf80cafb17b4)
+      '@oh-my-pi/pi-utils': 17.3.5
+      '@oh-my-pi/pi-wire': 17.3.5
+      '@oh-my-pi/snapcompact': 17.3.5
+      '@opentelemetry/api': 1.9.1
+
+  '@oh-my-pi/pi-ai@17.3.5':
+    dependencies:
+      '@bufbuild/protobuf': 2.14.0
+      '@oh-my-pi/omptype': 17.3.5
+      '@oh-my-pi/pi-catalog': 17.3.5
+      '@oh-my-pi/pi-utils': 17.3.5
+      '@oh-my-pi/pi-wire': 17.3.5
+
+  '@oh-my-pi/pi-catalog@17.3.5':
+    dependencies:
+      '@bufbuild/protobuf': 2.14.0
+      '@oh-my-pi/omptype': 17.3.5
+      '@oh-my-pi/pi-utils': 17.3.5
+
   '@oh-my-pi/pi-natives-darwin-arm64@17.3.5':
     optional: true
 
@@ -3088,9 +3197,26 @@ snapshots:
       '@oh-my-pi/pi-natives-linux-x64': 17.3.5
       '@oh-my-pi/pi-natives-win32-x64': 17.3.5
 
+  '@oh-my-pi/pi-tui@17.3.5':
+    dependencies:
+      '@oh-my-pi/pi-natives': 17.3.5(patch_hash=826c41e908ca4e15d95477ac8463f79147eaafc3642a207f09c6bf80cafb17b4)
+      '@oh-my-pi/pi-utils': 17.3.5
+
   '@oh-my-pi/pi-utils@17.3.5':
     dependencies:
       '@oh-my-pi/pi-natives': 17.3.5(patch_hash=826c41e908ca4e15d95477ac8463f79147eaafc3642a207f09c6bf80cafb17b4)
+
+  '@oh-my-pi/pi-wire@17.3.5': {}
+
+  '@oh-my-pi/snapcompact@17.3.5':
+    dependencies:
+      '@oh-my-pi/pi-ai': 17.3.5
+      '@oh-my-pi/pi-catalog': 17.3.5
+      '@oh-my-pi/pi-natives': 17.3.5(patch_hash=826c41e908ca4e15d95477ac8463f79147eaafc3642a207f09c6bf80cafb17b4)
+      '@oh-my-pi/pi-utils': 17.3.5
+      '@oh-my-pi/pi-wire': 17.3.5
+
+  '@opentelemetry/api@1.9.1': {}
 
   '@oxc-project/types@0.144.0': {}
 
@@ -3238,13 +3364,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12))':
+  '@vitest/mocker@4.1.10(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)
+      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -3373,6 +3499,8 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   csstype@3.2.3: {}
+
+  cuint@0.2.2: {}
 
   debug@4.4.3:
     dependencies:
@@ -3511,6 +3639,8 @@ snapshots:
   js-yaml@4.3.1:
     dependencies:
       argparse: 2.0.1
+
+  json5@2.2.3: {}
 
   katex@0.16.47:
     dependencies:
@@ -4176,7 +4306,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12):
+  vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
@@ -4188,11 +4318,12 @@ snapshots:
       esbuild: 0.28.2
       fsevents: 2.3.3
       tsx: 4.23.12
+      yaml: 2.9.0
 
-  vitest@4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)):
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12))
+      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -4209,9 +4340,10 @@ snapshots:
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)
+      vite: 8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@opentelemetry/api': 1.9.1
       '@types/node': 22.20.1
     transitivePeerDependencies:
       - msw
@@ -4224,6 +4356,12 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.21.3: {}
+
+  xxhashjs@0.2.2:
+    dependencies:
+      cuint: 0.2.2
+
+  yaml@2.9.0: {}
 
   yoctocolors@2.2.0: {}
 

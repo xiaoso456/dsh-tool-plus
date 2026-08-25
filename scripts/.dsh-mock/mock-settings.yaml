@@ -1,0 +1,24 @@
+# Temporary smoke settings: redirect LLM to the local mock server only.
+# This file lives under scripts/.dsh-mock/ and is referenced by mock-patch.yml;
+# it never touches ~/.dsh/settings.yaml.
+ui-onboarding:
+  welcomeNoticeVersion: 2026-08-13.1
+llm-pi-ai:
+  providers:
+    mock:
+      displayName: mock
+      apiKeyEnv: MOCK_API_KEY
+      api: openai-completions
+      baseURL: http://127.0.0.1:30199/v1
+      models:
+        - id: mock/flash
+          name: mock/flash
+          reasoningEfforts:
+            high: high
+agent-presets:
+  default: tool-plus
+agent-default-model:
+  provider: mock
+  model: mock/flash
+  reasoningEffort: high
+tool-plus: { editMode: hashline }

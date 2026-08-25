@@ -109,6 +109,64 @@ function normalizeFileHashText(text: string): string {
 	return text.replace(/[ \t\r]+(?=\n|$)/g, "");
 }
 /**
+ * Standard xxHash32 (XXH32), seed 0, over the UTF-8 bytes of a string.
+ * Bit-for-bit equivalent of Bun.hash.xxHash32(str, 0), implemented in plain
+ * JS because Bun is unavailable in the DSH Node runtime. Verified against the
+ * upstream hashline test anchors: "line one 263\nline two 4471\n" and
+ * "line one 410\nline two 6970\n" both yield the 16-bit tag `1D84`, and the
+ * empty input matches the published XXH32 vector (0x2CC5D505).
+ */
+const XXH32_P1 = 2654435761;
+const XXH32_P2 = 2246822519;
+const XXH32_P3 = 3266489917;
+const XXH32_P4 = 668265263;
+const XXH32_P5 = 374761393;
+
+function xxh32Rotl(x: number, r: number): number {
+	return (x << r) | (x >>> (32 - r));
+}
+
+function xxh32Read32(bytes: Uint8Array, i: number): number {
+	return bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24);
+}
+
+function xxh32Bytes(bytes: Uint8Array, seed: number): number {
+	const len = bytes.length;
+	let i = 0;
+	let h: number;
+	if (len >= 16) {
+		let v1 = (seed + XXH32_P1 + XXH32_P2) >>> 0;
+		let v2 = (seed + XXH32_P2) >>> 0;
+		let v3 = seed >>> 0;
+		let v4 = (seed - XXH32_P1) >>> 0;
+		for (; i + 16 <= len; i += 16) {
+			v1 = Math.imul(xxh32Rotl((v1 + Math.imul(xxh32Read32(bytes, i), XXH32_P2)) >>> 0, 13), XXH32_P1) >>> 0;
+			v2 = Math.imul(xxh32Rotl((v2 + Math.imul(xxh32Read32(bytes, i + 4), XXH32_P2)) >>> 0, 13), XXH32_P1) >>> 0;
+			v3 = Math.imul(xxh32Rotl((v3 + Math.imul(xxh32Read32(bytes, i + 8), XXH32_P2)) >>> 0, 13), XXH32_P1) >>> 0;
+			v4 = Math.imul(xxh32Rotl((v4 + Math.imul(xxh32Read32(bytes, i + 12), XXH32_P2)) >>> 0, 13), XXH32_P1) >>> 0;
+		}
+		h = (xxh32Rotl(v1, 1) + xxh32Rotl(v2, 7) + xxh32Rotl(v3, 12) + xxh32Rotl(v4, 18)) >>> 0;
+	} else {
+		h = (seed + XXH32_P5) >>> 0;
+	}
+	h = (h + len) >>> 0;
+	while (i + 4 <= len) {
+		h = Math.imul(xxh32Rotl((h + Math.imul(xxh32Read32(bytes, i), XXH32_P3)) >>> 0, 17), XXH32_P4) >>> 0;
+		i += 4;
+	}
+	while (i < len) {
+		h = Math.imul(xxh32Rotl((h + Math.imul(bytes[i], XXH32_P5)) >>> 0, 11), XXH32_P1) >>> 0;
+		i++;
+	}
+	h ^= h >>> 15;
+	h = Math.imul(h, XXH32_P2) >>> 0;
+	h ^= h >>> 13;
+	h = Math.imul(h, XXH32_P3) >>> 0;
+	h ^= h >>> 16;
+	return h >>> 0;
+}
+
+/**
  * Compute the content-derived hash tag carried by a hashline section header.
  * The tag is a 4-hex fingerprint of the whole file's normalized text: any read
  * of byte-identical content mints the same tag, and a follow-up edit anchored
@@ -116,14 +174,10 @@ function normalizeFileHashText(text: string): string {
  */
 export function computeFileHash(text: string): string {
 	const normalized = normalizeFileHashText(text);
-	// Bun.hash.xxHash32 not available in Node/Harness — use FNV-1a 32-bit fallback
-	// Keep identical output width (4 hex) so tags stay compatible
-	let h = 0x811c9dc5
-	for (let i = 0; i < normalized.length; i++) {
-		h ^= normalized.charCodeAt(i)
-		h = Math.imul(h, 0x01000193)
-	}
-	const low16 = (h >>> 0) & 0xffff
+	// DSH port: Bun.hash.xxHash32 → standard xxHash32 over UTF-8 bytes
+	// (bit-for-bit equivalent; see xxh32Bytes). The tag is the low 16 bits.
+	const h = xxh32Bytes(new TextEncoder().encode(normalized), 0);
+	const low16 = h & 0xffff;
 	return low16.toString(16).padStart(HL_FILE_HASH_LENGTH, "0").toUpperCase();
 }
 

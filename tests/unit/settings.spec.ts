@@ -61,6 +61,16 @@ describe('resolveConfig', () => {
     expect(DEFAULT_OUTPUT_TRUNCATE.bytes).toEqual({ mode: 'middle', headBytes: 4_096, tailBytes: 4_096 })
     expect(DEFAULT_OUTPUT_TRUNCATE.lines).toEqual({ mode: 'middle', headLines: 50, tailLines: 100 })
   })
+
+  it('AST tool toggles default to OMP parity (ast_grep off, ast_edit on)', () => {
+    const cfg = resolveConfig({})
+    // OMP settings-schema.ts:3831 astGrep.enabled default false; :3842 astEdit.enabled default true.
+    expect(cfg.astGrepEnabled).toBe(false)
+    expect(cfg.astEditEnabled).toBe(true)
+    // Explicit overrides win.
+    expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astGrepEnabled).toBe(true)
+    expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astEditEnabled).toBe(false)
+  })
 })
 
 describe('BASH_PLUS_SETTINGS_NS', () => {

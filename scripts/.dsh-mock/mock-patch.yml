@@ -1,0 +1,6 @@
+# Temporary smoke overlay: redirect settings document to the mock settings.
+# dshHomePath joins onto the harness home (~/.dsh); the project lives at
+# ../../../code/pi-gateway-project/dsh-bash-plus relative to it on this machine.
+- id: settings
+  config:
+    path: !!js dshHomePath('../../../code/pi-gateway-project/dsh-bash-plus/scripts/.dsh-mock/mock-settings.yaml')

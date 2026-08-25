@@ -19,40 +19,8 @@
  * short history of full-file versions so in-session edit chains can still
  * recover against the version a stale tag names.
  */
+import { LRUCache } from "@oh-my-pi/pi-utils/lru";
 import { computeFileHash } from "./format.ts";
-
-// Minimal LRU shim (Map-based, good enough for DSH port)
-class LRUCache<K, V> {
-	private map = new Map<K, V>()
-	private order: K[] = []
-	constructor(private opts: { max: number; maxSize?: number; sizeCalculation?: (v: V) => number }) {}
-	get(key: K): V | undefined {
-		const v = this.map.get(key)
-		if (v !== undefined) {
-			this.order = this.order.filter(k => k !== key)
-			this.order.push(key)
-		}
-		return v
-	}
-	set(key: K, value: V): V {
-		if (this.map.has(key)) this.order = this.order.filter(k => k !== key)
-		this.map.set(key, value)
-		this.order.push(key)
-		// simple eviction by count
-		while (this.map.size > this.opts.max) {
-			const oldest = this.order.shift()!
-			this.map.delete(oldest)
-		}
-		return value
-	}
-	delete(key: K): boolean {
-		this.order = this.order.filter(k => k !== key)
-		return this.map.delete(key)
-	}
-	clear(): void { this.map.clear(); this.order = [] }
-	values(): IterableIterator<V> { return this.map.values() }
-	[Symbol.iterator](): IterableIterator<[K, V]> { return this.map.entries() }
-}
 
 /**
  * One full-file version observed at a point in time. The tag the model sees is

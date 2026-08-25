@@ -3,7 +3,10 @@
     "target": "es2024",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["es2024", "dom"],
+    "paths": {
+      "bun:sqlite": ["./src/tools/shared/bun-sqlite-shim.ts"]
+    },
+    "lib": ["esnext", "dom"],
     "types": ["node"],
     "jsx": "react-jsx",
     "strict": true,

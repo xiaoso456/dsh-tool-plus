@@ -23,6 +23,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { BashPlusCard, type BashPlusCardFace, type BashPlusSettings } from './BashPlusCard.tsx'
+import { ToolPlusSection, type ToolPlusSectionInjected } from './ToolPlusSection.tsx'
+import type { ToolSettingsValue } from './forms.ts'
 import { en, zh } from './locales.ts'
 
 /**
@@ -55,4 +57,17 @@ export function apply(ctx: ClientContext): void {
     locale: BASH_PLUS_LOCALE_NS,
     inject: (): BashPlusCardFace => ({ scope }),
   }, BashPlusCard))
+
+  // The plugin's own Settings page, placed right after the Plugins section
+  // (order 15) so the tool suite reads as one more settings surface. The
+  // section edits the same namespace through the same bound scope.
+  const sectionScope = ctx.settingsScope.bind<ToolSettingsValue>({ namespace: BASH_PLUS_CLIENT_NS })
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'tool-plus',
+    order: 16,
+    label: () => ctx.locale.bind(BASH_PLUS_LOCALE_NS)('nav'),
+    locale: BASH_PLUS_LOCALE_NS,
+    inject: (): ToolPlusSectionInjected => ({ scope: sectionScope }),
+  }, ToolPlusSection))
 }
