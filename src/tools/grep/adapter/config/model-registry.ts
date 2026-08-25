@@ -7,11 +7,11 @@
  * dependency (rule #3, step.md) and would cascade into many sibling config
  * modules (model-resolver, api-key-resolver, config-file, models-config, …).
  *
- * read/write only consume the *shape*: `web/search` threads an optional
- * `ModelRegistry` into providers as a credential/transport source. This shim
- * provides that minimal surface (constructor + `authStorage` + the handful of
- * accessors `web/search/providers/codex.ts` calls), throwing on the
- * pi-catalog-backed paths. The real DSH model registry is session-side.
+ * The OMP read/write web-search providers consumed this registry surface as a
+ * credential/transport source; web-search is dormant in DSH (拍板#16), so this
+ * shim exists only to keep the module graph's minimal surface (constructor +
+ * `authStorage` + the handful of accessors). The real DSH model registry is
+ * session-side.
  */
 import type { AuthStorage, Model } from '@oh-my-pi/pi-ai'
 
