@@ -116,7 +116,7 @@ declare global {
   const Bun: typeof Bun
 }
 
-// Text imports (`*.md`/`*.lark`) and xxhashjs ambient declarations live in
+// Text imports (`*.md`/`*.lark`) ambient declarations live in
 // ./text-imports.d.ts (non-module file so the wildcards resolve).
 
 export {}
