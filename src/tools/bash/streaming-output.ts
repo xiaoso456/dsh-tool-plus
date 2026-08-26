@@ -58,6 +58,11 @@ export interface OutputSummary {
 	columnMax?: number;
 	/** Artifact ID for internal URL access (artifact://<id>) when truncated */
 	artifactId?: string;
+	/**
+	 * Path of the spill file mirroring the raw stream, when one was created.
+	 * Present even when only the per-line column cap triggered mirroring.
+	 */
+	artifactPath?: string;
 }
 
 export interface OutputSinkOptions {
@@ -1081,6 +1086,11 @@ export class OutputSink {
 		if (!this.#artifactPath || this.#fileReady) return;
 		try {
 			const sink = fs.createWriteStream(this.#artifactPath);
+			// Node emits write failures (ENOSPC/EACCES/…) as an 'error' event; an
+			// unhandled one crashes the process. The inline result stays
+			// authoritative either way, so record and continue — the spill file may
+			// simply be partial or absent.
+			sink.on("error", () => undefined);
 			this.#file = { path: this.#artifactPath, artifactId: this.#artifactId, sink };
 			this.#fileReady = true;
 
@@ -1238,7 +1248,17 @@ export class OutputSink {
 
 		if (this.#file) {
 			this.#flushArtifactTailIfCapped();
-			await this.#file.sink.end();
+			// Wait for the stream to actually finish flushing: WriteStream#end()
+			// returns the stream itself, not a promise, so a bare `await` would
+			// resolve before the open/write/close cycle drains through the
+			// threadpool and the spill file could be read incomplete or absent.
+			// The error listener resolves the wait too — an open/write failure
+			// must not hang the tool result.
+			const fileSink = this.#file.sink;
+			await new Promise<void>((resolve) => {
+				fileSink.once("error", () => resolve());
+				fileSink.end(() => resolve());
+			});
 		}
 
 		// Compose the visible output. With head retention, splice head + marker
@@ -1300,6 +1320,7 @@ export class OutputSink {
 			columnTruncatedLines: this.#columnTruncatedLines > 0 ? this.#columnTruncatedLines : undefined,
 			columnMax: this.#columnTruncatedLines > 0 ? this.#maxColumns : undefined,
 			artifactId: this.#file?.artifactId,
+			artifactPath: this.#file?.path,
 		};
 	}
 }

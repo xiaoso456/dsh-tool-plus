@@ -120,6 +120,21 @@ export interface BashExecutorOptions {
 	spillThreshold?: number;
 	/** OutputSink head window (bytes). Falls back to 20KB. */
 	headBytes?: number;
+	/**
+	 * Mirror the full raw output stream to this file while it streams — the
+	 * upstream `artifactPath` seam (`session.allocateOutputArtifact("bash")`).
+	 * The mirror triggers exactly when the inline head+tail windows overflow,
+	 * so a spill file exists whenever output was dropped. Lossless by default
+	 * (`ARTIFACT_DEFAULT_MAX_BYTES = 0`).
+	 */
+	artifactPath?: string;
+	/**
+	 * Called when the native minimizer rewrote the output, with the original
+	 * pre-minimization text (upstream `onMinimizedSave`). Return the path the
+	 * text was saved to; it is surfaced as {@link BashResult.originalOutputPath}
+	 * so the model can recover what the minimizer discarded.
+	 */
+	onMinimizedSave?: (originalText: string) => string | undefined | Promise<string | undefined>;
 }
 
 export interface BashResult {
@@ -133,6 +148,13 @@ export interface BashResult {
 	outputBytes: number;
 	/** Present when the native minimizer rewrote the output. */
 	minimized?: { filter: string; inputBytes: number; outputBytes: number };
+	/** Path of the spill file mirroring the full raw stream, when one was created. */
+	spillPath?: string;
+	/** Path holding the pre-minimization original text, when {@link onMinimizedSave} saved one. */
+	originalOutputPath?: string;
+	/** Lines/bytes elided between the retained head and tail windows (middle elision). */
+	elidedLines?: number;
+	elidedBytes?: number;
 	workingDir?: string;
 }
 
@@ -342,7 +364,17 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		headBytes: options?.headBytes ?? 20 * 1024,
 		maxColumns: 768,
 		chunkThrottleMs: options?.onChunk ? (options.chunkThrottleMs ?? 50) : 0,
+		artifactPath: options?.artifactPath,
 	});
+
+	// Finalize the sink into BashResult fields: the summary's `artifactPath`
+	// (path of the spill file mirroring the raw stream, when one was created)
+	// is surfaced as `spillPath`.
+	const settle = async (notice?: string) => {
+		const summary = await sink.dump(notice);
+		const { artifactPath, ...rest } = summary;
+		return { ...rest, spillPath: artifactPath };
+	};
 
 	// sink.push() is synchronous — buffer management, counters, and onChunk
 	// all run inline. File writes (artifact path) are handled asynchronously
@@ -356,7 +388,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		return {
 			exitCode: undefined,
 			cancelled: true,
-			...(await sink.dump("Command cancelled")),
+			...(await settle("Command cancelled")),
 		};
 	}
 
@@ -467,7 +499,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
-				...(await sink.dump(
+				...(await settle(
 					winner.kind === "timeout" && deadlineTimeoutMs !== undefined
 						? `Command timed out after ${Math.round(deadlineTimeoutMs / 1000)} seconds`
 						: "Command cancelled",
@@ -491,7 +523,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
-				...(await sink.dump(annotation)),
+				...(await settle(annotation)),
 			};
 		}
 
@@ -504,15 +536,27 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
-				...(await sink.dump("Command cancelled")),
+				...(await settle("Command cancelled")),
 			};
 		}
 
-		// When the native minimizer rewrote the output, swap the sink's accumulated
-		// raw stream for the minimized text so truncation applies to the
-		// minimized text and the counters realign.
+		// When the native minimizer rewrote the output, save the original text
+		// (upstream `onMinimizedSave`) and swap the sink's accumulated raw stream
+		// for the minimized text so truncation applies to the minimized text and
+		// the counters realign. The artifactPath mirror — if one was created
+		// before the replacement — already holds the same raw stream; the
+		// dedicated save covers rewrites that never overflowed the inline
+		// windows.
 		const minimized = winner.result.minimized;
+		let originalOutputPath: string | undefined;
 		if (minimized && minimized.text !== minimized.originalText) {
+			if (options?.onMinimizedSave !== undefined) {
+				try {
+					originalOutputPath = await options.onMinimizedSave(minimized.originalText);
+				} catch {
+					originalOutputPath = undefined;
+				}
+			}
 			sink.replace(minimized.text);
 		}
 
@@ -520,11 +564,12 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		return {
 			exitCode: winner.result.exitCode,
 			cancelled: false,
-			workingDir: winner.result.workingDir,
 			minimized: minimized && minimized.text !== minimized.originalText
 				? { filter: minimized.filter, inputBytes: minimized.inputBytes, outputBytes: minimized.outputBytes }
 				: undefined,
-			...(await sink.dump()),
+			originalOutputPath,
+			workingDir: winner.result.workingDir,
+			...(await settle()),
 		};
 	} catch (err) {
 		resetSession = true;

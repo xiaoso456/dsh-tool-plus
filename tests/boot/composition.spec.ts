@@ -181,6 +181,26 @@ describeBash('bash-plus composition', () => {
     expect(read.text).toContain('job-output-line')
   })
 
+  it('points the settled completion read at the spill file for large output', async () => {
+    // ~160KB raw: past the sink spill point (~70K) so a spill file exists, and
+    // past the 10KB completion-truncation trigger so the notice carries it.
+    const started = await call(ctx, 'bash', {
+      command: 'seq 1 30000',
+      description: 'large background output',
+      run_in_background: true,
+    }, agent)
+    expect(started.isError).toBe(false)
+    const id = textOf(started).match(/job (bash-\d+)/)?.[1]
+    expect(id).toBeTruthy()
+    await waitForJob(ctx, id!, agent)
+    const read = ctx.jobs.read(id as JobId, agent)
+    // Regression guard: the settled wrapper must apply the configured
+    // truncation WITH the spill path — a lost `settled` flag silently degrades
+    // every background completion to raw preview tail.
+    expect(read.text).toContain('[Output truncated')
+    expect(read.text).toMatch(/Full output: .*dsh-bash-spill/)
+  })
+
   it('clamps tiny timeouts up to 1s instead of failing instantly', async () => {
     const result = await call(ctx, 'bash', { command: 'sleep 0.5', description: 'sleep', timeoutMs: 1 }, agent)
     expect(result.isError).toBe(false)

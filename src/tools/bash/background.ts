@@ -9,6 +9,7 @@
 
 import { randomBytes } from 'node:crypto'
 import type { JobHooks, JobOutcome } from '@deepseek-ai/dsh-jobs'
+import { allocateSpillFile, saveOriginalText } from './adapter/spill.ts'
 import { executeBash } from './bash-executor.ts'
 import { TailBuffer } from './streaming-output.ts'
 import type { BashForegroundOutput, ResolvedConfig } from './types.ts'
@@ -57,6 +58,11 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
 
   const completion = (async (): Promise<BashForegroundOutput> => {
     const startedAt = performance.now()
+    // Per-job spill mirror (upstream allocates an output artifact per async
+    // job): the executor's OutputSink mirrors the full raw stream exactly when
+    // the inline windows overflow, so the completion can point the model at
+    // the recoverable full output.
+    const spillPath = allocateSpillFile()
     const result = await executeBash(command, {
       cwd,
       timeout: timeoutMs,
@@ -78,6 +84,8 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       useShellCommandWrapper: config.useShellCommandWrapper,
       snapshotEnabled: config.snapshotEnabled,
       nonInteractiveEnv: config.nonInteractiveEnv,
+      artifactPath: spillPath,
+      onMinimizedSave: (originalText) => saveOriginalText(originalText),
       onChunk: (chunk) => {
         preview.append(chunk)
         delta.append(chunk)
@@ -98,6 +106,14 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       output: {
         text: result.output,
         truncated: result.truncated,
+        ...result.spillPath !== undefined ? { spillPath: result.spillPath } : {},
+        ...result.originalOutputPath !== undefined ? { originalSpillPath: result.originalOutputPath } : {},
+        totalLines: result.totalLines,
+        totalBytes: result.totalBytes,
+        outputLines: result.outputLines,
+        outputBytes: result.outputBytes,
+        ...result.elidedLines !== undefined ? { elidedLines: result.elidedLines } : {},
+        ...result.elidedBytes !== undefined ? { elidedBytes: result.elidedBytes } : {},
       },
     }
   })()

@@ -23,6 +23,7 @@
   },
   "files": [
     "lib",
+    "presets",
     "src/bash-runtime/shell-snapshot-fn-env.sh",
     "cordis.patch.yml",
     "README.md",
@@ -46,7 +47,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown -c tsdown.config.ts && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "presets:install": "node presets/install-presets.mjs",
+    "presets:install:force": "node presets/install-presets.mjs --force"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

@@ -10,7 +10,8 @@
  */
 
 import { parseExitStatus } from '@deepseek-ai/dsh-shell'
-import type { BashForegroundOutput } from './types.ts'
+import { outputMeta } from '../omp/tools/output-meta.ts'
+import type { BashForegroundOutput, CollectedOutput } from './types.ts'
 
 /** Format a byte count for human-readable display. */
 function formatBytes(bytes: number): string {
@@ -24,10 +25,53 @@ export function formatWallTimeNotice(wallTimeMs: number): string {
   return `Wall time: ${(wallTimeMs / 1000).toFixed(2)} seconds`
 }
 
-/** The truncation notice with the full-output spill path. */
-function formatTruncationNotice(truncated: boolean, spillPath: string | undefined): string | undefined {
-  if (!truncated) return undefined
-  return `[output truncated; full output: ${spillPath ?? '(unavailable)'}]`
+/**
+ * The OMP-form truncation notice: line-range accounting (head+tail ranges for
+ * middle elision, shown range for one-sided truncation) plus elided stats,
+ * then the spill-file pointer and a read-back hint. Range reconstruction rides
+ * the shared OMP algorithm (`outputMeta().truncationFromSummary`), with the
+ * upstream `artifact://` clause replaced by the filesystem path — DSH has no
+ * artifact URL space, and the read tool's `:N-M` inline selectors take their
+ * place.
+ * @returns the notice lines, or `undefined` when output was not truncated.
+ */
+export function formatTruncationNotice(value: CollectedOutput): string[] | undefined {
+  if (!value.truncated) return undefined
+  const totalLines = value.totalLines ?? 0
+  const outputLines = value.outputLines ?? 0
+  const totalBytes = value.totalBytes ?? 0
+  const outputBytes = value.outputBytes ?? 0
+  const meta = outputMeta()
+    .truncationFromSummary(
+      {
+        output: '',
+        truncated: true,
+        totalLines,
+        totalBytes,
+        outputLines,
+        outputBytes,
+        elidedLines: value.elidedLines,
+        elidedBytes: value.elidedBytes,
+      },
+      { direction: 'tail' },
+    )
+    .get()?.truncation
+  let body: string
+  if (meta !== undefined && meta.direction === 'middle' && meta.headRange !== undefined && meta.tailRange !== undefined) {
+    const elidedLines = meta.elidedLines ?? Math.max(0, totalLines - outputLines)
+    const elidedBytes = meta.elidedBytes ?? Math.max(0, totalBytes - outputBytes)
+    body = `Showing lines ${meta.headRange.start}-${meta.headRange.end} and ${meta.tailRange.start}-${meta.tailRange.end}`
+      + ` of ${totalLines}; ${elidedLines.toLocaleString()} middle line${elidedLines === 1 ? '' : 's'} (${formatBytes(elidedBytes)}) elided`
+  } else if (meta !== undefined && meta.shownRange !== undefined && meta.shownRange.end >= meta.shownRange.start) {
+    body = `Showing lines ${meta.shownRange.start}-${meta.shownRange.end} of ${totalLines}`
+  } else {
+    body = `Showing ${outputLines} of ${totalLines} lines`
+  }
+  const lines = [`[output truncated: ${body}. Full output: ${value.spillPath ?? '(unavailable)'}]`]
+  if (value.spillPath !== undefined) {
+    lines.push(`Re-read elided ranges from the full-output file with the read tool, e.g. "${value.spillPath}:<start>-<end>".`)
+  }
+  return lines
 }
 
 /**
@@ -46,12 +90,14 @@ export function renderBashResult(value: BashForegroundOutput): string {
   const notices: string[] = []
   const wallTime = formatWallTimeNotice(value.wallTimeMs)
   if (value.minimized !== undefined) {
+    const originalPart = value.output.originalSpillPath !== undefined ? `; original saved to ${value.output.originalSpillPath}` : ''
     notices.push(
-      `[output minimized by ${value.minimized.filter}: ${formatBytes(value.minimized.inputBytes)} → ${formatBytes(value.minimized.outputBytes)}]`,
+      `[output minimized by ${value.minimized.filter}: ${formatBytes(value.minimized.inputBytes)} → ${formatBytes(value.minimized.outputBytes)}${originalPart}]`,
     )
   }
-  const truncation = formatTruncationNotice(value.output.truncated, value.output.spillPath)
-  if (truncation !== undefined) notices.push(truncation)
+  const truncation = formatTruncationNotice(value.output)
+  if (truncation !== undefined) notices.push(...truncation)
+  else if (value.output.spillPath !== undefined) notices.push(`[full raw stream saved: ${value.output.spillPath}]`)
 
   const markers: string[] = []
   if (value.timedOut) {

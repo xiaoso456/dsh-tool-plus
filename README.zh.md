@@ -23,6 +23,17 @@ dsh --profile dsh-tool-plus "你的任务"
 
 `bash-sandbox` / `pwsh-sandbox` 保持挂载（`ctx.shell` 缝）。覆盖度 `9/9`，详见 `plan.md §0.3`。
 
+## 预设（agent presets）：标准增强版 / PTC 增强版
+
+仓库 `presets/` 一个文件夹收录全部预设资产（脚本 + 两份模板）。安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/`：
+
+```sh
+pnpm run presets:install            # 可重入：一致跳过、本地改动保留、缺的补装
+pnpm run presets:install:force      # 把改过的文件恢复为模板原件
+```
+
+模板里 `tool-plus` 行默认 `disabled: true`——host 平面（bundle patch）已全局注册，预设层重复挂载会遮蔽宿主实例（web 环境 settings 注入不触发）。文件夹名即预设 ID：`tool-plus-standard` / `tool-plus-ptc`。详见 `presets/tool-plus-standard/agent.cordis.yml` 头注释。
+
 ## 功能
 
 - **bash**：持久 `brush` shell、`minimizer`、`截断+spill`、`run_in_background` + `autoBackgroundMs`、`cat/grep/find/sed -i` 拦截（自提供后常驻）。

@@ -71,7 +71,17 @@ export interface MinimizedOutputInfo {
 export interface CollectedOutput {
   text: string
   truncated: boolean
+  /** Path of the spill file mirroring the full raw output stream, when one was created. */
   spillPath?: string
+  /** Path holding the pre-minimization original text, when the native minimizer rewrote the output. */
+  originalSpillPath?: string
+  /** Stream counters carried for the truncation notice (OMP OutputSummary parity). */
+  totalLines?: number
+  totalBytes?: number
+  outputLines?: number
+  outputBytes?: number
+  elidedLines?: number
+  elidedBytes?: number
 }
 
 /** Foreground completion of one bash call. */

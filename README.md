@@ -37,6 +37,32 @@ dsh --profile dsh-tool-plus
 
 `bash-sandbox` / `pwsh-sandbox` 保持挂载（服务 `ctx.shell` 能力缝，供 hooks / tmux 等）。**不要同时挂载被禁的 5 个官方包**——同名 `bash`/`read`/`grep` 会在加载期 fail-loud。
 
+## 预设（agent presets）：标准增强版 / PTC 增强版
+
+仓库 `presets/` 一个文件夹收录全部预设资产：安装脚本 + 两份模板。
+
+```
+presets/
+├── install-presets.mjs      # 可重入安装脚本
+├── tool-plus-standard/      # 标准增强版（standard 全能力 + tool-plus）
+│   ├── preset.yml
+│   └── agent.cordis.yml
+└── tool-plus-ptc/           # PTC 增强版（code 全能力 + Code Mode + tool-plus）
+    ├── preset.yml
+    └── agent.cordis.yml
+```
+
+安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/`（运行中的 Host 重启后生效）：
+
+```sh
+pnpm run presets:install            # 或 node presets/install-presets.mjs
+pnpm run presets:install:force      # 本地有手改、想恢复模板原样时用
+```
+
+脚本**可重入**：目标文件与模板字节一致 → `up-to-date` 不动；本地改过的文件 → **跳过保留**（退出码 1 提示存在漂移）；缺的 → 安装；`--force` 把改过的文件恢复为模板原件。目标目录里的其他未知文件一律不碰。
+
+**tool-plus 行在两个模板里均默认 `disabled: true`**：只要插件包已按上文方式装进 profile（host 平面），其 bundle patch 已全局注册 `tool-plus` 并禁用官方四行，宿主注册对每个预设生效——预设里再挂一份会产生遮蔽宿主实例的第二实例（其 settings 注入在 web 环境不触发，配置回退 replace，即 2026-08-25 hashline 根因）。该行仅作为"极少数不经 host 平面使用本包"场景的位置占位，启用前先读模板头注释。文件夹名即安装后的预设 ID（`tool-plus-standard` / `tool-plus-ptc`）。
+
 ## 功能
 
 - **bash 全家桶内核**：持久 `brush` shell（`cd`/`export` 跨调用）、输出 `minimizer`（`git/npm/cargo` 智能压缩）、截断 `head+tail` + `spill` 落盘、后台 `run_in_background` + `autoBackgroundMs`、拦截 `cat`/`grep`/`find`/`sed -i`→`read`/`grep`/`glob`/`edit`。

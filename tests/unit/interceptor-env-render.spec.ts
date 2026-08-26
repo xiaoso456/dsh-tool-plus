@@ -121,7 +121,7 @@ describe('renderBashResult', () => {
     expect(renderBashResult(value)).toContain('(no output)')
   })
 
-  it('reports truncation with the spill path and timed-out markers', () => {
+  it('reports truncation with OMP-form line accounting, the spill path, and a read-back hint', () => {
     const value: BashForegroundOutput = {
       kind: 'foreground',
       exitCode: null,
@@ -129,14 +129,58 @@ describe('renderBashResult', () => {
       aborted: false,
       timeoutMs: 1000,
       wallTimeMs: 1005,
-      output: { text: 'partial', truncated: true, spillPath: 'tmp/full.log' },
+      output: {
+        text: 'partial',
+        truncated: true,
+        spillPath: 'tmp/full.log',
+        totalLines: 214,
+        totalBytes: 90_000,
+        outputLines: 81,
+        outputBytes: 41_000,
+        elidedLines: 133,
+        elidedBytes: 49_000,
+      },
     }
     const text = renderBashResult(value)
     expect(text).toContain('[timed out after 1000ms]')
-    expect(text).toContain('[output truncated; full output: tmp/full.log]')
+    // Middle-elision ranges reconstructed by the shared OMP algorithm:
+    // keptLines = outputLines - 1 = 80 → head 1-40, tail 175-214.
+    expect(text).toContain('Showing lines 1-40 and 175-214 of 214')
+    expect(text).toContain('Full output: tmp/full.log]')
+    expect(text).toContain('Re-read elided ranges from the full-output file with the read tool')
   })
 
-  it('notes minimization facts when the minimizer rewrote output', () => {
+  it('reports an unavailable spill path when truncation produced no file', () => {
+    const value: BashForegroundOutput = {
+      kind: 'foreground',
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      timeoutMs: null,
+      wallTimeMs: 5,
+      output: { text: 'partial', truncated: true },
+    }
+    const text = renderBashResult(value)
+    expect(text).toContain('[output truncated:')
+    expect(text).toContain('Full output: (unavailable)]')
+    expect(text).not.toContain('Re-read elided ranges')
+  })
+
+  it('points at a complete mirror even when only the column cap triggered spilling', () => {
+    const value: BashForegroundOutput = {
+      kind: 'foreground',
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      timeoutMs: null,
+      wallTimeMs: 5,
+      output: { text: 'ok', truncated: false, spillPath: 'tmp/mirror.log' },
+    }
+    const text = renderBashResult(value)
+    expect(text).toContain('[full raw stream saved: tmp/mirror.log]')
+  })
+
+  it('notes minimization facts plus the original capture path', () => {
     const value: BashForegroundOutput = {
       kind: 'foreground',
       exitCode: 0,
@@ -145,9 +189,9 @@ describe('renderBashResult', () => {
       timeoutMs: null,
       wallTimeMs: 5,
       minimized: { filter: 'git', inputBytes: 12_345, outputBytes: 42 },
-      output: { text: 'minimized', truncated: false },
+      output: { text: 'minimized', truncated: false, originalSpillPath: 'tmp/original.log' },
     }
     const text = renderBashResult(value)
-    expect(text).toContain('[output minimized by git: 12.1KB → 42B]')
+    expect(text).toContain('[output minimized by git: 12.1KB → 42B; original saved to tmp/original.log]')
   })
 })
