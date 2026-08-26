@@ -31,8 +31,6 @@ export type ResolveInvoker = (invocation: unknown) => Promise<AgentToolResult<un
 export interface ToolSession {
   /** Current working directory */
   cwd: string
-  /** Whether LSP integrations are enabled (DSH: false — no LSP) */
-  enableLsp?: boolean
   /** Whether an edit-capable tool is available (controls hashline output) */
   hasEditTool?: boolean
   /** Session settings (read keys and edit keys; DSH maps them onto tool-plus config). */

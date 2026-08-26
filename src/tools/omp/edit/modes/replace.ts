@@ -7,9 +7,8 @@
 
 import { type } from "@oh-my-pi/omptype";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../../omp/lsp/index.ts";
+import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
-import { routeWriteThroughBridge } from "../../../edit/adapter/tools/acp-bridge";
 import { invalidateFsScanAfterWrite } from "../../../omp/tools/fs-cache-invalidation.ts";
 import { outputMeta } from "../../../edit/adapter/tools/output-meta";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../../edit/adapter/tools/plan-mode-guard";
@@ -24,7 +23,7 @@ import {
 	stripBom,
 } from "../../../omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { EditToolDetails, LspBatchRequest } from "../renderer";
+import type { EditToolDetails } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export interface FuzzyMatch {
@@ -1085,11 +1084,9 @@ export interface ExecuteReplaceOptions {
 	path: string;
 	params: Omit<ReplaceParams, "path">;
 	signal?: AbortSignal;
-	batchRequest?: LspBatchRequest;
 	allowFuzzy: boolean;
 	fuzzyThreshold: number;
 	writethrough: WritethroughCallback;
-	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 }
 
 export async function executeReplace(
@@ -1100,11 +1097,9 @@ export async function executeReplace(
 		path,
 		params,
 		signal,
-		batchRequest,
 		allowFuzzy,
 		fuzzyThreshold,
 		writethrough,
-		beginDeferredDiagnosticsForPath,
 	} = options;
 	const { old_string, new_string, replace_all } = params;
 
@@ -1155,16 +1150,8 @@ export async function executeReplace(
 		bom + restoreLineEndings(result.content, originalEnding),
 	);
 
-	// Route through ACP bridge when available; skips internal artifacts.
-	let diagnostics: FileDiagnosticsResult | undefined;
-	if (await routeWriteThroughBridge(session, path, absolutePath, finalContent, signal)) {
-		// bridge handled the write; diagnostics not available via writethrough
-	} else {
-		diagnostics = await writethrough(absolutePath, finalContent, signal, Bun.file(absolutePath), batchRequest, dst =>
-			dst === absolutePath ? beginDeferredDiagnosticsForPath(absolutePath) : undefined,
-		);
-		invalidateFsScanAfterWrite(absolutePath);
-	}
+	await writethrough(absolutePath, finalContent, signal);
+	invalidateFsScanAfterWrite(absolutePath);
 
 	const diffResult = generateDiffString(normalizedContent, result.content, undefined, { path });
 	const resultText =
@@ -1172,9 +1159,7 @@ export async function executeReplace(
 			? `Successfully replaced ${result.count} occurrences in ${path}.`
 			: `Successfully replaced text in ${path}.`;
 
-	const meta = outputMeta()
-		.diagnostics(diagnostics?.summary ?? "", diagnostics?.messages ?? [])
-		.get();
+	const meta = outputMeta().get();
 
 	return {
 		content: [{ type: "text", text: resultText }],
@@ -1182,7 +1167,6 @@ export async function executeReplace(
 			diff: diffResult.diff,
 			path: absolutePath,
 			firstChangedLine: diffResult.firstChangedLine,
-			diagnostics,
 			meta,
 			oldText: rawContent,
 			newText: finalContent,

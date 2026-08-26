@@ -2,13 +2,10 @@
  * Coding-agent runner that drives the hashline {@link Patcher} on behalf of
  * the `edit` tool. Converts an `{input}` tool-call payload into a
  * fully-applied patch, wraps the result in the agent's
- * {@link AgentToolResult} shape, and attaches LSP diagnostics + `outputMeta`
- * for the renderer.
+ * {@link AgentToolResult} shape, and attaches `outputMeta` for the renderer.
  *
  * Multi-section patches are preflighted up front via {@link Patcher.prepare}
- * so a partial batch never lands; the commit loop then narrows the LSP
- * batch's `flush` flag to true only for the final write so diagnostics
- * round-trip once.
+ * so a partial batch never lands.
  */
 import {
 	type BlockResolution,
@@ -24,14 +21,14 @@ import {
 	startClipboardBatch,
 } from "@oh-my-pi/hashline";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../../omp/lsp/index.ts";
+import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
 import { outputMeta } from "../../../edit/adapter/tools/output-meta";
 import { ToolError } from "../../../omp/tools/tool-errors.ts";
 import { generateDiffString } from "../diff";
 import { getEditClipboard } from "../edit-clipboard";
 import { getFileSnapshotStore } from "../../../omp/edit/file-snapshot-store.ts";
-import type { EditToolDetails, EditToolPerFileResult, LspBatchRequest } from "../renderer";
+import type { EditToolDetails, EditToolPerFileResult } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";
 import { HashlineFilesystem } from "./filesystem";
@@ -42,9 +39,7 @@ export interface ExecuteHashlineSingleOptions {
 	session: ToolSession;
 	input: string;
 	signal?: AbortSignal;
-	batchRequest?: LspBatchRequest;
 	writethrough: WritethroughCallback;
-	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 }
 
 function noChangeDiagnostic(path: string): string {
@@ -93,11 +88,6 @@ function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void 
 	}
 }
 
-function narrowBatchRequest(outer: LspBatchRequest | undefined, isLast: boolean): LspBatchRequest | undefined {
-	if (!outer) return undefined;
-	return { id: outer.id, flush: isLast && outer.flush };
-}
-
 interface RenderedSection {
 	toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>;
 	perFileResult: EditToolPerFileResult;
@@ -126,7 +116,6 @@ function formatBlockResolution(resolution: BlockResolution): string {
 
 function renderSection(
 	result: PatchSectionResult,
-	diagnostics: FileDiagnosticsResult | undefined,
 	sourcePath: string,
 ): RenderedSection {
 	if (result.op === "delete") {
@@ -164,9 +153,7 @@ function renderSection(
 
 	const diff = generateDiffString(result.before, result.after, undefined, { path: result.path });
 	const preview = buildCompactDiffPreview(diff.diff);
-	const meta = outputMeta()
-		.diagnostics(diagnostics?.summary ?? "", diagnostics?.messages ?? [])
-		.get();
+	const meta = outputMeta().get();
 
 	const warningsBlock = result.warnings.length > 0 ? `\n\nWarnings:\n${result.warnings.join("\n")}` : "";
 	const previewBlock = preview.preview ? `\n${preview.preview}` : "";
@@ -187,7 +174,6 @@ function renderSection(
 			details: pruneOversizedEditSnapshots({
 				diff: diff.diff,
 				firstChangedLine,
-				diagnostics,
 				op: result.op,
 				move: result.moveDest,
 				path: result.moveDest ?? result.path,
@@ -201,7 +187,6 @@ function renderSection(
 			path: result.moveDest ?? result.path,
 			diff: diff.diff,
 			firstChangedLine,
-			diagnostics,
 			op: result.op,
 			move: result.moveDest,
 			sourcePath: result.moveDest ? sourcePath : undefined,
@@ -222,9 +207,7 @@ export async function executeHashlineSingle(
 	const fs = new HashlineFilesystem({
 		session: options.session,
 		writethrough: options.writethrough,
-		beginDeferredDiagnosticsForPath: options.beginDeferredDiagnosticsForPath,
 		signal: options.signal,
-		batchRequest: options.batchRequest,
 	});
 	const snapshots = getFileSnapshotStore(options.session);
 	const enforceSeenLines = options.session.settings.get("edit.enforceSeenLines");
@@ -239,7 +222,6 @@ export async function executeHashlineSingle(
 	// Single-section fast path: prepare, commit, render.
 	const inputHash = hashPatchInput(options.input);
 	if (patch.sections.length === 1) {
-		fs.setBatchRequest(narrowBatchRequest(options.batchRequest, true));
 		const prepared = await patcher.prepare(patch.sections[0], clipboard);
 		const sectionResult = await patcher.commit(prepared);
 		commitClipboard(clipboard, sessionClipboard);
@@ -248,10 +230,10 @@ export async function executeHashlineSingle(
 			if (escalate) {
 				throw new ToolError(noChangeLoopDiagnostic(sectionResult.path, count));
 			}
-			return renderSection(sectionResult, undefined, prepared.section.path).toolResult;
+			return renderSection(sectionResult, prepared.section.path).toolResult;
 		}
 		resetNoopEdit(options.session, sectionResult.canonicalPath);
-		return renderSection(sectionResult, fs.consumeDiagnostics(sectionResult.path), prepared.section.path).toolResult;
+		return renderSection(sectionResult, prepared.section.path).toolResult;
 	}
 
 	// Multi-section: prepare every section up front so we fail fast before
@@ -276,13 +258,10 @@ export async function executeHashlineSingle(
 				: new ToolError(noChangeDiagnostic(entry.section.path));
 		}
 	}
-	// Then commit each one, narrowing the LSP batch flush flag to the final
-	// section only. A no-op apply mid-batch is treated as a hard failure —
-	// the model authored anchors that match the current file content.
+	// Then commit each one. A no-op apply mid-batch is treated as a hard
+	// failure — the model authored anchors that match the current file content.
 	const rendered: RenderedSection[] = [];
 	for (let i = 0; i < prepared.length; i++) {
-		const isLast = i === prepared.length - 1;
-		fs.setBatchRequest(narrowBatchRequest(options.batchRequest, isLast));
 		const sectionResult = await patcher.commit(prepared[i]);
 		commitClipboard(sectionStates[i], sessionClipboard);
 		if (sectionResult.op === "noop") {
@@ -292,7 +271,7 @@ export async function executeHashlineSingle(
 				: new ToolError(noChangeDiagnostic(sectionResult.path));
 		}
 		resetNoopEdit(options.session, sectionResult.canonicalPath);
-		rendered.push(renderSection(sectionResult, fs.consumeDiagnostics(sectionResult.path), prepared[i].section.path));
+		rendered.push(renderSection(sectionResult, prepared[i].section.path));
 	}
 	return {
 		content: [

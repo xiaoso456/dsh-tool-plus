@@ -40,7 +40,7 @@ export type { ToolSession } from './sdk.ts'
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  const session: ToolSession = { cwd, settings, enableLsp: false, hasEditTool: true }
+  const session: ToolSession = { cwd, settings, hasEditTool: true }
   session.getToolChoiceQueue = () => ({
     registerPendingInvoker: (_id: string, _toolName: string, onInvoked: ResolveInvoker) => {
       // Capture the pending apply; adapter executes it after the preview returns.

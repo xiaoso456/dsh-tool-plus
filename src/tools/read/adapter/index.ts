@@ -34,7 +34,7 @@ function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const settings = new Settings(cfg, getDefault)
   // 临时调试日志：read 实际用到的模式（hashline 排查）。
   console.log(`[tool-plus-debug] read session: cfg.editMode=${cfg.editMode} settings.get(edit.mode)=${String(settings.get('edit.mode'))}`)
-  const session: ToolSession = { cwd, settings, enableLsp: false, hasEditTool: true }
+  const session: ToolSession = { cwd, settings, hasEditTool: true }
   // 恢复本 DSH session 上次调用保存的 OMP 引擎状态（冲突注册表等，T11-2）。
   attachOmpSessionState(session, exec?.agent?.session)
   return session

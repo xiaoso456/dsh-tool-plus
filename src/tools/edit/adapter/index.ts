@@ -10,7 +10,7 @@
  *  - dispatches to the OMP execute functions and converts the
  *    `AgentToolResult` back to a DSH tool result.
  *
- * LSP/ACP/TUI are absent in DSH (plan.md §3): writethrough writes through
+ * LSP/ACP/TUI are absent in DSH (plan.md 拍板#5/#8): writethrough writes through
  * ctx.fs, diagnostics are never produced, and no TUI rendering happens.
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -19,11 +19,7 @@ import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/tools/index.ts'
-import type {
-  FileDiagnosticsResult,
-  WritethroughCallback,
-  WritethroughDeferredHandle,
-} from '../../omp/lsp/index.ts'
+import type { WritethroughCallback } from '../../omp/tools/writethrough.ts'
 import { executeReplace } from '../../omp/edit/modes/replace.ts'
 import { executePatchSingle, type PatchEditEntry } from '../../omp/edit/modes/patch.ts'
 import { executeHashlineSingle } from '../../omp/edit/hashline/execute.ts'
@@ -53,34 +49,24 @@ const EDIT_MODE_DESCRIPTIONS = {
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  return { cwd, settings, enableLsp: false, hasEditTool: true }
+  return { cwd, settings, hasEditTool: true }
 }
 
-/** LSP writethrough for DSH: write via ctx.fs (no LSP formatting/diagnostics). */
+/** File-write channel for DSH: write via ctx.fs (no LSP formatting/diagnostics). */
 function createWritethrough(ctx: Context, exec: any): WritethroughCallback {
   return async (
     dst: string,
     content: string,
     signal?: AbortSignal,
     file?: { write(content: string): Promise<void> },
-  ): Promise<FileDiagnosticsResult | undefined> => {
+  ): Promise<void> => {
     if (file) {
       await file.write(content)
-      return undefined
+      return
     }
     const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
     const target = await ctx.fs.resolve(dst, { cwd, signal })
     await ctx.fs.writeText(target, content, undefined, signal)
-    return undefined
-  }
-}
-
-/** Deferred-diagnostics handle factory (no LSP in DSH — inert). */
-function beginDeferredDiagnostics(_path: string): WritethroughDeferredHandle {
-  return {
-    onDeferredDiagnostics: () => {},
-    signal: new AbortController().signal,
-    finalize: () => {},
   }
 }
 
@@ -116,12 +102,10 @@ function runPatchEntry(options: {
     path: options.path,
     params: options.entry,
     signal: options.signal,
-    batchRequest: undefined,
     allowFuzzy: true,
     fuzzyThreshold: 0.95,
     allowCreateOverwrite: options.allowCreateOverwrite ?? false,
     writethrough: options.writethrough,
-    beginDeferredDiagnosticsForPath: beginDeferredDiagnostics,
   })
 }
 
@@ -210,9 +194,7 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
           session,
           input: args.input,
           signal,
-          batchRequest: undefined,
           writethrough,
-          beginDeferredDiagnosticsForPath: beginDeferredDiagnostics,
         })
         return { text: toText(result) }
       }
@@ -254,11 +236,9 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
           path: filePath,
           params: { old_string: edit.oldText, new_string: edit.newText, replace_all: args.replace_all ?? false },
           signal,
-          batchRequest: undefined,
           allowFuzzy: true,
           fuzzyThreshold: 0.95,
           writethrough,
-          beginDeferredDiagnosticsForPath: beginDeferredDiagnostics,
         })
         totalReplacements += (result.details as any)?.replacements ?? 0
         if (result.isError) {

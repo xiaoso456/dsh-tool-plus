@@ -15,8 +15,6 @@ import type { Model } from '@oh-my-pi/pi-ai'
 
 declare module '@oh-my-pi/pi-agent-core' {
   interface AgentToolContext {
-    /** Tool-call batch context (DSH: present when the harness supplies it). */
-    toolCall?: import('@oh-my-pi/pi-agent-core').ToolCallContext
     hasUI?: boolean
     toolNames?: string[]
     /** Session settings (cross-module nominal Settings — typed loosely). */
@@ -30,15 +28,6 @@ declare module '@oh-my-pi/pi-agent-core' {
   }
 }
 
-/** Deferred diagnostics queue entry (no LSP in DSH — never populated). */
-export interface DeferredDiagnosticsEntry {
-  path: string
-  summary: string
-  messages: string[]
-  errored: boolean
-  isStale: () => boolean
-}
-
 /**
  * Minimal ToolSession surface used by the OMP engines (verbatim member
  * shapes, shared superset). DSH provides a session adapter implementing
@@ -47,8 +36,6 @@ export interface DeferredDiagnosticsEntry {
 export interface ToolSession {
   /** Current working directory */
   cwd: string
-  /** Whether LSP integrations are enabled (DSH: false — no LSP) */
-  enableLsp?: boolean
   /** Whether an edit-capable tool is available (controls hashline output) */
   hasEditTool?: boolean
   /** Session settings (read.* keys; DSH maps them onto tool-plus config). */
@@ -61,13 +48,6 @@ export interface ToolSession {
   editClipboard?: Record<string, unknown>
   /** Hashline snapshot store (created lazily by the engine). */
   fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
-  /** Diagnostics ledger (no LSP in DSH — inert but present for engine types). */
-  diagnosticsLedger?: import('./lsp/diagnostics-ledger.ts').DiagnosticsLedger
-  /** Queue deferred diagnostics (no LSP in DSH — optional, unused). */
-  queueDeferredDiagnostics?: (entry: DeferredDiagnosticsEntry) => void
-  /** Bump/read file mutation versions (no LSP in DSH — optional). */
-  bumpFileMutationVersion?: (path: string) => number
-  getFileMutationVersion?: (path: string) => number
   /** Plan-mode state (DSH plan is a hint layer — never enabled). */
   getPlanModeState?: () => { enabled: boolean; planFilePath: string } | undefined
   /** Plan reference path (DSH: none). */
@@ -82,8 +62,6 @@ export interface ToolSession {
   getSessionSpawns?: () => string | boolean | null | undefined
   /** Hashline no-op loop guard state (edit engine; created lazily). */
   noopLoopGuard?: import('./edit/hashline/noop-loop-guard.ts').NoopLoopGuard
-  /** ACP client bridge (DSH: no ACP — absent). */
-  getClientBridge?: () => AcpClientBridgeLike | undefined
   /** Fetch implementation for URL reads (DSH: global fetch). */
   fetch?: typeof globalThis.fetch
   /** Tool-choice queue (resolution devices; DSH: none). */
@@ -107,13 +85,6 @@ export interface ToolSession {
   conflictHistory?: ConflictHistory
   /** `xd://` presentation state (DSH: no X dev protocol — absent). */
   xdev?: XdevState
-}
-
-/** Minimal ACP client-bridge shape (DSH: no ACP — never present). */
-export interface AcpClientBridgeLike {
-  capabilities: { readTextFile?: boolean; writeTextFile?: boolean }
-  readTextFile?: (request: { path: string }) => Promise<string>
-  writeTextFile?: (request: { path: string; content: string }) => Promise<unknown>
 }
 
 /** Tool-choice queue for staged resolution previews (DSH: never present). */

@@ -20,9 +20,7 @@ import type { RenderResultOptions } from "../../omp/extensibility/custom-tools/t
 import { InternalUrlRouter } from "../../omp/internal-urls/index.ts";
 import { parseInternalUrl } from "../../omp/internal-urls/parse.ts";
 import { couldBecomeXdUrl, parseXdUrl } from "../../omp/internal-urls/xd-protocol.ts";
-import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../../omp/lsp/index.ts";
-import { DeferredDiagnostics } from "../../write/adapter/lsp/deferred-diagnostics";
-import { getDiagnosticsLedger } from "../../omp/lsp/diagnostics-ledger.ts";
+import { type WritethroughCallback, writethroughNoop } from "../../omp/tools/writethrough.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../omp/modes/theme/theme.ts";
 import writeDescription from "../../omp/prompts/tools/write.md" with { type: "text" };
 import type { ToolSession } from "../../omp/sdk.ts";
@@ -35,7 +33,6 @@ import {
 	readArchiveEntries,
 	writeArchive,
 } from "../../omp/utils/zip.ts";
-import { routeWriteThroughBridge } from "./acp-bridge";
 import { resolveToolTier, truncateForPrompt } from "../../omp/tools/approval.ts";
 import { assertEditableFile } from "../../shared/auto-generated-guard.dsh";
 import {
@@ -48,7 +45,7 @@ import {
 	spliceConflict,
 } from "../../omp/tools/conflict-detect.ts";
 import { invalidateFsScanAfterWrite } from "../../omp/tools/fs-cache-invalidation.ts";
-import { type OutputMeta, outputMeta } from "../../omp/tools/output-meta.ts";
+import type { OutputMeta } from "../../omp/tools/output-meta.ts";
 import {
 	formatPathRelativeToCwd,
 	isInternalUrlPath,
@@ -62,12 +59,10 @@ import {
 	cachedRenderedString,
 	createRenderedStringCache,
 	Ellipsis,
-	formatDiagnostics,
 	formatErrorDetail,
 	formatExpandHint,
 	formatMoreItems,
 	formatStatusIcon,
-	getLspBatchRequest,
 	type RenderedStringCache,
 	replaceTabs,
 	shortenPath,
@@ -304,7 +299,6 @@ export type WriteToolInput = typeof writeSchema.infer;
 
 /** Details returned by the write tool for TUI rendering */
 export interface WriteToolDetails {
-	diagnostics?: FileDiagnosticsResult;
 	meta?: OutputMeta;
 	/** Set when the file was auto-chmod'd because content begins with a `#!` shebang. */
 	madeExecutable?: boolean;
@@ -574,24 +568,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 	}
 
 	readonly #writethrough: WritethroughCallback;
-	readonly #deferredDiagnostics: DeferredDiagnostics | undefined;
 
 	constructor(private readonly session: ToolSession) {
-		const enableLsp = session.enableLsp ?? true;
-		const enableFormat = enableLsp && session.settings.get("lsp.formatOnWrite");
-		const enableDiagnostics = enableLsp && session.settings.get("lsp.diagnosticsOnWrite");
-		const dedup = enableDiagnostics && session.settings.get("lsp.diagnosticsDeduplicate");
-		this.#deferredDiagnostics =
-			enableDiagnostics && session.queueDeferredDiagnostics ? new DeferredDiagnostics(session, dedup) : undefined;
-		this.#writethrough = enableLsp
-			? createLspWritethrough(session.cwd, {
-					enableFormat,
-					enableDiagnostics,
-					transformDiagnostics: dedup
-						? (path, result) => getDiagnosticsLedger(session).reduce(path, result)
-						: undefined,
-				})
-			: writethroughNoop;
+		this.#writethrough = writethroughNoop;
 		this.description = prompt.render(writeDescription);
 	}
 
@@ -851,7 +830,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 		await writethroughNoop(absolutePath, newContent, signal);
 		invalidateFsScanAfterWrite(absolutePath);
-		this.session.bumpFileMutationVersion?.(absolutePath);
 		this.session.fileSnapshotStore?.invalidate(absolutePath);
 		const history = this.session.conflictHistory;
 		history?.invalidate(entry.id);
@@ -1030,7 +1008,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 			await writethroughNoop(absolutePath, text, signal);
 			invalidateFsScanAfterWrite(absolutePath);
-			this.session.bumpFileMutationVersion?.(absolutePath);
 			this.session.fileSnapshotStore?.invalidate(absolutePath);
 			for (const entry of resolvedEntries) history.invalidate(entry.id);
 			for (const entry of staleEntries) history.invalidate(entry.id);
@@ -1259,7 +1236,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			await assertNotReadSelectorMisfire(path, cleanContent, this.session.cwd);
 			enforcePlanModeWrite(this.session, path, { op: "create" });
 			const absolutePath = resolvePlanPath(this.session, path);
-			const batchRequest = getLspBatchRequest(context?.toolCall);
 
 			// Check if file exists and is auto-generated before overwriting
 			if (await fs.exists(absolutePath)) {
@@ -1269,43 +1245,8 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			const displayPath = formatPathRelativeToCwd(absolutePath, this.session.cwd);
 			emitWriteProgress(onUpdate, cleanContent, displayPath, absolutePath);
 
-			// Try ACP bridge first for editor-visible filesystem paths. Internal
-			// artifacts such as local:// plans are owned by OMP, not the editor.
-			const bridgeWrite = await routeWriteThroughBridge(this.session, path, absolutePath, cleanContent, signal);
-			if (bridgeWrite) {
-				// `write` always replaces the whole file, so (unlike hashline's
-				// hunk-scoped diff) there's no size cost to keying the header/
-				// executable-bit check on the verified post-write content —
-				// use it so a drifted write (e.g. client format-on-save) still
-				// hands back a tag that matches what's actually on disk.
-				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, bridgeWrite.text);
-				const header = maybeWriteSnapshotHeader(this.session, absolutePath, bridgeWrite.text);
-				const writeLine = `Successfully wrote ${cleanContent.length} bytes to ${displayPath}`;
-				let resultText = header ? `${header}\n${writeLine}` : writeLine;
-				if (stripped) {
-					resultText += `\nNote: auto-stripped hashline display prefixes from content before writing.`;
-				}
-				if (madeExecutable) {
-					resultText += `\n${EXECUTABLE_NOTICE}`;
-				}
-				return {
-					content: [{ type: "text", text: resultText }],
-					details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
-				};
-			}
-
-			const diagnostics = await this.#writethrough(
-				absolutePath,
-				cleanContent,
-				signal,
-				undefined,
-				batchRequest,
-				dst => this.#deferredDiagnostics?.begin(dst),
-			);
+			await this.#writethrough(absolutePath, cleanContent, signal);
 			invalidateFsScanAfterWrite(absolutePath);
-			if (!this.#deferredDiagnostics || batchRequest?.flush === false) {
-				this.session.bumpFileMutationVersion?.(absolutePath);
-			}
 			const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, cleanContent);
 
 			const header = maybeWriteSnapshotHeader(this.session, absolutePath, cleanContent);
@@ -1317,23 +1258,9 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			if (madeExecutable) {
 				resultText += `\n${EXECUTABLE_NOTICE}`;
 			}
-			if (!diagnostics) {
-				return {
-					content: [{ type: "text", text: resultText }],
-					details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
-				};
-			}
-
 			return {
 				content: [{ type: "text", text: resultText }],
-				details: {
-					resolvedPath: absolutePath,
-					diagnostics,
-					madeExecutable: madeExecutable || undefined,
-					meta: outputMeta()
-						.diagnostics(diagnostics.summary, diagnostics.messages ?? [])
-						.get(),
-				},
+				details: { resolvedPath: absolutePath, madeExecutable: madeExecutable || undefined },
 			};
 		});
 	}
@@ -1702,8 +1629,6 @@ export const writeToolRenderer = {
 			},
 			uiTheme,
 		);
-		const diagnostics = result.details?.diagnostics;
-
 		const previewCache = createRenderedStringCache();
 		return framedBlock(uiTheme, width => {
 			const { expanded } = options;
@@ -1715,16 +1640,6 @@ export const writeToolRenderer = {
 					Ellipsis.Unicode,
 				);
 				body = `${uiTheme.fg("muted", safeProgressText)}${body ? `\n${body}` : ""}`;
-			}
-			if (!isPartial && diagnostics) {
-				const diagText = formatDiagnostics(diagnostics, expanded, uiTheme, fp =>
-					uiTheme.getLangIcon(getLanguageFromPath(fp)),
-				);
-				if (diagText.trim()) {
-					const diagLines = diagText.split("\n");
-					const firstNonEmpty = diagLines.findIndex(line => line.trim());
-					if (firstNonEmpty >= 0) body += `\n${diagLines.slice(firstNonEmpty).join("\n")}`;
-				}
 			}
 			const bodyLines = body.split("\n");
 			while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();

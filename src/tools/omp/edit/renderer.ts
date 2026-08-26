@@ -1,5 +1,5 @@
 /**
- * Edit tool renderer and LSP batching helpers.
+ * Edit tool renderer.
  */
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@oh-my-pi/hashline";
@@ -7,20 +7,16 @@ import type { Component } from "@oh-my-pi/pi-tui";
 import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@oh-my-pi/pi-tui";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
 import type { RenderResultOptions } from "../../omp/extensibility/custom-tools/types.ts";
-import type { FileDiagnosticsResult } from "../../omp/lsp/index.ts";
 import { renderDiff as renderDiffColored } from "../../edit/adapter/modes/components/diff";
 import { getLanguageFromPath, type Theme } from "../../omp/modes/theme/theme.ts";
 import type { OutputMeta } from "../../edit/adapter/tools/output-meta";
 import {
 	cachedRenderedString,
 	createRenderedStringCache,
-	formatDiagnostics,
 	formatExpandHint,
 	formatStatusIcon,
 	getDiffStats,
-	getLspBatchRequest,
 	invalidateRenderedStringCache,
-	type LspBatchRequest,
 	PREVIEW_LIMITS,
 	previewWindowRows,
 	type RenderedStringCache,
@@ -44,12 +40,6 @@ import type { Operation } from "./modes/patch";
 import type { PerFileDiffPreview } from "./streaming";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LSP Batching
-// ═══════════════════════════════════════════════════════════════════════════
-
-export { getLspBatchRequest, type LspBatchRequest };
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Tool Details Types
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -57,7 +47,6 @@ export interface EditToolPerFileResult {
 	path: string;
 	diff: string;
 	firstChangedLine?: number;
-	diagnostics?: FileDiagnosticsResult;
 	op?: Operation;
 	move?: string;
 	isError?: boolean;
@@ -81,8 +70,6 @@ export interface EditToolDetails {
 	diff: string;
 	/** Line number of the first change in the new file (for editor navigation) */
 	firstChangedLine?: number;
-	/** Diagnostic result (if available) */
-	diagnostics?: FileDiagnosticsResult;
 	/** Operation type (patch mode only) */
 	op?: Operation;
 	/** New path after move/rename (patch mode only) */
@@ -879,9 +866,9 @@ function renderSingleFileResult(
 
 	// Delete and move-only results carry no diff to box. Per design these render
 	// as an inline status row (eraser / move glyph) rather than an empty framed
-	// container. Errors, no-ops, creates, move-with-edits, and anything with
-	// diagnostics keep the framed block below.
-	if (!isError && !details?.diff && !details?.diagnostics && (op === "delete" || rename)) {
+	// container. Errors, no-ops, creates, and move-with-edits keep the framed
+	// block below.
+	if (!isError && !details?.diff && (op === "delete" || rename)) {
 		const linkPath = details && "path" in details ? details.path : undefined;
 		return renderInlineEditRow(uiTheme, { op, rename, rawPath, linkPath, pending: false });
 	}
@@ -946,11 +933,6 @@ function renderSingleFileResult(
 			if ("error" in editDiffPreview) body = uiTheme.fg("error", replaceTabs(editDiffPreview.error));
 			else if (editDiffPreview.diff)
 				body = renderDiffSection(editDiffPreview.diff, rawPath, expanded, uiTheme, renderDiffFn, diffSectionCache);
-		}
-		if (details?.diagnostics) {
-			body += formatDiagnostics(details.diagnostics, expanded, uiTheme, (fp: string) =>
-				uiTheme.getLangIcon(getLanguageFromPath(fp)),
-			);
 		}
 
 		// Diff lines self-wrap with a continuation gutter; pre-wrap to the frame's

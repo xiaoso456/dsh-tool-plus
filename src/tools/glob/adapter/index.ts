@@ -31,7 +31,7 @@ export type { ToolSession } from '../../omp/sdk.ts'
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  return { cwd, settings, enableLsp: false, hasEditTool: true }
+  return { cwd, settings, hasEditTool: true }
 }
 
 /** Extract the text content of an OMP AgentToolResult (throws on isError). */

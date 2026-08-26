@@ -10,15 +10,8 @@ import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { isEnoent } from "@oh-my-pi/pi-utils";
-import {
-	type FileDiagnosticsResult,
-	flushLspWritethroughBatch,
-	type WritethroughCallback,
-	type WritethroughDeferredHandle,
-} from "../../../omp/lsp/index.ts";
-import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../../omp/lsp/client.ts";
+import { type WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
-import { routeWriteThroughBridge } from "../../../edit/adapter/tools/acp-bridge";
 import { assertEditableFile } from "../../../shared/auto-generated-guard.dsh";
 import {
 	invalidateFsScanAfterDelete,
@@ -48,7 +41,7 @@ import {
 	stripBom,
 } from "../../../omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { EditToolDetails, LspBatchRequest } from "../renderer";
+import type { EditToolDetails } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import {
 	type ContextLineResult,
@@ -1685,17 +1678,14 @@ export interface ExecutePatchSingleOptions {
 	path: string;
 	params: PatchEditEntry;
 	signal?: AbortSignal;
-	batchRequest?: LspBatchRequest;
 	allowFuzzy: boolean;
 	fuzzyThreshold: number;
 	/** See {@link ApplyPatchOptions.allowCreateOverwrite}; set by the JSON `patch` mode only. */
 	allowCreateOverwrite?: boolean;
 	writethrough: WritethroughCallback;
-	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 }
 
 class LspFileSystem implements FileSystem {
-	#lastDiagnostics: FileDiagnosticsResult | undefined;
 	#fileCache: Record<string, Bun.BunFile> = {};
 
 	constructor(
@@ -1703,8 +1693,6 @@ class LspFileSystem implements FileSystem {
 		private readonly requestedPath: string,
 		private readonly writethrough: WritethroughCallback,
 		private readonly signal?: AbortSignal,
-		private readonly batchRequest?: LspBatchRequest,
-		private readonly deferredForPath?: (path: string) => WritethroughDeferredHandle,
 	) {}
 
 	#getFile(path: string): Bun.BunFile {
@@ -1732,65 +1720,17 @@ class LspFileSystem implements FileSystem {
 	async write(path: string, content: string): Promise<void> {
 		const finalContent = await serializeEditFileText(path, path, content);
 
-		// Route through ACP bridge when available; skips internal artifacts and local:// paths.
-		if (await routeWriteThroughBridge(this.session, this.requestedPath, path, finalContent, this.signal)) {
-			return;
-		}
-
 		const file = this.#getFile(path);
-		const deferredForPath = this.deferredForPath;
-		const result = await this.writethrough(
-			path,
-			finalContent,
-			this.signal,
-			file,
-			this.batchRequest,
-			deferredForPath ? (dst: string) => deferredForPath(dst) : undefined,
-		);
-		if (result) {
-			this.#lastDiagnostics = result;
-		}
+		await this.writethrough(path, finalContent, this.signal, file);
 	}
 
 	async delete(path: string): Promise<void> {
 		await this.#getFile(path).unlink();
-		if (this.session.enableLsp ?? true) {
-			await notifyWorkspaceWatchedFiles(
-				this.session.cwd,
-				[{ filePath: path, type: FileChangeType.Deleted }],
-				this.signal,
-			);
-		}
 	}
 
 	async mkdir(path: string): Promise<void> {
 		await fs.promises.mkdir(path, { recursive: true });
 	}
-
-	getDiagnostics(): FileDiagnosticsResult | undefined {
-		return this.#lastDiagnostics;
-	}
-}
-
-function mergeDiagnosticsWithWarnings(
-	diagnostics: FileDiagnosticsResult | undefined,
-	warnings: string[],
-): FileDiagnosticsResult | undefined {
-	if (warnings.length === 0) return diagnostics;
-	const warningMessages = warnings.map(warning => `patch: ${warning}`);
-	if (!diagnostics) {
-		return {
-			server: "patch",
-			messages: warningMessages,
-			summary: `Patch warnings: ${warnings.length}`,
-			errored: false,
-		};
-	}
-	return {
-		...diagnostics,
-		messages: [...warningMessages, ...diagnostics.messages],
-		summary: `${diagnostics.summary}; Patch warnings: ${warnings.length}`,
-	};
 }
 
 export async function executePatchSingle(
@@ -1801,12 +1741,10 @@ export async function executePatchSingle(
 		path,
 		params,
 		signal,
-		batchRequest,
 		allowFuzzy,
 		fuzzyThreshold,
 		allowCreateOverwrite,
 		writethrough,
-		beginDeferredDiagnosticsForPath,
 	} = options;
 	const { op: rawOp, rename, diff } = params;
 
@@ -1837,14 +1775,7 @@ export async function executePatchSingle(
 	}
 
 	const input: PatchInput = { path: resolvedPath, op, rename: resolvedRename, diff };
-	const patchFileSystem = new LspFileSystem(
-		session,
-		path, // original user-provided path for bridge guard (may be local://, vault://, etc.)
-		writethrough,
-		signal,
-		batchRequest,
-		beginDeferredDiagnosticsForPath,
-	);
+	const patchFileSystem = new LspFileSystem(session, path, writethrough, signal);
 	const result = await applyPatch(input, {
 		cwd: session.cwd,
 		fs: patchFileSystem,
@@ -1923,15 +1854,7 @@ export async function executePatchSingle(
 			break;
 	}
 
-	let diagnostics = patchFileSystem.getDiagnostics();
-	if (op === "delete" && batchRequest?.flush) {
-		const flushedDiagnostics = await flushLspWritethroughBatch(batchRequest.id, session.cwd, signal);
-		diagnostics ??= flushedDiagnostics;
-	}
-	const mergedDiagnostics = mergeDiagnosticsWithWarnings(diagnostics, result.warnings ?? []);
-	const meta = outputMeta()
-		.diagnostics(mergedDiagnostics?.summary ?? "", mergedDiagnostics?.messages ?? [])
-		.get();
+	const meta = outputMeta().get();
 
 	const oldText = result.change.type !== "create" ? result.change.oldContent : undefined;
 	const newText = result.change.type !== "delete" ? result.change.newContent : undefined;
@@ -1946,7 +1869,6 @@ export async function executePatchSingle(
 			// the (now-deleted) source navigates to nothing.
 			path: result.change.newPath ?? resolvedPath,
 			firstChangedLine: diffResult.firstChangedLine,
-			diagnostics: mergedDiagnostics,
 			op,
 			move: effectiveRename,
 			sourcePath: result.change.newPath ? resolvedPath : undefined,

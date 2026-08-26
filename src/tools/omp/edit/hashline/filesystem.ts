@@ -8,22 +8,17 @@
  * - Reads go through `readEditFileText` (notebook-aware) and the
  *   auto-generated-file guard.
  * - Writes go through `serializeEditFileText` (notebook-aware) and the
- *   LSP writethrough, with FS-scan cache invalidation on success. The
- *   resulting `FileDiagnosticsResult` is captured per-path so the
- *   orchestrator can attach it to the tool result.
+ *   file-write channel, with FS-scan cache invalidation on success.
  *
  * Construct one per `executeHashlineSingle` call: per-section state
- * (batch request, diagnostics) lives on the instance and isn't safe to
- * share across concurrent edit tools.
+ * lives on the instance and isn't safe to share across concurrent edit tools.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult } from "@oh-my-pi/hashline";
 import { isEnoent } from "@oh-my-pi/pi-utils";
-import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../../omp/lsp/index.ts";
-import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../../omp/lsp/client.ts";
+import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
-import { routeWriteThroughBridge } from "../../../edit/adapter/tools/acp-bridge";
 import { assertEditableFileContent } from "../../../edit/adapter/tools/auto-generated-guard";
 import { invalidateFsScanAfterWrite } from "../../../omp/tools/fs-cache-invalidation.ts";
 import { isInternalUrlPath } from "../../../omp/tools/path-utils.ts";
@@ -31,56 +26,23 @@ import { enforcePlanModeWrite, resolvePlanPath, targetsLocalSandbox } from "../.
 import { canonicalSnapshotKey } from "../../../omp/edit/file-snapshot-store.ts";
 import { isNotebookPath } from "../../../omp/edit/notebook.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { LspBatchRequest } from "../renderer";
 
 export interface HashlineFilesystemOptions {
 	session: ToolSession;
 	writethrough: WritethroughCallback;
-	beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 	signal?: AbortSignal;
-	/**
-	 * Outer LSP batch request inherited from the tool-call context. The
-	 * orchestrator narrows this per-section (flush only on the final write)
-	 * via {@link HashlineFilesystem.setBatchRequest}.
-	 */
-	batchRequest?: LspBatchRequest;
 }
 
 export class HashlineFilesystem extends Filesystem {
 	readonly session: ToolSession;
 	readonly #writethrough: WritethroughCallback;
-	readonly #beginDeferredDiagnosticsForPath: (path: string) => WritethroughDeferredHandle;
 	readonly #signal: AbortSignal | undefined;
-	#batchRequest: LspBatchRequest | undefined;
-	#diagnosticsByPath = new Map<string, FileDiagnosticsResult | undefined>();
 
 	constructor(options: HashlineFilesystemOptions) {
 		super();
 		this.session = options.session;
 		this.#writethrough = options.writethrough;
-		this.#beginDeferredDiagnosticsForPath = options.beginDeferredDiagnosticsForPath;
 		this.#signal = options.signal;
-		this.#batchRequest = options.batchRequest;
-	}
-
-	/**
-	 * Set the LSP batch request used for the next {@link writeText} call.
-	 * Multi-section orchestrators flip the `flush` flag to true before the
-	 * final section so LSP diagnostics flush in one round-trip.
-	 */
-	setBatchRequest(batchRequest: LspBatchRequest | undefined): void {
-		this.#batchRequest = batchRequest;
-	}
-
-	/**
-	 * Look up (and clear) the diagnostics captured by the most-recent
-	 * {@link writeText} call for `path`. Returns `undefined` if no write
-	 * has happened or the writethrough returned no diagnostics.
-	 */
-	consumeDiagnostics(path: string): FileDiagnosticsResult | undefined {
-		const value = this.#diagnosticsByPath.get(path);
-		this.#diagnosticsByPath.delete(path);
-		return value;
 	}
 
 	resolveAbsolute(relativePath: string): string {
@@ -158,13 +120,6 @@ export class HashlineFilesystem extends Filesystem {
 			if (isEnoent(error)) throw new NotFoundError(relativePath, error);
 			throw error;
 		}
-		if (this.session.enableLsp ?? true) {
-			await notifyWorkspaceWatchedFiles(
-				this.session.cwd,
-				[{ filePath: absolutePath, type: FileChangeType.Deleted }],
-				this.#signal,
-			);
-		}
 		invalidateFsScanAfterWrite(absolutePath);
 	}
 
@@ -178,16 +133,6 @@ export class HashlineFilesystem extends Filesystem {
 		} else {
 			await fs.rename(fromAbsolute, toAbsolute);
 		}
-		if (this.session.enableLsp ?? true) {
-			await notifyWorkspaceWatchedFiles(
-				this.session.cwd,
-				[
-					{ filePath: fromAbsolute, type: FileChangeType.Deleted },
-					{ filePath: toAbsolute, type: FileChangeType.Created },
-				],
-				this.#signal,
-			);
-		}
 		invalidateFsScanAfterWrite(fromAbsolute);
 		invalidateFsScanAfterWrite(toAbsolute);
 	}
@@ -197,46 +142,9 @@ export class HashlineFilesystem extends Filesystem {
 		const absolutePath = this.resolveAbsolute(relativePath);
 		const finalContent = await serializeEditFileText(absolutePath, relativePath, content);
 
-		// Route through ACP bridge when available; skips internal artifacts.
-		// `finalContent` is storage-space (e.g. a notebook's full JSON); the
-		// bridge may also report content that diverges from it (e.g. the
-		// client reformatted on save). `WriteResult.text` must stay in
-		// view-space — the same space `readText` returns — so a follow-up
-		// `readText` sees exactly what this write reports.
-		const bridgeResult = await routeWriteThroughBridge(
-			this.session,
-			relativePath,
-			absolutePath,
-			finalContent,
-			this.#signal,
-		);
-		if (bridgeResult) {
-			this.#diagnosticsByPath.set(relativePath, undefined);
-			if (!bridgeResult.driftedFromRequest) {
-				// No client-side transform: the view we sent is what's on disk.
-				return { text: content };
-			}
-			// Drifted (e.g. format-on-save): re-derive the view from what
-			// actually landed on disk instead of assuming `content` still
-			// matches. Falls back to `content` if the drifted file can't be
-			// re-read as a valid view (e.g. a formatter broke notebook JSON).
-			try {
-				return { text: await readEditFileText(absolutePath, relativePath) };
-			} catch {
-				return { text: content };
-			}
-		}
-
-		const diagnostics = await this.#writethrough(
-			absolutePath,
-			finalContent,
-			this.#signal,
-			Bun.file(absolutePath),
-			this.#batchRequest,
-			dst => (dst === absolutePath ? this.#beginDeferredDiagnosticsForPath(absolutePath) : undefined),
-		);
-		invalidateFsScanAfterWrite(absolutePath);
-		this.#diagnosticsByPath.set(relativePath, diagnostics);
+		const absoluteTarget = absolutePath;
+		await this.#writethrough(absoluteTarget, finalContent, this.#signal, Bun.file(absoluteTarget));
+		invalidateFsScanAfterWrite(absoluteTarget);
 		return { text: content };
 	}
 

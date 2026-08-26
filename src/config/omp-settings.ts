@@ -61,11 +61,6 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   'edit.fuzzyMatch': true,
   'edit.fuzzyThreshold': 0.95,
   'edit.enforceSeenLines': false,
-  // lsp.*（DSH 无 LSP，enableLsp=false 时调用点不读；默认值兜底）
-  'lsp.diagnosticsOnEdit': false,
-  'lsp.formatOnWrite': false,
-  'lsp.diagnosticsDeduplicate': true,
-  'lsp.diagnosticsOnWrite': true,
   // read.*
   readLineNumbers: false,
   'read.defaultLimit': 300,

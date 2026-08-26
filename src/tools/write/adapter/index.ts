@@ -31,7 +31,7 @@ export type { ToolSession } from '../../omp/sdk.ts'
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  const session: ToolSession = { cwd, settings, enableLsp: false, hasEditTool: true }
+  const session: ToolSession = { cwd, settings, hasEditTool: true }
   // 恢复本 DSH session 上次调用保存的 OMP 引擎状态（冲突注册表等，T11-2）。
   attachOmpSessionState(session, exec?.agent?.session)
   return session

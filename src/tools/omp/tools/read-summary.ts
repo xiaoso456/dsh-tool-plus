@@ -43,15 +43,6 @@ const MAX_SUMMARY_LINES = 20_000;
 export function isProseSummaryPath(filePath: string): boolean {
 	return isMarkdownPath(filePath) || path.extname(filePath).toLowerCase() === ".txt";
 }
-export function routeReadThroughBridge(
-	session: ToolSession,
-	absolutePath: string,
-	options?: { line?: number; limit?: number },
-): Promise<string> | undefined {
-	const bridge = session.getClientBridge?.();
-	if (!bridge?.capabilities.readTextFile || !bridge.readTextFile) return undefined;
-	return bridge.readTextFile({ path: absolutePath, ...options });
-}
 export async function trySummarize(
 	session: ToolSession,
 	absolutePath: string,
@@ -62,11 +53,7 @@ export async function trySummarize(
 
 	try {
 		throwIfAborted(signal);
-		const bridgePromise = routeReadThroughBridge(session, absolutePath);
-		const code =
-			bridgePromise !== undefined
-				? await bridgePromise.catch(() => Bun.file(absolutePath).text())
-				: await Bun.file(absolutePath).text();
+		const code = await Bun.file(absolutePath).text();
 		throwIfAborted(signal);
 		const lineCount = countTextLines(code);
 		if (lineCount > MAX_SUMMARY_LINES) return null;

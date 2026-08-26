@@ -2,9 +2,8 @@
  * DSH adapter for OMP `tools/output-meta.ts`.
  *
  * OMP attaches LSP diagnostics + output metadata to tool results. LSP
- * diagnostics are cut (plan.md §3); the metadata *shape* is kept verbatim so
- * engine code (`outputMeta().get()`) compiles unchanged. The fluent builder
- * is implemented with the same semantics but never carries diagnostics.
+ * diagnostics are cut (plan.md 拍板#5); the metadata *shape* is kept so
+ * engine code (`outputMeta().get()`) compiles unchanged.
  */
 export interface TruncationMeta {
   kind: 'head' | 'tail' | 'middle'
@@ -17,12 +16,6 @@ export interface SourceMeta {
   lines?: number
 }
 
-export interface DiagnosticMeta {
-  summary?: string
-  messages?: string[]
-  errored?: boolean
-}
-
 export interface LimitsMeta {
   maxBytes?: number
 }
@@ -30,18 +23,12 @@ export interface LimitsMeta {
 export interface OutputMeta {
   truncation?: TruncationMeta
   source?: SourceMeta
-  diagnostics?: DiagnosticMeta
   limits?: LimitsMeta
 }
 
-/** Fluent builder for OutputMeta (verbatim OMP shape; diagnostics inert). */
+/** Fluent builder for OutputMeta. */
 export class OutputMetaBuilder {
   #meta: OutputMeta = {}
-
-  diagnostics(summary: string, messages: string[]): this {
-    this.#meta.diagnostics = { summary, messages, errored: false }
-    return this
-  }
 
   truncation(value: TruncationMeta): this {
     this.#meta.truncation = value
