@@ -21,6 +21,8 @@ export interface InternalResource {
   size?: number
   sourcePath?: string
   immutable?: boolean
+  /** 目录形态标记（verbatim 引擎在 resolve 后读取；空路由永不产生）。 */
+  isDirectory?: boolean
 }
 
 /** Resolve context passed to router handlers (verbatim OMP surface). */
@@ -100,6 +102,15 @@ export class InternalUrlRouter {
 
   canResolve(_input: string): boolean {
     return false
+  }
+
+  /** Completion is part of the verbatim engine surface（grep.ts）；空路由恒无候选。 */
+  async complete(
+    _scheme: string,
+    _query: string,
+    _context?: ResolveContext,
+  ): Promise<import('./types.ts').UrlCompletion[] | null> {
+    return null
   }
 
   getHandler(_scheme: string): { write?: (url: unknown, content: string, context?: unknown) => Promise<void> } | undefined {

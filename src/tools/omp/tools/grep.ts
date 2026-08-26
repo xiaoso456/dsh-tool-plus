@@ -14,7 +14,7 @@ import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@oh-my-pi
 import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../../omp/edit/file-snapshot-store.ts";
 import type { LocalProtocolOptions } from "../../omp/internal-urls/local-protocol.ts";
-import { InternalUrlRouter } from "../../grep/adapter/internal-urls/router";
+import { InternalUrlRouter } from "../../omp/internal-urls/index.ts";
 import type { InternalResource, ResolveContext } from "../../omp/internal-urls/types.ts";
 import grepDescription from "../../grep/adapter/prompts/tools/grep.md" with { type: "text" };
 import { DEFAULT_MAX_COLUMN, type TruncationResult, truncateHead, truncateLine } from "../../omp/session/streaming-output.ts";
