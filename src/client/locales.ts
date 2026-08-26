@@ -9,7 +9,7 @@
 export type BashPlusLocaleKey =
   | 'title' | 'description'
   | 'nav' | 'pageTitle' | 'pageDescription'
-  | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
+  | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
   | 'groupTiming' | 'groupOutput' | 'groupTruncation' | 'groupBehavior'
   | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupFetch' | 'groupAst'
   | 'noConfigTitle' | 'noConfigHint'
@@ -76,7 +76,6 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
   tabGrep: 'Grep',
-  tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
@@ -110,7 +109,7 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   readLineNumbers: '默认显示行号',
   readLineNumbersHint: '为 read 输出默认添加行号前缀。',
     fetchEnabled: 'URL 抓取',
-  fetchEnabledHint: 'read/write/grep 处理 http(s) URL 时是否启用抓取。',
+  fetchEnabledHint: 'read 处理 http(s) URL（网页转 Markdown 供模型阅读）时是否启用抓取。',
   fetchMaxTimeoutSeconds: '抓取超时（秒）',
   fetchMaxTimeoutSecondsHint: 'URL 抓取超时上限；0 表示使用默认的 30 秒。',
   imagesAutoResize: '图片自动缩放',
@@ -221,7 +220,6 @@ export const en: Record<BashPlusLocaleKey, string> = {
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
   tabGrep: 'Grep',
-  tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
@@ -255,7 +253,7 @@ export const en: Record<BashPlusLocaleKey, string> = {
   readLineNumbers: 'Line numbers by default',
   readLineNumbersHint: 'Prepend line numbers to read output by default.',
   fetchEnabled: 'URL fetching',
-  fetchEnabledHint: 'Whether fetching is enabled when read/write/grep handle http(s) URLs.',
+  fetchEnabledHint: 'Whether fetching is enabled when read handles http(s) URLs.',
   fetchMaxTimeoutSeconds: 'Fetch timeout (s)',
   fetchMaxTimeoutSecondsHint: 'URL fetch timeout cap; 0 = default 30s.',
   imagesAutoResize: 'Auto-resize images',

@@ -151,8 +151,9 @@ describe('grouping sanity', () => {
   it('no-config tabs carry zero fields', () => {
     // grep 已挂配置（grepContextBefore/After，2026-08-25 配置统一）；
     // astGrep/astEdit 已挂启用开关（astGrepEnabled/astEditEnabled，2026-08-25）。
+    // glob tab 已随拍板#19 移除（无任何配置项，不值得占一个空 tab）。
     // 剩余无配置 tab：
-    for (const id of ['glob', 'readImage'] as const) {
+    for (const id of ['readImage'] as const) {
       const tab = TOOL_PLUS_TABS.find(t => t.id === id)
       expect(tab).toBeDefined()
       expect(tab!.fields).toHaveLength(0)

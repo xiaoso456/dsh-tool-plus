@@ -68,7 +68,7 @@ export interface ToolPlusTab {
 /** Identifiers of every tool tab. */
 export type ToolPlusToolId =
   | 'bash' | 'read' | 'writeEdit'
-  | 'grep' | 'glob' | 'astGrep' | 'astEdit' | 'readImage'
+  | 'grep' | 'astGrep' | 'astEdit' | 'readImage'
 
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
@@ -179,7 +179,6 @@ export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
   { id: 'read', labelKey: 'tabRead', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'read').map(f => f.name) },
   { id: 'writeEdit', labelKey: 'tabWriteEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'writeEdit').map(f => f.name) },
   { id: 'grep', labelKey: 'tabGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'grep').map(f => f.name) },
-  { id: 'glob', labelKey: 'tabGlob', fields: [] },
   { id: 'astGrep', labelKey: 'tabAstGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astGrep').map(f => f.name) },
   { id: 'astEdit', labelKey: 'tabAstEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astEdit').map(f => f.name) },
   { id: 'readImage', labelKey: 'tabReadImage', fields: [] },

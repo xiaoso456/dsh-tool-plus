@@ -1,7 +1,7 @@
 /**
  * Tool Plus settings section — the plugin's own page in the Settings panel,
  * registered into the `settings.section` slot (nav id `tool-plus`). The page
- * renders one tab per tool (Bash / Read / Write & Edit / Grep / Glob /
+ * renders one tab per tool (Bash / Read / Write & Edit / Grep /
  * Ast Edit / Read Image); switching a tab shows that tool's configurable
  * fields, while tools without global settings show a placeholder. Only the
  * active tool's panel is rendered; the shared staged form over the
