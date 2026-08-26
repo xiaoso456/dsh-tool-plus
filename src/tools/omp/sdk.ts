@@ -79,8 +79,6 @@ export interface ToolSession {
   skills?: readonly Skill[]
   /** Auth storage for search providers (DSH: none). */
   authStorage?: import('@oh-my-pi/pi-ai').AuthStorage
-  /** Model registry for search providers (DSH: none). */
-  modelRegistry?: import('./config/model-registry.ts').ModelRegistry
   /** Conflict history for conflict:// write-back (DSH: absent). */
   conflictHistory?: ConflictHistory
   /** `xd://` presentation state (DSH: no X dev protocol — absent). */

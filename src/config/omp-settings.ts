@@ -77,15 +77,12 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   'grep.contextAfter': 3,
   // task.*（DSH 无子代理 spawn 场景，空列表兜底）
   'task.disabledAgents': [],
-  // display.*
-  'display.shimmer': 'classic',
   // fetch.*
   'fetch.enabled': true,
   // tools.*（read 输出行宽兜底）
   'tools.maxTimeout': 0,
   'tools.outputMaxColumns': 768,
-  // edit.*（流式编辑中止；工具启用开关默认值兜底）
-  'edit.streamingAbort': false,
+  // 工具启用开关默认值兜底
   'glob.enabled': true,
   'grep.enabled': true,
   // astGrep.enabled 默认 false（OMP 原版 settings-schema.ts:3831：ast_grep 默认禁用，
