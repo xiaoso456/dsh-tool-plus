@@ -4,39 +4,18 @@ import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import type { ToolExample } from "@oh-my-pi/pi-ai";
 import * as natives from "@oh-my-pi/pi-natives";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
+
 import { formatGroupedPaths, hasFsCode, isEnoent, prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import type { RenderResultOptions } from "../../omp/extensibility/custom-tools/types.ts";
 import { InternalUrlRouter } from "../../omp/internal-urls/index.ts";
 import { splitMemoryGlobPattern } from "../../glob/adapter/internal-urls/memory-protocol";
-import type { Theme } from "../../omp/modes/theme/theme.ts";
 import globDescription from "../../glob/adapter/prompts/tools/glob.md" with { type: "text" };
 import { type TruncationResult, truncateHead } from "../../omp/session/streaming-output.ts";
 import { isScoutSpawnable } from "../../omp/task/spawn-policy.ts";
-import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../../omp/tui/index.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import { applyListLimit } from "../../omp/tools/list-limit.ts";
-import { formatFullOutputReference, type OutputMeta } from "../../omp/tools/output-meta.ts";
-import {
-	expandDelimitedPathEntries,
-	formatPathRelativeToCwd,
-	hasGlobPathChars,
-	isSshUrl,
-	normalizePathLikeInput,
-	parseFindPattern,
-	partitionExistingPaths,
-	resolveExplicitFindPatterns,
-	resolveToCwd,
-	toPathList,
-} from "../../omp/tools/path-utils.ts";
-import {
-	createCachedComponent,
-	formatCount,
-	formatEmptyMessage,
-	formatErrorMessage,
-	PREVIEW_LIMITS,
-} from "../../omp/tools/render-utils.ts";
+import { type OutputMeta } from "../../omp/tools/output-meta.ts";
+import { expandDelimitedPathEntries, formatPathRelativeToCwd, hasGlobPathChars, isSshUrl, normalizePathLikeInput, parseFindPattern, partitionExistingPaths, resolveExplicitFindPatterns, resolveToCwd, toPathList } from "../../omp/tools/path-utils.ts";
+import { formatCount } from "../../omp/tools/render-utils.ts";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
 
@@ -512,180 +491,3 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 		});
 	}
 }
-
-// =============================================================================
-// TUI Renderer
-// =============================================================================
-
-interface GlobRenderArgs {
-	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
-	paths?: string | string[];
-	limit?: number;
-}
-
-function formatGlobRenderPaths(args: GlobRenderArgs | undefined): string | undefined {
-	const list = toPathList(args?.path ?? args?.paths);
-	return list.length > 0 ? list.join(", ") : undefined;
-}
-
-const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
-
-function globStatusIcon(uiTheme: Theme): string {
-	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
-}
-
-export const globToolRenderer = {
-	inline: true,
-	renderCall(args: GlobRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
-		const meta: string[] = [];
-		if (args.limit !== undefined) meta.push(`limit:${args.limit}`);
-
-		const text = renderStatusLine(
-			{
-				icon: "pending",
-				title: "Glob",
-				titleColor: "toolTitle",
-				description: formatGlobRenderPaths(args) || "*",
-				meta,
-			},
-			uiTheme,
-		);
-		return new Text(text, 1, 0);
-	},
-
-	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: GlobToolDetails; isError?: boolean },
-		options: RenderResultOptions,
-		uiTheme: Theme,
-		args?: GlobRenderArgs,
-	): Component {
-		const details = result.details;
-
-		if (result.isError || details?.error) {
-			const errorText = details?.error || result.content?.find(c => c.type === "text")?.text || "Unknown error";
-			return new Text(formatErrorMessage(errorText, uiTheme), 1, 0);
-		}
-
-		const hasDetailedData = details?.fileCount !== undefined;
-		const textContent = result.content?.find(c => c.type === "text")?.text;
-
-		if (!hasDetailedData) {
-			if (
-				!textContent ||
-				textContent.includes("No files matching") ||
-				textContent.includes("No files found") ||
-				textContent.trim() === ""
-			) {
-				return new Text(formatEmptyMessage("No files found", uiTheme), 1, 0);
-			}
-
-			const lines = textContent.split("\n").filter(l => l.trim());
-			const header = renderStatusLine(
-				{
-					iconOverride: globStatusIcon(uiTheme),
-					title: "Glob",
-					titleColor: "toolTitle",
-					description: formatGlobRenderPaths(args),
-					meta: [formatCount("file", lines.length)],
-				},
-				uiTheme,
-			);
-			return createCachedComponent(
-				() => options.expanded,
-				width => {
-					const listLines = renderTreeList(
-						{
-							items: lines,
-							expanded: options.expanded,
-							maxCollapsed: COLLAPSED_LIST_LIMIT,
-							itemType: "file",
-							renderItem: line => uiTheme.fg("accent", line),
-						},
-						uiTheme,
-					);
-					return [header, ...listLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-				},
-				{ paddingX: 1 },
-			);
-		}
-
-		const fileCount = details?.fileCount ?? 0;
-		const truncation = details?.truncation ?? details?.meta?.truncation;
-		const limits = details?.meta?.limits;
-		const truncated = Boolean(details?.truncated || truncation || details?.resultLimitReached || limits?.resultLimit);
-		const files = details?.files ?? [];
-
-		const missingPaths = details?.missingPaths ?? [];
-		const missingNote =
-			missingPaths.length > 0 ? uiTheme.fg("warning", `skipped missing: ${missingPaths.join(", ")}`) : undefined;
-
-		if (fileCount === 0) {
-			// `truncated` on an empty result means the scan timed out mid-walk —
-			// render "incomplete", not a definitive "No files found".
-			const emptyLabel = truncated ? "No matches before timeout (scan incomplete)" : "No files found";
-			const header = renderStatusLine(
-				{
-					icon: "warning",
-					title: "Glob",
-					titleColor: "toolTitle",
-					description: formatGlobRenderPaths(args),
-					meta: truncated ? ["0 files", uiTheme.fg("warning", "timed out")] : ["0 files"],
-				},
-				uiTheme,
-			);
-			const lines = [header, formatEmptyMessage(emptyLabel, uiTheme)];
-			if (missingNote) lines.push(missingNote);
-			return new Text(lines.join("\n"), 1, 0);
-		}
-		const meta: string[] = [formatCount("file", fileCount)];
-		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
-		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
-		const header = renderStatusLine(
-			{
-				...(truncated ? { icon: "warning" as const } : { iconOverride: globStatusIcon(uiTheme) }),
-				title: "Glob",
-				titleColor: "toolTitle",
-				description: formatGlobRenderPaths(args),
-				meta,
-			},
-			uiTheme,
-		);
-
-		const truncationReasons: string[] = [];
-		if (details?.resultLimitReached) truncationReasons.push(`limit ${details.resultLimitReached} results`);
-		if (limits?.resultLimit) truncationReasons.push(`limit ${limits.resultLimit.reached} results`);
-		if (truncation) truncationReasons.push(truncation.truncatedBy === "lines" ? "line limit" : "size limit");
-		const artifactId = truncation && "artifactId" in truncation ? truncation.artifactId : undefined;
-		if (artifactId) truncationReasons.push(formatFullOutputReference(artifactId));
-
-		const extraLines: string[] = [];
-		if (truncationReasons.length > 0) {
-			extraLines.push(uiTheme.fg("warning", `truncated: ${truncationReasons.join(", ")}`));
-		}
-		if (missingNote) extraLines.push(missingNote);
-
-		return createCachedComponent(
-			() => options.expanded,
-			width => {
-				const cwd = details?.cwd;
-				const fileLines = renderFileList(
-					{
-						files: files.map(entry => ({
-							path: entry,
-							isDirectory: entry.endsWith("/"),
-							absPath: cwd && !entry.endsWith("/") ? path.resolve(cwd, entry) : undefined,
-						})),
-						expanded: options.expanded,
-						maxCollapsed: COLLAPSED_LIST_LIMIT,
-						hyperlinkFn: fileHyperlink,
-					},
-					uiTheme,
-				);
-				return [header, ...fileLines, ...extraLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-			},
-			{ paddingX: 1 },
-		);
-	},
-	mergeCallAndResult: true,
-};

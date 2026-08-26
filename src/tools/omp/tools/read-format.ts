@@ -8,7 +8,7 @@ import {
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { canonicalSnapshotKey, getFileSnapshotStore, recordSeenLines } from "../../omp/edit/file-snapshot-store.ts";
 import { normalizeToLF } from "../../omp/edit/normalize.ts";
-import { isMarkdownPath } from "../../omp/modes/theme/theme.ts";
+import { isMarkdownPath } from "../../omp/utils/lang-from-path.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import {
 	DEFAULT_MAX_BYTES,

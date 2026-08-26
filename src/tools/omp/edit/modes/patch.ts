@@ -41,7 +41,7 @@ import {
 	stripBom,
 } from "../../../omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { EditToolDetails } from "../renderer";
+import type { EditToolDetails, Operation } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import {
 	type ContextLineResult,
@@ -53,7 +53,6 @@ import {
 	seekSequence,
 } from "./replace";
 
-export type Operation = "create" | "delete" | "update";
 
 export interface PatchInput {
 	path: string;

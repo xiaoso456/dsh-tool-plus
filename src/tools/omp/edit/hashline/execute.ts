@@ -28,7 +28,7 @@ import { ToolError } from "../../../omp/tools/tool-errors.ts";
 import { generateDiffString } from "../diff";
 import { getEditClipboard } from "../edit-clipboard";
 import { getFileSnapshotStore } from "../../../omp/edit/file-snapshot-store.ts";
-import type { EditToolDetails, EditToolPerFileResult } from "../renderer";
+import type { EditToolDetails, EditToolPerFileResult } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";
 import { HashlineFilesystem } from "./filesystem";

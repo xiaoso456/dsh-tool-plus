@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { type SummaryResult, summarizeCode } from "@oh-my-pi/pi-natives";
 import { LRUCache } from "@oh-my-pi/pi-utils/lru";
-import { isMarkdownPath } from "../../omp/modes/theme/theme.ts";
+import { isMarkdownPath } from "../../omp/utils/lang-from-path.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
 import {

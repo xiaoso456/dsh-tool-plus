@@ -23,7 +23,7 @@ import {
 	stripBom,
 } from "../../../omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
-import type { EditToolDetails } from "../renderer";
+import type { EditToolDetails } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 
 export interface FuzzyMatch {

@@ -110,7 +110,6 @@ import { ToolAbortError, ToolError, throwIfAborted } from "../../omp/tools/tool-
 import { toolResult } from "../../omp/tools/tool-result.ts";
 import { xdevDocs, xdevListing } from "../../omp/tools/xdev.ts";
 
-export { readToolRenderer } from "./read-renderer";
 
 /** Largest profile (`*.sample.txt`, `*.cpuprofile`) converted to a bottleneck summary; bigger files read as plain text. */
 const MAX_PROFILE_SUMMARY_BYTES = 32 * 1024 * 1024;

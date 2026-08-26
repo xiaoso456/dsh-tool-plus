@@ -30,17 +30,12 @@
  */
 import type { AgentToolContext, AgentToolResult, AgentToolUpdateCallback, ToolLoadMode } from "@oh-my-pi/pi-agent-core";
 import { type Tool as AiTool, jsonSchemaToTypeScript, toolWireSchema, validateToolArguments } from "@oh-my-pi/pi-ai";
-import { type Component, Container, Text } from "@oh-my-pi/pi-tui";
 import { parseStreamingJson } from "@oh-my-pi/pi-utils";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { XD_URL_PREFIX } from "../internal-urls/xd-protocol";
-import type { Theme } from "../modes/theme/theme";
 import { truncateHeadBytes } from "../session/streaming-output";
 import { resolveToolTier, type ToolTier } from "./approval";
-import { renderDefaultToolExecution } from "./default-renderer";
 import type { Tool } from "./index";
 import { replaceTabs } from "./render-utils";
-import type { ToolRenderer } from "./renderers";
 import { renderError, ToolAbortError, ToolError } from "./tool-errors";
 
 /**
@@ -98,18 +93,6 @@ export interface XdevDispatch {
 	tier?: ToolTier;
 	/** Details object returned by the wrapped tool, when executed. */
 	inner?: unknown;
-}
-
-/**
- * Renderer lookup injected by `renderers.ts` at module init. Kept as a setter
- * to avoid the xdev → renderers → tool modules → sdk → tools/index → xdev
- * import cycle.
- */
-let rendererLookup: ((name: string) => ToolRenderer | undefined) | undefined;
-
-/** Wire the wrapped-renderer lookup. Called once by `renderers.ts`. */
-export function setXdevRendererLookup(lookup: (name: string) => ToolRenderer | undefined): void {
-	rendererLookup = lookup;
 }
 
 /** Whether a wire JSON schema declares a top-level `i` (intent) property. */
@@ -475,86 +458,3 @@ export async function dispatchXdevTool(
 // ═══════════════════════════════════════════════════════════════════════════
 // Render delegation (consumed by the write renderer)
 // ═══════════════════════════════════════════════════════════════════════════
-
-/** Renderer for a mounted device: the live mounted tool's own render callbacks
- *  (custom/MCP/image tools carry them) first, then the static built-in renderer
- *  map keyed by name. */
-function resolveDeviceRenderer(
-	name: string,
-	mounted: Tool | undefined,
-): Pick<ToolRenderer, "renderCall" | "renderResult" | "mergeCallAndResult"> | undefined {
-	if (mounted && (mounted.renderCall || mounted.renderResult)) {
-		// A mounted AgentTool exposes the same renderCall/renderResult/mergeCallAndResult
-		// surface as a static ToolRenderer; only the parameter generics differ, so unify
-		// through a single cast rather than fabricating a per-field shape.
-		return mounted as unknown as Pick<ToolRenderer, "renderCall" | "renderResult" | "mergeCallAndResult">;
-	}
-	return rendererLookup?.(name);
-}
-
-/**
- * Streaming-safe call preview for an `xd://` write: forwards the decoded inner
- * args to the mounted tool's renderer (session instance first, then the static
- * map). Returns `undefined` (render nothing) when no renderer produces output.
- */
-export function renderXdevCall(
-	name: string,
-	content: unknown,
-	options: RenderResultOptions,
-	theme: Theme,
-	resolveMounted?: (name: string) => Tool | undefined,
-): Component | undefined {
-	const mounted = resolveMounted?.(name);
-	const renderer = resolveDeviceRenderer(name, mounted);
-	const args = decodeInnerArgs(content);
-	if (renderer?.renderCall) {
-		return renderer.renderCall(args, options, theme);
-	}
-	return renderDefaultToolExecution({ label: mounted?.label ?? name, args, options }, theme);
-}
-
-/** Forward an `xd://` dispatch result to the mounted tool's renderer. */
-export function renderXdevResult(
-	dispatch: XdevDispatch,
-	result: { content: Array<{ type: string; text?: string }>; isError?: boolean },
-	options: RenderResultOptions,
-	theme: Theme,
-	resolveMounted?: (name: string) => Tool | undefined,
-): Component | undefined {
-	const text = result.content
-		.map(block => (block.type === "text" ? block.text : ""))
-		.filter(Boolean)
-		.join("\n");
-	if (dispatch.mode === "help") {
-		return text ? new Text(theme.fg("toolOutput", replaceTabs(text)), 0, 0) : undefined;
-	}
-	const mounted = resolveMounted?.(dispatch.tool);
-	const renderer = resolveDeviceRenderer(dispatch.tool, mounted);
-	const innerResult = { content: result.content, details: dispatch.inner, isError: result.isError };
-	if (renderer?.renderResult) {
-		const parts: Component[] = [];
-		// Emulate the unmerged call+result topology inside the write block for
-		// renderers that expect a separate call header.
-		if (!renderer.mergeCallAndResult && renderer.renderCall) {
-			const call = renderer.renderCall(dispatch.args ?? {}, { ...options, isPartial: false }, theme);
-			if (call) parts.push(call);
-		}
-		const rendered = renderer.renderResult(innerResult, options, theme, dispatch.args ?? {});
-		if (rendered) parts.push(rendered);
-		if (parts.length === 1) return parts[0];
-		if (parts.length > 1) {
-			const box = new Container();
-			for (const part of parts) box.addChild(part);
-			return box;
-		}
-	}
-	return renderDefaultToolExecution(
-		{
-			label: mounted?.label ?? dispatch.tool,
-			args: dispatch.args ?? {},
-			result: { output: text, isError: result.isError },
-			options,
-		},
-		theme,
-	);
-}
