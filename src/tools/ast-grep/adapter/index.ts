@@ -21,11 +21,11 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import { renderOmpPrompt, sanitizeAstGrepPrompt } from '../../shared/omp-prompt.ts'
-import { Settings } from '../../shared/omp/config/settings.ts'
-import { getDefault } from '../../shared/omp/config/settings-schema.ts'
+import { Settings } from '../../omp/config/settings.ts'
+import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from './sdk.ts'
-import { AstGrepTool } from './omp/ast-grep.ts'
-import astGrepMd from './omp/prompts/tools/ast-grep.md' with { type: 'text' }
+import { AstGrepTool } from '../../omp/tools/ast-grep.ts'
+import astGrepMd from '../../omp/prompts/tools/ast-grep.md' with { type: 'text' }
 
 export type { ToolSession } from './sdk.ts'
 

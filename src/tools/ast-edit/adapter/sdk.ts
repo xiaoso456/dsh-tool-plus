@@ -10,8 +10,8 @@
  * resolve/apply queue, local:// router, skills, and snapshot store are DSH-side
  * and optional (absent → preview-apply resolution is inert, matching read).
  */
-import type { Settings } from '../../shared/omp/config/settings.ts'
-import type { Skill } from '../../shared/omp/extensibility/skills.ts'
+import type { Settings } from '../../omp/config/settings.ts'
+import type { Skill } from '../../omp/extensibility/skills.ts'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { Model } from '@oh-my-pi/pi-ai'
 
@@ -44,7 +44,7 @@ export interface ToolSession {
   /** Hashline snapshot store (created lazily by the engine). */
   fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
   /** Local protocol options (DSH has no local:// sandbox — optional). */
-  localProtocolOptions?: import('../../shared/omp/internal-urls/index.ts').LocalProtocolOptions
+  localProtocolOptions?: import('../../omp/internal-urls/index.ts').LocalProtocolOptions
   /** Pre-loaded skills (DSH: none). */
   skills?: readonly Skill[]
   /** Tool-choice queue (resolution devices; DSH: adapter-installed, captures the apply). */

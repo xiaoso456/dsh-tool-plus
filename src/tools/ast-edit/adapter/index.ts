@@ -17,12 +17,12 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import { renderOmpPrompt, sanitizeAstEditPrompt } from '../../shared/omp-prompt.ts'
-import { Settings } from '../../shared/omp/config/settings.ts'
-import { getDefault } from '../../shared/omp/config/settings-schema.ts'
+import { Settings } from '../../omp/config/settings.ts'
+import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from './sdk.ts'
 import type { ResolveInvoker } from './sdk.ts'
-import { AstEditTool } from './omp/ast-edit.ts'
-import astEditMd from './omp/prompts/tools/ast-edit.md' with { type: 'text' }
+import { AstEditTool } from '../../omp/tools/ast-edit.ts'
+import astEditMd from '../../omp/prompts/tools/ast-edit.md' with { type: 'text' }
 
 export type { ToolSession } from './sdk.ts'
 

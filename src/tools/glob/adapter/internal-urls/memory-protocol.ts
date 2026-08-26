@@ -5,7 +5,7 @@
  * AgentRegistry 记忆根）按 plan.md 判定整体删除——DSH 内部 URL 空路由
  * canHandle 恒 false，该后端运行时不可达。
  */
-import { parseInternalUrl } from "../../../shared/omp/internal-urls/parse.ts";
+import { parseInternalUrl } from "../../../omp/internal-urls/parse.ts";
 import { validateRelativePath } from "./skill-protocol";
 
 export interface MemoryGlobPattern {

@@ -16,7 +16,7 @@
  */
 import * as fs from 'node:fs/promises'
 import { hasFsCode, isEnoent, isEnotdir } from '@oh-my-pi/pi-utils'
-import { resolveReadPath, splitPathAndSel } from './omp/tools/path-utils.ts'
+import { resolveReadPath, splitPathAndSel } from '../omp/tools/path-utils.ts'
 
 export type ProbeResult = 'exists' | 'missing' | 'unknown'
 

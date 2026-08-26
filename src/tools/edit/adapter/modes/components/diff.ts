@@ -1,7 +1,7 @@
 import { diffWords } from "@oh-my-pi/pi-natives";
 import { DEFAULT_TAB_WIDTH, sanitizeText } from "@oh-my-pi/pi-utils";
-import { getLanguageFromPath, highlightCode, theme } from "../../../../shared/omp/modes/theme/theme.ts";
-import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../shared/omp/tools/render-utils.ts";
+import { getLanguageFromPath, highlightCode, theme } from "../../../../omp/modes/theme/theme.ts";
+import { type CodeFrameMarker, formatCodeFrameLine, replaceTabs } from "../../../../omp/tools/render-utils.ts";
 
 /** SGR dim on / normal intensity — additive, preserves fg/bg colors. */
 const DIM = "\x1b[2m";

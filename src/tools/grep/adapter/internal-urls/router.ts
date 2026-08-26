@@ -9,7 +9,7 @@
  * `expandVirtualInternalResource`, which is only reachable when
  * `canHandle()` returned true — never in DSH).
  */
-import type { InternalResource, ResolveContext, UrlCompletion } from "../../../shared/omp/internal-urls/types.ts";
+import type { InternalResource, ResolveContext, UrlCompletion } from "../../../omp/internal-urls/types.ts";
 
 /** Minimal router: no internal protocol handlers are registered in DSH. */
 export class InternalUrlRouter {

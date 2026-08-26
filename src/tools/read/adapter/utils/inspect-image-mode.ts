@@ -12,7 +12,7 @@
  * takes precedence over the persisted setting for the current session only.
  */
 import type { Model } from "@oh-my-pi/pi-ai";
-import type { Settings } from "../../../shared/omp/config/settings.ts";
+import type { Settings } from "../../../omp/config/settings.ts";
 
 export type InspectImageMode = "auto" | "on" | "off";
 

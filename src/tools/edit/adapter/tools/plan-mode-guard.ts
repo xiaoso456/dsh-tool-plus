@@ -10,9 +10,9 @@
  */
 import * as path from 'node:path'
 import { HL_FILE_HASH_LENGTH, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from '@oh-my-pi/hashline'
-import type { ToolSession } from '../../../shared/omp/tools/index.ts'
-import { resolveToCwd } from '../../../shared/omp/tools/path-utils.ts'
-import { ToolError } from '../../../shared/omp/tools/tool-errors.ts'
+import type { ToolSession } from '../../../omp/tools/index.ts'
+import { resolveToCwd } from '../../../omp/tools/path-utils.ts'
+import { ToolError } from '../../../omp/tools/tool-errors.ts'
 
 const HL_TRAILING_TAG_RE = new RegExp(`${HL_FILE_HASH_SEP}[0-9A-Fa-f]{${HL_FILE_HASH_LENGTH}}$`)
 

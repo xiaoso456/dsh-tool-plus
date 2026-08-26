@@ -7,9 +7,9 @@
 import * as path from "node:path";
 import { isEnoent, peekFile } from "@oh-my-pi/pi-utils";
 import { LRUCache } from "@oh-my-pi/pi-utils/lru";
-import { settings as globalSettings, isSettingsInitialized, type Settings } from "../../../shared/omp/config/settings.ts";
-import { getDefault } from "../../../shared/omp/config/settings-schema.ts";
-import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { settings as globalSettings, isSettingsInitialized, type Settings } from "../../../omp/config/settings.ts";
+import { getDefault } from "../../../omp/config/settings-schema.ts";
+import { ToolError } from "../../../omp/tools/tool-errors.ts";
 
 /**
  * Number of bytes to read from the start of a file for auto-generated detection.

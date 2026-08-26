@@ -16,18 +16,18 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
-import { Settings } from '../../shared/omp/config/settings.ts'
-import { getDefault } from '../../shared/omp/config/settings-schema.ts'
-import type { ToolSession } from '../../shared/omp/tools/index.ts'
+import { Settings } from '../../omp/config/settings.ts'
+import { getDefault } from '../../omp/config/settings-schema.ts'
+import type { ToolSession } from '../../omp/tools/index.ts'
 import type {
   FileDiagnosticsResult,
   WritethroughCallback,
   WritethroughDeferredHandle,
-} from '../../shared/omp/lsp/index.ts'
-import { executeReplace } from './omp/modes/replace.ts'
-import { executePatchSingle, type PatchEditEntry } from './omp/modes/patch.ts'
-import { executeHashlineSingle } from './omp/hashline/execute.ts'
-import { expandApplyPatchToEntries } from './omp/modes/apply-patch.ts'
+} from '../../omp/lsp/index.ts'
+import { executeReplace } from '../../omp/edit/modes/replace.ts'
+import { executePatchSingle, type PatchEditEntry } from '../../omp/edit/modes/patch.ts'
+import { executeHashlineSingle } from '../../omp/edit/hashline/execute.ts'
+import { expandApplyPatchToEntries } from '../../omp/edit/modes/apply-patch.ts'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import {
   renderOmpPrompt,

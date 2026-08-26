@@ -17,16 +17,16 @@ import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import { renderOmpPrompt, sanitizeReadPrompt } from '../../shared/omp-prompt.ts'
 import { attachOmpSessionState, persistOmpSessionState } from '../../shared/session-state.ts'
-import { Settings } from '../../shared/omp/config/settings.ts'
-import { getDefault } from '../../shared/omp/config/settings-schema.ts'
-import type { ToolSession } from '../../shared/omp/sdk.ts'
-import { formatOutputNotice, type OutputMeta } from '../../shared/omp/tools/output-meta.ts'
-import { ReadTool } from './omp/read.ts'
-import readMd from '../../shared/omp/prompts/tools/read.md' with { type: 'text' }
+import { Settings } from '../../omp/config/settings.ts'
+import { getDefault } from '../../omp/config/settings-schema.ts'
+import type { ToolSession } from '../../omp/sdk.ts'
+import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
+import { ReadTool } from '../../omp/tools/read.ts'
+import readMd from '../../omp/prompts/tools/read.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
-export type { Settings } from '../../shared/omp/config/settings.ts'
-export type { ToolSession } from '../../shared/omp/sdk.ts'
+export type { Settings } from '../../omp/config/settings.ts'
+export type { ToolSession } from '../../omp/sdk.ts'
 
 /** Build the OMP ToolSession facade over a DSH exec context. */
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
