@@ -22,7 +22,7 @@ export class PdfConverter implements Converter {
 		const result = await pdfToMarkdown(input);
 		const notice =
 			result.pagesNeedingOcr.length > 0
-				? `Text extraction is incomplete for PDF pages ${result.pagesNeedingOcr.join(", ")}. Use the browser tool to render those pages or OCR them.`
+				? `Text extraction is incomplete for PDF pages ${result.pagesNeedingOcr.join(", ")}. Those pages likely contain scanned or image content that requires OCR.`
 				: undefined;
 
 		const conversion: ConversionResult = {

@@ -99,7 +99,6 @@ import {
 	isRemoteMountPath,
 	type SuffixMatchCache,
 } from "./read-path-resolution";
-import { type PdfImageReadTarget, renderPdfPageScreenshot, splitPdfImageReadPath } from "./read-pdf";
 import { isMultiRange, isRawSelector, type ParsedSelector, parseSel, selToOffsetLimit } from "./read-selector";
 import { readSqlite, resolveSqliteReadPath } from "./read-sqlite";
 import { isProseSummaryPath, renderSummary, trySummarize } from "./read-summary";
@@ -109,7 +108,6 @@ import { isResolutionDeviceName, resolutionDeviceUsage } from "../../omp/tools/r
 import { ToolAbortError, ToolError, throwIfAborted } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
 import { xdevDocs, xdevListing } from "../../omp/tools/xdev.ts";
-
 
 /** Largest profile (`*.sample.txt`, `*.cpuprofile`) converted to a bottleneck summary; bigger files read as plain text. */
 const MAX_PROFILE_SUMMARY_BYTES = 32 * 1024 * 1024;
@@ -400,8 +398,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		let readPath = "";
 		if (args && typeof args === "object" && "path" in args) readPath = String(args.path ?? "");
 		if (pathTargetsSsh(readPath)) return "exec";
-		const target = splitPathAndSel(readPath);
-		return target.sel === undefined && splitPdfImageReadPath(readPath) ? "exec" : "read";
+		return "read";
 	};
 	readonly label = "Read";
 	readonly loadMode = "essential";
@@ -547,40 +544,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		flushText();
 
 		return toolResult<ReadToolDetails>({ notes, displayReadTargets }).content(content).done();
-	}
-
-	async #readPdfPageScreenshot(options: {
-		readPath: string;
-		absolutePdfPath: string;
-		page: number;
-		pdfFileSize: number;
-		suffixResolution?: { from: string; to: string };
-		signal?: AbortSignal;
-	}): Promise<AgentToolResult<ReadToolDetails>> {
-		const { readPath, absolutePdfPath, page, pdfFileSize, suffixResolution, signal } = options;
-		const screenshot = await renderPdfPageScreenshot(this.session, absolutePdfPath, page, signal);
-		const screenshotFile = Bun.file(screenshot.dest);
-		const screenshotMetadata = await readImageMetadata(screenshot.dest);
-		const loaded = await this.#loadImageContent({
-			readPath,
-			absolutePath: screenshot.dest,
-			mimeType: screenshot.mimeType,
-			imageMetadata: screenshotMetadata,
-			fileSize: screenshotFile.size,
-		});
-		if (suffixResolution) {
-			const firstText = loaded.content.find((entry): entry is TextContent => entry.type === "text");
-			if (firstText) firstText.text = prependSuffixResolutionNotice(firstText.text, suffixResolution);
-		}
-		const image = loaded.content.find((entry): entry is ImageContent => entry.type === "image");
-		const details: ReadToolDetails = {
-			...loaded.details,
-			resolvedPath: absolutePdfPath,
-			contentType: image?.mimeType ?? screenshot.mimeType,
-			fileSize: pdfFileSize,
-			suffixResolution,
-		};
-		return toolResult(details).content(loaded.content).sourcePath(loaded.sourcePath).done();
 	}
 
 	/**
@@ -911,8 +874,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				? readPath.includes(":") && (await probeLiteralPathExists(readPath, this.session.cwd)) !== "missing"
 				: literalSplit.sel === undefined && splitPathAndSel(readPath).sel !== undefined;
 
-		let pdfImageRead: PdfImageReadTarget | null = null;
-
 		if (!rawPathIsLiteral) {
 			const archivePath = await resolveArchiveReadPath(this.session, readPath, suffixCache, signal);
 			if (archivePath) {
@@ -934,15 +895,9 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (sqlitePath) {
 				return readSqlite(sqlitePath, signal);
 			}
-
-			const pdfCandidate = literalSplit.sel === undefined ? splitPdfImageReadPath(readPath) : null;
-			pdfImageRead =
-				pdfCandidate && (await probeLiteralPathExists(readPath, this.session.cwd)) === "missing"
-					? pdfCandidate
-					: null;
 		}
 
-		const localTarget = pdfImageRead ? { path: pdfImageRead.pdfPath, sel: undefined } : literalSplit;
+		const localTarget = literalSplit;
 		const localReadPath = localTarget.path;
 		const parsed = parseSel(localTarget.sel);
 
@@ -1019,17 +974,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 
 		if (parsed.kind === "conflicts") {
 			return this.#readFileConflicts(absolutePath, suffixResolution, signal);
-		}
-
-		if (pdfImageRead) {
-			return this.#readPdfPageScreenshot({
-				readPath,
-				absolutePdfPath: absolutePath,
-				page: pdfImageRead.page,
-				pdfFileSize: fileSize,
-				suffixResolution,
-				signal,
-			});
 		}
 
 		const imageMetadata = await readImageMetadata(absolutePath);
