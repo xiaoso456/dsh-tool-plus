@@ -1,6 +1,6 @@
-import type { DeferredDiagnosticsEntry, ToolSession } from "../tools";
-import { getDiagnosticsLedger } from "./diagnostics-ledger";
-import type { FileDiagnosticsResult, WritethroughDeferredHandle } from "./index";
+import type { DeferredDiagnosticsEntry, ToolSession } from "../../../shared/omp/tools/index.ts";
+import { getDiagnosticsLedger } from "../../../shared/omp/lsp/diagnostics-ledger.ts";
+import type { FileDiagnosticsResult, WritethroughDeferredHandle } from "../../../shared/omp/lsp/index.ts";
 
 /** Coordinates late LSP diagnostics for one mutation tool instance. */
 export class DeferredDiagnostics {

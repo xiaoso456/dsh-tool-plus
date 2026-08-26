@@ -15,20 +15,20 @@ import {
 	flushLspWritethroughBatch,
 	type WritethroughCallback,
 	type WritethroughDeferredHandle,
-} from "../../lsp";
-import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
-import type { ToolSession } from "../../tools";
+} from "../../../../shared/omp/lsp/index.ts";
+import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../../../shared/omp/lsp/client.ts";
+import type { ToolSession } from "../../../../shared/omp/tools/index.ts";
 import { routeWriteThroughBridge } from "../../tools/acp-bridge";
 import { assertEditableFile } from "../../../../shared/auto-generated-guard.dsh";
 import {
 	invalidateFsScanAfterDelete,
 	invalidateFsScanAfterRename,
 	invalidateFsScanAfterWrite,
-} from "../../tools/fs-cache-invalidation";
+} from "../../../../shared/omp/tools/fs-cache-invalidation.ts";
 import { outputMeta } from "../../tools/output-meta";
-import { resolveToCwd } from "../../tools/path-utils";
+import { resolveToCwd } from "../../../../shared/omp/tools/path-utils.ts";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/plan-mode-guard";
-import { ToolError } from "../../tools/tool-errors";
+import { ToolError } from "../../../../shared/omp/tools/tool-errors.ts";
 import {
 	ApplyPatchError,
 	type DiffHunk,
@@ -46,7 +46,7 @@ import {
 	normalizeToLF,
 	restoreLineEndings,
 	stripBom,
-} from "../normalize";
+} from "../../../../shared/omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
 import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";

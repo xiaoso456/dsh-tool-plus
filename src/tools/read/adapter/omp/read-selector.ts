@@ -1,6 +1,6 @@
-import type { LineRange } from "./path-utils";
-import { parseLineRanges } from "./path-utils";
-import { ToolError } from "./tool-errors";
+import type { LineRange } from "../../../shared/omp/tools/path-utils.ts";
+import { parseLineRanges } from "../../../shared/omp/tools/path-utils.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
 /** Parsed representation of a path-embedded selector. */
 export type ParsedSelector =
 	| { kind: "none" }

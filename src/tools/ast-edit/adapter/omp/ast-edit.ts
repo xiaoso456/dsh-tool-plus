@@ -7,10 +7,10 @@ import { type AstReplaceChange, type AstReplaceFileChange, astEdit } from "@oh-m
 import type { Component } from "@oh-my-pi/pi-tui";
 import { replaceTabs, Text } from "@oh-my-pi/pi-tui";
 import { $envpos, prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import { canonicalSnapshotKey, getFileSnapshotStore } from "../../../edit/adapter/omp/file-snapshot-store";
-import { normalizeToLF } from "../../../edit/adapter/omp/normalize";
-import type { RenderResultOptions } from "../../../read/adapter/extensibility/custom-tools/types";
-import type { Theme } from "../../../read/adapter/modes/theme/theme";
+import { canonicalSnapshotKey, getFileSnapshotStore } from "../../../shared/omp/edit/file-snapshot-store.ts";
+import { normalizeToLF } from "../../../shared/omp/edit/normalize.ts";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import type { Theme } from "../../../shared/omp/modes/theme/theme.ts";
 import astEditDescription from "./prompts/tools/ast-edit.md" with { type: "text" };
 import {
 	Ellipsis,
@@ -19,15 +19,15 @@ import {
 	outputBlockContentWidth,
 	renderStatusLine,
 	truncateToWidth,
-} from "../../../read/adapter/tui";
-import { resolveFileDisplayMode } from "../../../read/adapter/utils/file-display-mode";
+} from "../../../shared/omp/tui/index.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
 import type { ToolSession } from "../sdk";
-import { truncateForPrompt } from "../../../read/adapter/omp/approval";
-import { parseReadUrlTarget } from "../../../read/adapter/omp/fetch";
+import { truncateForPrompt } from "../../../shared/omp/tools/approval.ts";
+import { parseReadUrlTarget } from "../../../shared/omp/tools/fetch.ts";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
-import type { OutputMeta } from "../../../read/adapter/omp/output-meta";
-import { isInternalUrlPath, resolveToolSearchScope } from "../../../read/adapter/omp/path-utils";
+import type { OutputMeta } from "../../../shared/omp/tools/output-meta.ts";
+import { isInternalUrlPath, resolveToolSearchScope } from "../../../shared/omp/tools/path-utils.ts";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,
@@ -38,10 +38,10 @@ import {
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	PREVIEW_LIMITS,
-} from "../../../read/adapter/omp/render-utils";
-import { PREVIEW_PENDING_NOTICE, queueResolveHandler } from "../../../read/adapter/omp/resolve";
-import { ToolError } from "../../../read/adapter/omp/tool-errors";
-import { toolResult } from "../../../read/adapter/omp/tool-result";
+} from "../../../shared/omp/tools/render-utils.ts";
+import { PREVIEW_PENDING_NOTICE, queueResolveHandler } from "../../../shared/omp/tools/resolve.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 const astEditOpSchema = type({
 	pat: type("string").describe("ast pattern"),

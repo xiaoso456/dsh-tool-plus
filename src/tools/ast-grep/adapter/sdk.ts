@@ -15,8 +15,8 @@
  * scout-spawnability hint in the tool description (`isScoutSpawnable`); when
  * absent DSH defaults to unrestricted (`"*"`).
  */
-import type { Settings } from '../../read/adapter/config/settings.ts'
-import type { Skill } from '../../read/adapter/extensibility/skills.ts'
+import type { Settings } from '../../shared/omp/config/settings.ts'
+import type { Skill } from '../../shared/omp/extensibility/skills.ts'
 import type { Model } from '@oh-my-pi/pi-ai'
 
 /**
@@ -37,7 +37,7 @@ export interface ToolSession {
   /** Hashline snapshot store (created lazily by the engine). */
   fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
   /** Local protocol options (DSH has no local:// sandbox — optional). */
-  localProtocolOptions?: import('../../read/adapter/internal-urls/index.ts').LocalProtocolOptions
+  localProtocolOptions?: import('../../shared/omp/internal-urls/index.ts').LocalProtocolOptions
   /** Pre-loaded skills (DSH: none). */
   skills?: readonly Skill[]
   /** Session subagent-spawn policy string, used for the scout hint (optional in DSH). */

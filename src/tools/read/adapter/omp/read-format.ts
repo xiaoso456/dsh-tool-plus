@@ -6,24 +6,24 @@ import {
 	splitAddressableFileLines,
 } from "@oh-my-pi/hashline";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { canonicalSnapshotKey, getFileSnapshotStore, recordSeenLines } from "../edit/file-snapshot-store";
-import { normalizeToLF } from "../edit/normalize";
-import { isMarkdownPath } from "../modes/theme/theme";
-import type { ToolSession } from "../sdk";
+import { canonicalSnapshotKey, getFileSnapshotStore, recordSeenLines } from "../../../shared/omp/edit/file-snapshot-store.ts";
+import { normalizeToLF } from "../../../shared/omp/edit/normalize.ts";
+import { isMarkdownPath } from "../../../shared/omp/modes/theme/theme.ts";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
 import {
 	DEFAULT_MAX_BYTES,
 	noTruncResult,
 	type TruncationResult,
 	truncateHead,
 	truncateHeadBytes,
-} from "../session/streaming-output";
-import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../utils/block-context";
-import { resolveFileDisplayMode } from "../utils/file-display-mode";
-import { formatPathRelativeToCwd, type LineRange } from "./path-utils";
+} from "../../../shared/omp/session/streaming-output.ts";
+import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../../../shared/omp/utils/block-context.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
+import { formatPathRelativeToCwd, type LineRange } from "../../../shared/omp/tools/path-utils.ts";
 import type { ReadToolDetails } from "./read";
-import { formatBytes, shortenPath } from "./render-utils";
-import { ToolError } from "./tool-errors";
-import { toolResult } from "./tool-result";
+import { formatBytes, shortenPath } from "../../../shared/omp/tools/render-utils.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 function prependLineNumbers(text: string, startNum: number): string {
 	const textLines = text.split("\n");

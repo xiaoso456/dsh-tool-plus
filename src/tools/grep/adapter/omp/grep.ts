@@ -14,15 +14,15 @@ import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@oh-my-pi
 import type { Component } from "@oh-my-pi/pi-tui";
 import { Text } from "@oh-my-pi/pi-tui";
 import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
+import { recordFileSnapshot, recordSeenLinesFromBody } from "../../../shared/omp/edit/file-snapshot-store.ts";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import type { LocalProtocolOptions } from "../../../shared/omp/internal-urls/local-protocol.ts";
 import { InternalUrlRouter } from "../internal-urls/router";
-import type { InternalResource, ResolveContext } from "../internal-urls/types";
-import type { Theme } from "../modes/theme/theme";
+import type { InternalResource, ResolveContext } from "../../../shared/omp/internal-urls/types.ts";
+import type { Theme } from "../../../shared/omp/modes/theme/theme.ts";
 import grepDescription from "../prompts/tools/grep.md" with { type: "text" };
-import { DEFAULT_MAX_COLUMN, type TruncationResult, truncateHead, truncateLine } from "../session/streaming-output";
-import { isScoutSpawnable } from "../task/spawn-policy";
+import { DEFAULT_MAX_COLUMN, type TruncationResult, truncateHead, truncateLine } from "../../../shared/omp/session/streaming-output.ts";
+import { isScoutSpawnable } from "../../../shared/omp/task/spawn-policy.ts";
 import {
 	Ellipsis,
 	fileHyperlink,
@@ -33,15 +33,15 @@ import {
 	truncateToWidth,
 	tryResolveInternalUrlSync,
 	uriHyperlink,
-} from "../tui";
-import { resolveFileDisplayMode } from "../utils/file-display-mode";
-import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../utils/zip";
-import type { ToolSession } from "../sdk";
-import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
+} from "../../../shared/omp/tui/index.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
+import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../../../shared/omp/utils/zip.ts";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { materializeReadUrlToFile, parseReadUrlTarget } from "../../../shared/omp/tools/fetch.ts";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
-import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
+import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "../../../shared/omp/tools/grouped-file-output.ts";
 import { formatMatchLine } from "./match-line-format";
-import type { OutputMeta } from "./output-meta";
+import type { OutputMeta } from "../../../shared/omp/tools/output-meta.ts";
 import {
 	expandDelimitedPathEntries,
 	hasGlobPathChars,
@@ -56,7 +56,7 @@ import {
 	splitInternalUrlSel,
 	splitPathAndSel,
 	toPathList,
-} from "./path-utils";
+} from "../../../shared/omp/tools/path-utils.ts";
 import { splitPathAndSelPreferringLiteral } from "../../../shared/win-path-fixes";
 import { matchAbsolutePath } from "../match-path";
 import {
@@ -68,9 +68,9 @@ import {
 	formatMoreItems,
 	PREVIEW_LIMITS,
 	replaceTabs,
-} from "./render-utils";
-import { ToolError } from "./tool-errors";
-import { toolResult } from "./tool-result";
+} from "../../../shared/omp/tools/render-utils.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 const searchPathEntry = type("string").describe(
 	'file, directory, glob, internal URL, or "<file>:<lines>" selector to search (e.g. "src/foo.ts:50-100", "src/foo.ts:50+10", "src/foo.ts:50-100,200-300")',

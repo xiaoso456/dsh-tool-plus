@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { ToolSession } from "../sdk";
-import { DEFAULT_MAX_LINES, truncateHead } from "../session/streaming-output";
-import { applyListLimit } from "./list-limit";
-import { resolveReadPath } from "./path-utils";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { DEFAULT_MAX_LINES, truncateHead } from "../../../shared/omp/session/streaming-output.ts";
+import { applyListLimit } from "../../../shared/omp/tools/list-limit.ts";
+import { resolveReadPath } from "../../../shared/omp/tools/path-utils.ts";
 import type { ReadToolDetails } from "./read";
 import { prependSuffixResolutionNotice } from "./read-format";
 import {
@@ -28,9 +28,9 @@ import {
 	renderTable,
 	renderTableList,
 	resolveTableRowLookup,
-} from "./sqlite-reader";
-import { ToolError, throwIfAborted } from "./tool-errors";
-import { toolResult } from "./tool-result";
+} from "../../../shared/omp/tools/sqlite-reader.ts";
+import { ToolError, throwIfAborted } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 interface ResolvedSqliteReadPath {
 	absolutePath: string;

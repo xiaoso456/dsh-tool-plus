@@ -10,10 +10,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { Settings } from '../../src/tools/grep/adapter/config/settings.ts'
-import { getDefault } from '../../src/tools/grep/adapter/config/settings-schema.ts'
+import { Settings } from '../../src/tools/shared/omp/config/settings.ts'
+import { getDefault } from '../../src/tools/shared/omp/config/settings-schema.ts'
 import { GrepTool } from '../../src/tools/grep/adapter/omp/grep.ts'
-import { zip } from '../../src/tools/grep/adapter/utils/zip.ts'
+import { zip } from '../../src/tools/shared/omp/utils/zip.ts'
 
 const tmpDirs: string[] = []
 function tmpDir(): string {

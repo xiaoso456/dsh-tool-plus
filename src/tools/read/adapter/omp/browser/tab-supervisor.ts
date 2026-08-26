@@ -4,8 +4,8 @@
  * 拍板#16 (2026-08-25): 浏览器工具链整体删除，不移植。read-pdf.ts（verbatim）
  * 在 PDF 页面截图路径动态 import 本模块，故保留最小类型面 + 明示不支持抛错。
  */
-import { ToolError } from '../tool-errors.ts'
-import type { ToolSession } from '../../sdk.ts'
+import { ToolError } from '../../../../shared/omp/tools/tool-errors.ts'
+import type { ToolSession } from '../../../../shared/omp/sdk.ts'
 import type { BrowserHandle } from './registry.ts'
 
 export interface RunInTabOptions {

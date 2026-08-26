@@ -24,8 +24,8 @@ import {
 	Patch as HashlinePatch,
 	type SnapshotStore,
 } from "@oh-my-pi/hashline";
-import type { Theme } from "../modes/theme/theme";
-import { type EditMode, resolveEditMode } from "../utils/edit-mode";
+import type { Theme } from "../../../shared/omp/modes/theme/theme.ts";
+import { type EditMode, resolveEditMode } from "../../../shared/omp/utils/edit-mode.ts";
 import { computeEditDiff, type DiffError, type DiffResult } from "./diff";
 import { computeHashlineDiff, computeHashlineSectionDiff } from "./hashline/diff";
 import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPreviewEntries } from "./modes/apply-patch";

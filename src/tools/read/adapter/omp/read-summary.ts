@@ -1,9 +1,9 @@
 import * as path from "node:path";
 import { type SummaryResult, summarizeCode } from "@oh-my-pi/pi-natives";
 import { LRUCache } from "@oh-my-pi/pi-utils/lru";
-import { isMarkdownPath } from "../modes/theme/theme";
-import type { ToolSession } from "../sdk";
-import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import { isMarkdownPath } from "../../../shared/omp/modes/theme/theme.ts";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
 import {
 	canMergeBracePair,
 	countTextLines,
@@ -11,7 +11,7 @@ import {
 	formatMergedBraceLine,
 	formatSingleLine,
 } from "./read-format";
-import { throwIfAborted } from "./tool-errors";
+import { throwIfAborted } from "../../../shared/omp/tools/tool-errors.ts";
 
 // Per-session memo for tree-sitter summaries. `summarizeCode` is a pure function
 // of (code, path, fold settings) but costs ~12-18ms for a ~1500-line file, and a

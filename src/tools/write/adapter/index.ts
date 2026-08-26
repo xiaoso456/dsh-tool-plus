@@ -17,15 +17,15 @@ import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import { renderOmpPrompt, sanitizeWritePrompt } from '../../shared/omp-prompt.ts'
 import { attachOmpSessionState, persistOmpSessionState } from '../../shared/session-state.ts'
-import { Settings } from './config/settings.ts'
-import { getDefault } from './config/settings-schema.ts'
-import type { ToolSession } from './sdk.ts'
+import { Settings } from '../../shared/omp/config/settings.ts'
+import { getDefault } from '../../shared/omp/config/settings-schema.ts'
+import type { ToolSession } from '../../shared/omp/sdk.ts'
 import { WriteTool } from './omp/write.ts'
-import writeMd from './prompts/tools/write.md' with { type: 'text' }
+import writeMd from '../../shared/omp/prompts/tools/write.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
-export type { Settings } from './config/settings.ts'
-export type { ToolSession } from './sdk.ts'
+export type { Settings } from '../../shared/omp/config/settings.ts'
+export type { ToolSession } from '../../shared/omp/sdk.ts'
 
 /** Build the OMP ToolSession facade over a DSH exec context. */
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {

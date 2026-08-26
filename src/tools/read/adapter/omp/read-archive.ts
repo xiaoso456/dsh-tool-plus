@@ -1,10 +1,10 @@
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TextContent } from "@oh-my-pi/pi-ai";
-import type { ToolSession } from "../sdk";
-import { truncateHead } from "../session/streaming-output";
-import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../utils/zip";
-import { applyListLimit } from "./list-limit";
-import { resolveReadPath } from "./path-utils";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { truncateHead } from "../../../shared/omp/session/streaming-output.ts";
+import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../../../shared/omp/utils/zip.ts";
+import { applyListLimit } from "../../../shared/omp/tools/list-limit.ts";
+import { resolveReadPath } from "../../../shared/omp/tools/path-utils.ts";
 import type { ReadToolDetails } from "./read";
 import {
 	buildInMemoryMultiRangeResult,
@@ -20,9 +20,9 @@ import {
 	type SuffixMatchCache,
 } from "./read-path-resolution";
 import { isMultiRange, isRawSelector, type ParsedSelector, parseSel, selToOffsetLimit } from "./read-selector";
-import { formatBytes } from "./render-utils";
-import { ToolError, throwIfAborted } from "./tool-errors";
-import { toolResult } from "./tool-result";
+import { formatBytes } from "../../../shared/omp/tools/render-utils.ts";
+import { ToolError, throwIfAborted } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 interface ResolvedArchiveReadPath {
 	absolutePath: string;

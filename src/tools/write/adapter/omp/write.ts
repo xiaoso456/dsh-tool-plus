@@ -14,29 +14,29 @@ import type {
 import { type Component, Text } from "@oh-my-pi/pi-tui";
 import { isEnoent, isRecord, prompt, untilAborted } from "@oh-my-pi/pi-utils";
 
-import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
-import { normalizeToLF } from "../edit/normalize";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { InternalUrlRouter } from "../internal-urls";
-import { parseInternalUrl } from "../internal-urls/parse";
-import { couldBecomeXdUrl, parseXdUrl } from "../internal-urls/xd-protocol";
-import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../lsp";
+import { canonicalSnapshotKey, getFileSnapshotStore } from "../../../shared/omp/edit/file-snapshot-store.ts";
+import { normalizeToLF } from "../../../shared/omp/edit/normalize.ts";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import { InternalUrlRouter } from "../../../shared/omp/internal-urls/index.ts";
+import { parseInternalUrl } from "../../../shared/omp/internal-urls/parse.ts";
+import { couldBecomeXdUrl, parseXdUrl } from "../../../shared/omp/internal-urls/xd-protocol.ts";
+import { createLspWritethrough, type FileDiagnosticsResult, type WritethroughCallback, writethroughNoop } from "../../../shared/omp/lsp/index.ts";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
-import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
-import { getLanguageFromPath, highlightCode, type Theme } from "../modes/theme/theme";
-import writeDescription from "../prompts/tools/write.md" with { type: "text" };
-import type { ToolSession } from "../sdk";
-import { fileHyperlink, framedBlock, renderStatusLine } from "../tui";
-import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import { getDiagnosticsLedger } from "../../../shared/omp/lsp/diagnostics-ledger.ts";
+import { getLanguageFromPath, highlightCode, type Theme } from "../../../shared/omp/modes/theme/theme.ts";
+import writeDescription from "../../../shared/omp/prompts/tools/write.md" with { type: "text" };
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { fileHyperlink, framedBlock, renderStatusLine } from "../../../shared/omp/tui/index.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
 import {
 	type ArchiveMemberContent,
 	archiveFormatFromPath,
 	parseArchivePathCandidates,
 	readArchiveEntries,
 	writeArchive,
-} from "../utils/zip";
+} from "../../../shared/omp/utils/zip.ts";
 import { routeWriteThroughBridge } from "./acp-bridge";
-import { resolveToolTier, truncateForPrompt } from "./approval";
+import { resolveToolTier, truncateForPrompt } from "../../../shared/omp/tools/approval.ts";
 import { assertEditableFile } from "../../../shared/auto-generated-guard.dsh";
 import {
 	type ConflictEntry,
@@ -46,9 +46,9 @@ import {
 	getConflictHistory,
 	parseConflictUri,
 	spliceConflict,
-} from "./conflict-detect";
-import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
-import { type OutputMeta, outputMeta } from "./output-meta";
+} from "../../../shared/omp/tools/conflict-detect.ts";
+import { invalidateFsScanAfterWrite } from "../../../shared/omp/tools/fs-cache-invalidation.ts";
+import { type OutputMeta, outputMeta } from "../../../shared/omp/tools/output-meta.ts";
 import {
 	formatPathRelativeToCwd,
 	isInternalUrlPath,
@@ -56,7 +56,7 @@ import {
 	peelWriteUrlSelector,
 	probeLiteralPathExists,
 	splitPathAndSel,
-} from "./path-utils";
+} from "../../../shared/omp/tools/path-utils.ts";
 import { enforcePlanModeWrite, resolvePlanPath, unwrapHashlineHeaderPath } from "./plan-mode-guard";
 import {
 	cachedRenderedString,
@@ -73,9 +73,9 @@ import {
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
-} from "./render-utils";
-import { dispatchReportIssueDevice, REPORT_ISSUE_DEVICE_NAME, renderReportIssueDeviceCall } from "./report-tool-issue";
-import { dispatchResolutionDevice, isResolutionDeviceName, renderResolutionDeviceCall } from "./resolve";
+} from "../../../shared/omp/tools/render-utils.ts";
+import { dispatchReportIssueDevice, REPORT_ISSUE_DEVICE_NAME, renderReportIssueDeviceCall } from "../../../shared/omp/tools/report-tool-issue.ts";
+import { dispatchResolutionDevice, isResolutionDeviceName, renderResolutionDeviceCall } from "../../../shared/omp/tools/resolve.ts";
 import {
 	deleteRowByKey,
 	deleteRowByRowId,
@@ -85,9 +85,9 @@ import {
 	resolveTableRowLookup,
 	updateRowByKey,
 	updateRowByRowId,
-} from "./sqlite-reader";
-import { ToolError } from "./tool-errors";
-import { toolResult } from "./tool-result";
+} from "../../../shared/omp/tools/sqlite-reader.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 import {
 	dispatchXdevTool,
 	renderXdevCall,
@@ -95,7 +95,7 @@ import {
 	resolveXdevTool,
 	type XdevDispatch,
 	xdevListing,
-} from "./xdev";
+} from "../../../shared/omp/tools/xdev.ts";
 
 const LOOSE_HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[^ \t\r\n]*\]\s*$/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";

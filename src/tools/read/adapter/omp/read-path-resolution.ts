@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { getRemoteDir } from "@oh-my-pi/pi-utils";
-import type { ToolSession } from "../sdk";
-import { findUniqueWorkspaceSuffix } from "./path-utils";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { findUniqueWorkspaceSuffix } from "../../../shared/omp/tools/path-utils.ts";
 
 // Remote mount path prefix (sshfs mounts) - skip fuzzy matching to avoid hangs
 const REMOTE_MOUNT_PREFIX = getRemoteDir() + path.sep;

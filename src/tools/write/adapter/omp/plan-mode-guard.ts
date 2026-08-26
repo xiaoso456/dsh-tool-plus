@@ -6,10 +6,10 @@ import {
 	resolveLocalRoot,
 	resolveLocalUrlToPath,
 	resolveVaultUrlToPath,
-} from "../internal-urls";
-import type { ToolSession } from ".";
-import { normalizeLocalScheme, resolveToCwd } from "./path-utils";
-import { ToolError } from "./tool-errors";
+} from "../../../shared/omp/internal-urls/index.ts";
+import type { ToolSession } from "../../../shared/omp/tools/index.ts";
+import { normalizeLocalScheme, resolveToCwd } from "../../../shared/omp/tools/path-utils.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
 
 const VAULT_SCHEME_PREFIX = "vault:";
 const LOCAL_SCHEME_PREFIX = "local:";

@@ -7,17 +7,17 @@ import * as natives from "@oh-my-pi/pi-natives";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { Text } from "@oh-my-pi/pi-tui";
 import { formatGroupedPaths, hasFsCode, isEnoent, prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { InternalUrlRouter } from "../internal-urls";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import { InternalUrlRouter } from "../../../shared/omp/internal-urls/index.ts";
 import { splitMemoryGlobPattern } from "../internal-urls/memory-protocol";
-import type { Theme } from "../modes/theme/theme";
+import type { Theme } from "../../../shared/omp/modes/theme/theme.ts";
 import globDescription from "../prompts/tools/glob.md" with { type: "text" };
-import { type TruncationResult, truncateHead } from "../session/streaming-output";
-import { isScoutSpawnable } from "../task/spawn-policy";
-import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
-import type { ToolSession } from "../sdk";
-import { applyListLimit } from "./list-limit";
-import { formatFullOutputReference, type OutputMeta } from "./output-meta";
+import { type TruncationResult, truncateHead } from "../../../shared/omp/session/streaming-output.ts";
+import { isScoutSpawnable } from "../../../shared/omp/task/spawn-policy.ts";
+import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../../../shared/omp/tui/index.ts";
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
+import { applyListLimit } from "../../../shared/omp/tools/list-limit.ts";
+import { formatFullOutputReference, type OutputMeta } from "../../../shared/omp/tools/output-meta.ts";
 import {
 	expandDelimitedPathEntries,
 	formatPathRelativeToCwd,
@@ -29,16 +29,16 @@ import {
 	resolveExplicitFindPatterns,
 	resolveToCwd,
 	toPathList,
-} from "./path-utils";
+} from "../../../shared/omp/tools/path-utils.ts";
 import {
 	createCachedComponent,
 	formatCount,
 	formatEmptyMessage,
 	formatErrorMessage,
 	PREVIEW_LIMITS,
-} from "./render-utils";
-import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
-import { toolResult } from "./tool-result";
+} from "../../../shared/omp/tools/render-utils.ts";
+import { ToolAbortError, ToolError, throwIfAborted } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 const findSchema = type({
 	"path?": type("string").describe(

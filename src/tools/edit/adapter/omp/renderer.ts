@@ -6,10 +6,10 @@ import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from 
 import type { Component } from "@oh-my-pi/pi-tui";
 import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@oh-my-pi/pi-tui";
 import { sanitizeText } from "@oh-my-pi/pi-utils";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { FileDiagnosticsResult } from "../lsp";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import type { FileDiagnosticsResult } from "../../../shared/omp/lsp/index.ts";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
-import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
+import { getLanguageFromPath, type Theme } from "../../../shared/omp/modes/theme/theme.ts";
 import type { OutputMeta } from "../tools/output-meta";
 import {
 	cachedRenderedString,
@@ -27,7 +27,7 @@ import {
 	replaceTabs,
 	shortenPath,
 	truncateDiffByHunk,
-} from "../tools/render-utils";
+} from "../../../shared/omp/tools/render-utils.ts";
 import {
 	fileHyperlink,
 	framedBlock,
@@ -36,8 +36,8 @@ import {
 	renderStatusLine,
 	truncateToWidth,
 	WidthAwareText,
-} from "../tui";
-import type { EditMode } from "../utils/edit-mode";
+} from "../../../shared/omp/tui/index.ts";
+import type { EditMode } from "../../../shared/omp/utils/edit-mode.ts";
 import type { DiffError, DiffResult } from "./diff";
 import { type ApplyPatchEntry, expandApplyPatchToEntries, expandApplyPatchToPreviewEntries } from "./modes/apply-patch";
 import type { Operation } from "./modes/patch";

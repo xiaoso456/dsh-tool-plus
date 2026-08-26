@@ -24,13 +24,13 @@ import {
 	startClipboardBatch,
 } from "@oh-my-pi/hashline";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
-import type { ToolSession } from "../../tools";
+import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../../../shared/omp/lsp/index.ts";
+import type { ToolSession } from "../../../../shared/omp/tools/index.ts";
 import { outputMeta } from "../../tools/output-meta";
-import { ToolError } from "../../tools/tool-errors";
+import { ToolError } from "../../../../shared/omp/tools/tool-errors.ts";
 import { generateDiffString } from "../diff";
 import { getEditClipboard } from "../edit-clipboard";
-import { getFileSnapshotStore } from "../file-snapshot-store";
+import { getFileSnapshotStore } from "../../../../shared/omp/edit/file-snapshot-store.ts";
 import type { EditToolDetails, EditToolPerFileResult, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
 import { nativeBlockResolver } from "./block-resolver";

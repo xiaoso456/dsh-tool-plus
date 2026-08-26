@@ -1,16 +1,16 @@
 import * as path from "node:path";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { Text } from "@oh-my-pi/pi-tui";
-import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
-import { fileHyperlink, renderCodeCell, renderMarkdownCell, renderStatusLine, tryResolveInternalUrlSync } from "../tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
-import { type ReadUrlToolDetails, renderReadUrlCall, renderReadUrlResult } from "./fetch";
-import { formatFullOutputReference, formatStyledTruncationWarning, stripOutputNotice } from "./output-meta";
-import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "./path-utils";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import { getLanguageFromPath, type Theme } from "../../../shared/omp/modes/theme/theme.ts";
+import { fileHyperlink, renderCodeCell, renderMarkdownCell, renderStatusLine, tryResolveInternalUrlSync } from "../../../shared/omp/tui/index.ts";
+import { CachedOutputBlock, markFramedBlockComponent } from "../../../shared/omp/tui/output-block.ts";
+import { type ReadUrlToolDetails, renderReadUrlCall, renderReadUrlResult } from "../../../shared/omp/tools/fetch.ts";
+import { formatFullOutputReference, formatStyledTruncationWarning, stripOutputNotice } from "../../../shared/omp/tools/output-meta.ts";
+import { isReadableUrlPath, splitInternalUrlSel, splitPathAndSel } from "../../../shared/omp/tools/path-utils.ts";
 import type { ReadToolDetails } from "./read";
 import { isRawSelector, parseSel } from "./read-selector";
-import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "./render-utils";
+import { formatBytes, replaceTabs, shortenPath, wrapBrackets } from "../../../shared/omp/tools/render-utils.ts";
 
 // =============================================================================
 // TUI Renderer

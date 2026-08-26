@@ -7,10 +7,10 @@
 
 import { type } from "@oh-my-pi/omptype";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
-import type { ToolSession } from "../../tools";
+import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../../../shared/omp/lsp/index.ts";
+import type { ToolSession } from "../../../../shared/omp/tools/index.ts";
 import { routeWriteThroughBridge } from "../../tools/acp-bridge";
-import { invalidateFsScanAfterWrite } from "../../tools/fs-cache-invalidation";
+import { invalidateFsScanAfterWrite } from "../../../../shared/omp/tools/fs-cache-invalidation.ts";
 import { outputMeta } from "../../tools/output-meta";
 import { enforcePlanModeWrite, resolvePlanPath } from "../../tools/plan-mode-guard";
 import { generateDiffString, replaceText } from "../diff";
@@ -22,7 +22,7 @@ import {
 	normalizeUnicode,
 	restoreLineEndings,
 	stripBom,
-} from "../normalize";
+} from "../../../../shared/omp/edit/normalize.ts";
 import { readEditFileText, serializeEditFileText } from "../read-file";
 import type { EditToolDetails, LspBatchRequest } from "../renderer";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";

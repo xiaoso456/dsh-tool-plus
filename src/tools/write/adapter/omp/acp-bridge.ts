@@ -8,12 +8,12 @@
  * never be pushed into the editor.
  */
 
-import { FileChangeType, notifyWorkspaceWatchedFiles } from "../lsp/client";
-import type { ToolSession } from ".";
-import { invalidateFsScanAfterWrite } from "./fs-cache-invalidation";
-import { isInternalUrlPath } from "./path-utils";
+import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../../shared/omp/lsp/client.ts";
+import type { ToolSession } from "../../../shared/omp/tools/index.ts";
+import { invalidateFsScanAfterWrite } from "../../../shared/omp/tools/fs-cache-invalidation.ts";
+import { isInternalUrlPath } from "../../../shared/omp/tools/path-utils.ts";
 import { resolvePlanPath, targetsLocalSandbox } from "./plan-mode-guard";
-import { ToolError } from "./tool-errors";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
 
 /**
  * Return `true` when an ACP client bridge write is appropriate for this path.

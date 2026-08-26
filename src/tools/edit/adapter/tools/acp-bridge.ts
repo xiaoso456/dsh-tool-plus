@@ -6,7 +6,7 @@
  * `routeWriteThroughBridge` always returns `undefined` (not routed) and
  * writes proceed through the local ctx.fs path.
  */
-import type { ToolSession } from './index.ts'
+import type { ToolSession } from '../../../shared/omp/tools/index.ts'
 
 /** Result of a bridge-routed write (verbatim OMP shape; never produced in DSH). */
 export interface BridgeWriteResult {

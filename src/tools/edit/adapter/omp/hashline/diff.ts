@@ -33,9 +33,9 @@ import {
 	stripBom,
 	validateClipboardSequence,
 } from "@oh-my-pi/hashline";
-import { resolveToCwd } from "../../tools/path-utils";
+import { resolveToCwd } from "../../../../shared/omp/tools/path-utils.ts";
 import { generateDiffString } from "../diff";
-import { canonicalSnapshotKey } from "../file-snapshot-store";
+import { canonicalSnapshotKey } from "../../../../shared/omp/edit/file-snapshot-store.ts";
 import { readEditFileText } from "../read-file";
 import { nativeBlockResolver } from "./block-resolver";
 

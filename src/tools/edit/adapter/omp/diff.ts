@@ -5,10 +5,10 @@
  * used when not in patch mode.
  */
 import { diffLines, structuredPatchHunks } from "@oh-my-pi/pi-natives";
-import { resolveToCwd } from "../tools/path-utils";
-import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
+import { resolveToCwd } from "../../../shared/omp/tools/path-utils.ts";
+import { type BlockContextSource, findBlockContextLines } from "../../../shared/omp/utils/block-context.ts";
 import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./modes/replace";
-import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
+import { adjustIndentation, normalizeToLF, stripBom } from "../../../shared/omp/edit/normalize.ts";
 import { readEditFileText } from "./read-file";
 
 export interface DiffResult {

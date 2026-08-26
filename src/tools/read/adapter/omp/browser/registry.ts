@@ -6,7 +6,7 @@
  * 不移植。read-pdf.ts（verbatim）仅在其 PDF 页面截图路径引用本模块的类型与
  * acquireBrowser，故此处保留最小类型面 + 明示不支持抛错（非静默 fallback）。
  */
-import { ToolError } from '../tool-errors.ts'
+import { ToolError } from '../../../../shared/omp/tools/tool-errors.ts'
 
 export type PuppeteerBrowserKind =
   | { kind: 'headless'; headless: boolean }

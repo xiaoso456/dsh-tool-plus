@@ -7,20 +7,20 @@ import { type AstFindMatch, astGrep } from "@oh-my-pi/pi-natives";
 import type { Component } from "@oh-my-pi/pi-tui";
 import { Text } from "@oh-my-pi/pi-tui";
 import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
-import { recordFileSnapshot, recordSeenLinesFromBody } from "../../../edit/adapter/omp/file-snapshot-store";
-import type { RenderResultOptions } from "../../../read/adapter/extensibility/custom-tools/types";
-import type { Theme } from "../../../read/adapter/modes/theme/theme";
+import { recordFileSnapshot, recordSeenLinesFromBody } from "../../../shared/omp/edit/file-snapshot-store.ts";
+import type { RenderResultOptions } from "../../../shared/omp/extensibility/custom-tools/types.ts";
+import type { Theme } from "../../../shared/omp/modes/theme/theme.ts";
 import astGrepDescription from "./prompts/tools/ast-grep.md" with { type: "text" };
-import { isScoutSpawnable } from "../../../glob/adapter/task/spawn-policy";
-import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../../../read/adapter/tui";
-import { resolveFileDisplayMode } from "../../../read/adapter/utils/file-display-mode";
+import { isScoutSpawnable } from "../../../shared/omp/task/spawn-policy.ts";
+import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../../../shared/omp/tui/index.ts";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
 import type { ToolSession } from "../sdk";
-import { materializeReadUrlToFile, parseReadUrlTarget } from "../../../read/adapter/omp/fetch";
+import { materializeReadUrlToFile, parseReadUrlTarget } from "../../../shared/omp/tools/fetch.ts";
 import { createFileRecorder, formatResultPath } from "../../../ast-edit/adapter/omp/file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "../../../ast-edit/adapter/omp/grouped-file-output";
 import { formatMatchLine } from "../../../ast-edit/adapter/omp/match-line-format";
-import type { OutputMeta } from "../../../read/adapter/omp/output-meta";
-import { resolveToolSearchScope, toPathList } from "../../../read/adapter/omp/path-utils";
+import type { OutputMeta } from "../../../shared/omp/tools/output-meta.ts";
+import { resolveToolSearchScope, toPathList } from "../../../shared/omp/tools/path-utils.ts";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,
@@ -32,9 +32,9 @@ import {
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	PREVIEW_LIMITS,
-} from "../../../read/adapter/omp/render-utils";
-import { ToolError } from "../../../read/adapter/omp/tool-errors";
-import { toolResult } from "../../../read/adapter/omp/tool-result";
+} from "../../../shared/omp/tools/render-utils.ts";
+import { ToolError } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
 
 const astGrepSchema = type({
 	pat: type("string").describe("ast pattern"),

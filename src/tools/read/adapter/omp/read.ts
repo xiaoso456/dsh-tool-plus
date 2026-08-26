@@ -17,15 +17,15 @@ import {
 	recordFileSnapshot,
 	recordSeenLinesFromBody,
 	SNAPSHOT_MAX_BYTES,
-} from "../edit/file-snapshot-store";
-import { normalizeToLF } from "../edit/normalize";
-import { isNotebookPath, readEditableNotebookText } from "../edit/notebook";
-import { InternalUrlRouter, resolveLocalUrlToFile, resolveLocalUrlToPath } from "../internal-urls";
+} from "../../../shared/omp/edit/file-snapshot-store.ts";
+import { normalizeToLF } from "../../../shared/omp/edit/normalize.ts";
+import { isNotebookPath, readEditableNotebookText } from "../../../shared/omp/edit/notebook.ts";
+import { InternalUrlRouter, resolveLocalUrlToFile, resolveLocalUrlToPath } from "../../../shared/omp/internal-urls/index.ts";
 import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls/artifact-protocol";
-import { parseInternalUrl } from "../internal-urls/parse";
-import type { InternalUrl } from "../internal-urls/types";
-import readDescription from "../prompts/tools/read.md" with { type: "text" };
-import type { ToolSession } from "../sdk";
+import { parseInternalUrl } from "../../../shared/omp/internal-urls/parse.ts";
+import type { InternalUrl } from "../../../shared/omp/internal-urls/types.ts";
+import readDescription from "../../../shared/omp/prompts/tools/read.md" with { type: "text" };
+import type { ToolSession } from "../../../shared/omp/sdk.ts";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -33,18 +33,18 @@ import {
 	truncateHead,
 	truncateHeadBytes,
 	truncateLine,
-} from "../session/streaming-output";
-import { buildLineEntriesWithBlockContext, lineEntriesToPlainText } from "../utils/block-context";
+} from "../../../shared/omp/session/streaming-output.ts";
+import { buildLineEntriesWithBlockContext, lineEntriesToPlainText } from "../../../shared/omp/utils/block-context.ts";
 import { isCpuProfilePath, renderCpuProfile } from "../utils/cpuprofile";
-import { resolveFileDisplayMode } from "../utils/file-display-mode";
+import { resolveFileDisplayMode } from "../../../shared/omp/utils/file-display-mode.ts";
 import {
 	ImageInputTooLargeError,
 	loadImageInput,
 	MAX_IMAGE_INPUT_BYTES,
 	webpExclusionForModel,
-} from "../utils/image-loading";
+} from "../../../shared/omp/utils/image-loading.ts";
 import { isInspectImageToolActive } from "../utils/inspect-image-mode";
-import { CONVERTIBLE_EXTENSIONS, convertFileWithMarkit } from "../utils/markit";
+import { CONVERTIBLE_EXTENSIONS, convertFileWithMarkit } from "../../../shared/omp/utils/markit.ts";
 import { isSampleProfilePath, renderSampleProfile } from "../utils/sample-profile";
 import { buildDirectoryTree, type DirectoryTree } from "../workspace-tree";
 import {
@@ -57,9 +57,9 @@ import {
 	renderConflictRegion,
 	scanConflictLines,
 	scanFileForConflicts,
-} from "./conflict-detect";
-import { executeReadUrl, fetchReadUrl, parseReadUrlTarget } from "./fetch";
-import { type OutputMeta, resolveOutputMaxColumns } from "./output-meta";
+} from "../../../shared/omp/tools/conflict-detect.ts";
+import { executeReadUrl, fetchReadUrl, parseReadUrlTarget } from "../../../shared/omp/tools/fetch.ts";
+import { type OutputMeta, resolveOutputMaxColumns } from "../../../shared/omp/tools/output-meta.ts";
 import {
 	expandPath,
 	formatPathRelativeToCwd,
@@ -69,7 +69,7 @@ import {
 	splitDelimitedPathEntry,
 	splitInternalUrlSel,
 	splitPathAndSel,
-} from "./path-utils";
+} from "../../../shared/omp/tools/path-utils.ts";
 import { probeLiteralPathExists, splitPathAndSelPreferringLiteral } from "../../../shared/win-path-fixes";
 import { readArchive, resolveArchiveReadPath } from "./read-archive";
 import {
@@ -103,12 +103,12 @@ import { type PdfImageReadTarget, renderPdfPageScreenshot, splitPdfImageReadPath
 import { isMultiRange, isRawSelector, type ParsedSelector, parseSel, selToOffsetLimit } from "./read-selector";
 import { readSqlite, resolveSqliteReadPath } from "./read-sqlite";
 import { isProseSummaryPath, renderSummary, routeReadThroughBridge, trySummarize } from "./read-summary";
-import { formatBytes, shortenPath } from "./render-utils";
-import { REPORT_ISSUE_DEVICE_NAME, reportIssueDeviceUsage } from "./report-tool-issue";
-import { isResolutionDeviceName, resolutionDeviceUsage } from "./resolve";
-import { ToolAbortError, ToolError, throwIfAborted } from "./tool-errors";
-import { toolResult } from "./tool-result";
-import { xdevDocs, xdevListing } from "./xdev";
+import { formatBytes, shortenPath } from "../../../shared/omp/tools/render-utils.ts";
+import { REPORT_ISSUE_DEVICE_NAME, reportIssueDeviceUsage } from "../../../shared/omp/tools/report-tool-issue.ts";
+import { isResolutionDeviceName, resolutionDeviceUsage } from "../../../shared/omp/tools/resolve.ts";
+import { ToolAbortError, ToolError, throwIfAborted } from "../../../shared/omp/tools/tool-errors.ts";
+import { toolResult } from "../../../shared/omp/tools/tool-result.ts";
+import { xdevDocs, xdevListing } from "../../../shared/omp/tools/xdev.ts";
 
 export { readToolRenderer } from "./read-renderer";
 

@@ -16,14 +16,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
-import { Settings } from './config/settings.ts'
-import { getDefault } from './config/settings-schema.ts'
-import type { ToolSession } from './tools/index.ts'
+import { Settings } from '../../shared/omp/config/settings.ts'
+import { getDefault } from '../../shared/omp/config/settings-schema.ts'
+import type { ToolSession } from '../../shared/omp/tools/index.ts'
 import type {
   FileDiagnosticsResult,
   WritethroughCallback,
   WritethroughDeferredHandle,
-} from './lsp/index.ts'
+} from '../../shared/omp/lsp/index.ts'
 import { executeReplace } from './omp/modes/replace.ts'
 import { executePatchSingle, type PatchEditEntry } from './omp/modes/patch.ts'
 import { executeHashlineSingle } from './omp/hashline/execute.ts'

@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { formatPathRelativeToCwd } from "../../../read/adapter/omp/path-utils";
+import { formatPathRelativeToCwd } from "../../../shared/omp/tools/path-utils.ts";
 
 /**
  * Creates a deduplicating recorder for relative file paths.
