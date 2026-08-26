@@ -23,7 +23,7 @@ import writeDescription from "../../omp/prompts/tools/write.md" with { type: "te
 import type { ToolSession } from "../../omp/sdk.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
 import { type ArchiveMemberContent, archiveFormatFromPath, parseArchivePathCandidates, readArchiveEntries, writeArchive } from "../../omp/utils/zip.ts";
-import { resolveToolTier, truncateForPrompt } from "../../omp/tools/approval.ts";
+import { truncateForPrompt } from "../../omp/tools/approval.ts";
 import { assertEditableFile } from "../../shared/auto-generated-guard.dsh";
 import { type ConflictEntry, conflictRegionPresent, conflictRegionsEqual, expandContentTokens, getConflictHistory, parseConflictUri, spliceConflict } from "../../omp/tools/conflict-detect.ts";
 import { invalidateFsScanAfterWrite } from "../../omp/tools/fs-cache-invalidation.ts";
@@ -32,11 +32,10 @@ import { formatPathRelativeToCwd, isInternalUrlPath, pathTargetsSsh, peelWriteUr
 import { enforcePlanModeWrite, resolvePlanPath, unwrapHashlineHeaderPath } from "./plan-mode-guard";
 import { shortenPath } from "../../omp/tools/render-utils.ts";
 import { dispatchReportIssueDevice, REPORT_ISSUE_DEVICE_NAME } from "../../omp/tools/report-tool-issue.ts";
-import { dispatchResolutionDevice, isResolutionDeviceName } from "../../omp/tools/resolve.ts";
+import { dispatchResolutionDevice, isResolutionDeviceName, type XdevDispatch } from "../../omp/tools/resolve.ts";
 import { deleteRowByKey, deleteRowByRowId, insertRow, isSqliteFile, parseSqlitePathCandidates, resolveTableRowLookup, updateRowByKey, updateRowByRowId } from "../../omp/tools/sqlite-reader.ts";
 import { ToolError } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
-import { dispatchXdevTool, resolveXdevTool, type XdevDispatch, xdevListing } from "../../omp/tools/xdev.ts";
 
 const LOOSE_HASHLINE_HEADER_RE = /^\s*\[[^#\r\n]+#[^ \t\r\n]*\]\s*$/;
 const EXECUTABLE_NOTICE = "[Notice: Made executable via chmod +x]";
@@ -65,7 +64,7 @@ function assertWriteTargetAddressable(target: string, router: InternalUrlRouter)
 	const canonicalScheme = router.getHandler(scheme) ? scheme : XD_SCHEME_NEAR_MISSES[scheme] ? "xd" : undefined;
 	const suggestion = canonicalScheme
 		? ` Did you mean '${canonicalScheme}://${uriLike[2]}'?`
-		: " Tool devices use 'xd://<tool>'.";
+		: " Available 'xd://' devices include 'xd://resolve' and 'xd://report_issue'.";
 	throw new ToolError(
 		`Unknown URI-like write target '${trimmed}'.${suggestion} Prefix the path with './' to write it as a filesystem path.`,
 	);
@@ -446,40 +445,15 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// Unwrap a hashline `[path#TAG]` wrapper first (parity with execute) so a
 		// wrapped `[ssh://h/x#ABCD]` can't dodge scheme detection and the tier checks below.
 		const path = unwrapHashlineHeaderPath(rawPath);
-		// xd:// device writes execute the mounted tool — take its approval tier.
-		// The resolution devices (xd://resolve, xd://reject, xd://propose)
-		// finalize a staged, already-previewed action, so they stay at read tier.
+		// The always-available xd:// devices finalize a staged, already-previewed
+		// action, so they stay at read tier; report_issue opens the issue
+		// tracker, so it stays at write tier. DSH mounts no arbitrary tool
+		// devices — anything else fails closed at exec tier.
 		const xdevTarget = parseXdUrl(path);
 		if (xdevTarget) {
 			if (xdevTarget.name === REPORT_ISSUE_DEVICE_NAME) return "write";
 			if (xdevTarget.name && isResolutionDeviceName(xdevTarget.name)) return "read";
-			const inst =
-				xdevTarget.name && this.session.xdev ? resolveXdevTool(this.session.xdev, xdevTarget.name) : undefined;
-			if (!inst) return "exec";
-			// Decode the device JSON payload and evaluate the mounted tool's own
-			// approval (which may be argument-dependent, e.g. ast_edit is read-tier
-			// for internal-URL paths, debug is read-tier for inspection actions).
-			// Malformed JSON, non-object payloads, missing content, and approval
-			// functions that reject schema-invalid objects stay exec so the gate
-			// fails closed — the dispatch itself rejects invalid arguments too.
-			const rawContent = (args as Partial<WriteParams>).content;
-			if (typeof rawContent !== "string") return "exec";
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(rawContent);
-			} catch {
-				return "exec";
-			}
-			if (!isRecord(parsed)) return "exec";
-			try {
-				// The tier is the mounted tool's own (argument-dependent) approval; the
-				// policyKey makes the outer gate consult `tools.approval.<device>` for
-				// this dispatch before falling back to `tools.approval.write`, so users
-				// can scope allow/deny/prompt to a single device (issue #7923).
-				return { tier: resolveToolTier(inst, parsed), policyKey: xdevTarget.name! };
-			} catch {
-				return "exec";
-			}
+			return "exec";
 		}
 		// Remote SSH writes open an outbound connection and run a remote shell —
 		// gate them like the exec-tier `ssh` tool, ahead of the handler-write
@@ -1074,31 +1048,11 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 									};
 									return;
 								}
-								const xdev = this.session.xdev;
-								if (!xdev) {
-									throw new ToolError("xd:// is not mounted in this session.");
-								}
-								if (!name) {
-									throw new ToolError(`Cannot write to xd:// itself — pick a device:\n${xdevListing(xdev)}`);
-								}
-								const { result, xdev: dispatch } = await dispatchXdevTool(
-									xdev,
-									name,
-									deviceContent,
-									_toolCallId,
-									signal,
-									onUpdate as AgentToolUpdateCallback,
-									// The write tool's own gate just resolved approval at this
-									// device's tier (see #approval above) — mark it so a wrapped
-									// inner tool does not prompt a second time.
-									context ? { ...context, xdevApproved: true } : undefined,
+								throw new ToolError(
+									name
+										? `Unknown xd:// device '${name}'. DSH mounts no tool devices.`
+										: "Cannot write to xd:// itself — available devices: xd://resolve, xd://reject, xd://propose, xd://report_issue.",
 								);
-								xdResult = {
-									content: result.content,
-									details: { xdev: dispatch },
-									isError: result.isError,
-									useless: result.useless,
-								};
 							},
 						},
 					});

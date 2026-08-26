@@ -94,16 +94,20 @@ function runPatchEntry(options: {
    * `op: "create"` as full-file overwrite (allowCreateOverwrite: true), while
    * the Codex `apply_patch` envelope documents `*** Add File` as strictly
    * non-overwriting (left unset). Defaults to false (apply_patch contract).
+   *   allowFuzzy? / fuzzyThreshold?：面板 edit.fuzzyMatch / edit.fuzzyThreshold
+   *   经 Settings 门面直达引擎；undefined = 引擎默认（true / 0.95）。
    */
   allowCreateOverwrite?: boolean
+  allowFuzzy?: boolean
+  fuzzyThreshold?: number
 }): Promise<AgentToolResult<any>> {
   return executePatchSingle({
     session: options.session,
     path: options.path,
     params: options.entry,
     signal: options.signal,
-    allowFuzzy: true,
-    fuzzyThreshold: 0.95,
+    allowFuzzy: options.allowFuzzy ?? true,
+    fuzzyThreshold: options.fuzzyThreshold ?? 0.95,
     allowCreateOverwrite: options.allowCreateOverwrite ?? false,
     writethrough: options.writethrough,
   })
@@ -161,6 +165,11 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
       const session = createToolSession(exec, cfg)
       const writethrough = createWritethrough(ctx, exec)
       const signal = exec?.signal
+      // fuzzy 配置补线：面板 edit.fuzzyMatch/edit.fuzzyThreshold 经 Settings
+      // 门面（OMP_KEY_TO_FIELD）直达引擎，替代原硬编码 true/0.95。
+      const allowFuzzy = session.settings.get('edit.fuzzyMatch') !== false
+      const fuzzyThresholdRaw = session.settings.get('edit.fuzzyThreshold')
+      const fuzzyThreshold = typeof fuzzyThresholdRaw === 'number' && fuzzyThresholdRaw > 0 ? fuzzyThresholdRaw : 0.95
 
       // ---- hashline / apply_patch mode ------------------------------------
       // (OMP-faithful: these modes carry their paths inside `input` — the
@@ -178,6 +187,8 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
               entry: { op: entry.op, rename: entry.rename, diff: entry.diff },
               signal,
               writethrough,
+              allowFuzzy,
+              fuzzyThreshold,
               // apply_patch contract: `*** Add File` is strictly non-overwriting.
             })
             texts.push(
@@ -212,6 +223,8 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
           entry: { op: 'update', diff: args.patch },
           signal,
           writethrough,
+          allowFuzzy,
+          fuzzyThreshold,
           // JSON patch mode: `op: "create"` doubles as the documented
           // full-file overwrite (OMP index.ts patch mode).
           allowCreateOverwrite: true,
@@ -236,8 +249,8 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
           path: filePath,
           params: { old_string: edit.oldText, new_string: edit.newText, replace_all: args.replace_all ?? false },
           signal,
-          allowFuzzy: true,
-          fuzzyThreshold: 0.95,
+          allowFuzzy,
+          fuzzyThreshold,
           writethrough,
         })
         totalReplacements += (result.details as any)?.replacements ?? 0

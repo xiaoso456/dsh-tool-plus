@@ -82,9 +82,7 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   // tools.*（read 输出行宽兜底）
   'tools.maxTimeout': 0,
   'tools.outputMaxColumns': 768,
-  // 工具启用开关默认值兜底
-  'glob.enabled': true,
-  'grep.enabled': true,
+  // 工具启用开关默认值兜底（仅 ast 族有开关；glob/grep 按拍板无开关恒注册）
   // astGrep.enabled 默认 false（OMP 原版 settings-schema.ts:3831：ast_grep 默认禁用，
   // 需用户在设置面板开启）；astEdit.enabled 默认 true（settings-schema.ts:3842）。
   'astGrep.enabled': false,
@@ -95,12 +93,8 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   'inspect_image.mode': 'auto',
   // memory.*（DSH 虚拟路由去掉，恒 off）
   'memory.backend': 'off',
-  // providers.*（web 抓取偏好；DSH 默认 auto）
+  // providers.*（fetch 抓取偏好；DSH 默认 auto）
   'providers.fetch': 'auto',
-  'providers.webSearchTimeoutSeconds': 60,
-  // exa.*
-  'exa.enabled': true,
-  'exa.searchDelayMs': 1_000,
   // searxng.*（endpoint 未配置 → undefined）
   'searxng.endpoint': undefined,
   // dev.*（report-tool-issue 兜底）

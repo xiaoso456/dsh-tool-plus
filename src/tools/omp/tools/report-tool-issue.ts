@@ -38,7 +38,7 @@ import type { Settings } from "../config/settings";
 import type { ToolSession } from "./index";
 import { replaceTabs } from "./render-utils";
 import { ToolError } from "./tool-errors";
-import type { XdevDispatch } from "./xdev";
+import type { XdevDispatch } from "./resolve";
 
 export const REPORT_ISSUE_DEVICE_NAME = "report_issue";
 export const REPORT_ISSUE_DEVICE_PATH = `xd://${REPORT_ISSUE_DEVICE_NAME}`;

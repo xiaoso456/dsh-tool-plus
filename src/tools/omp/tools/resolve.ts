@@ -19,9 +19,25 @@ import { prompt } from "@oh-my-pi/pi-utils";
 import { parseXdUrl, XD_URL_PREFIX } from "../internal-urls/xd-protocol";
 import resolveReminderPrompt from "../prompts/system/resolve-device-reminder.md" with { type: "text" };
 import type { ToolSession } from ".";
+import type { ToolTier } from "./approval";
 import { replaceTabs } from "./render-utils";
 import { ToolError } from "./tool-errors";
-import type { XdevDispatch } from "./xdev";
+
+/**
+ * Dispatch metadata carried on write-tool details for renderer delegation.
+ * （原 xdev.ts 的类型面；挂载设备层已随拍板剔除，仅 resolution/report_issue
+ * 设备继续在 write details 上携带此元数据。）
+ */
+export interface XdevDispatch {
+	tool: string;
+	mode: "help" | "execute";
+	/** Validated inner args, kept for renderer delegation on result rebuilds. */
+	args?: Record<string, unknown>;
+	/** Approval tier of the wrapped device call (`read` = no workspace mutation). */
+	tier?: ToolTier;
+	/** Details object returned by the wrapped tool, when executed. */
+	inner?: unknown;
+}
 
 export const RESOLVE_DEVICE_NAME = "resolve";
 export const REJECT_DEVICE_NAME = "reject";

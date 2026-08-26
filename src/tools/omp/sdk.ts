@@ -3,13 +3,12 @@
  * tool-plus engines (read/write/grep/glob/edit).
  *
  * Shared superset: read/write/grep/glob adapter copies declared the members
- * their engine touches; this shared copy keeps the union (read's xdev /
+ * their engine touches; this shared copy keeps the union (read's
  * conflict-history, grep/glob's `getSessionSpawns`, edit's `noopLoopGuard`).
  * DSH provides a session adapter implementing this interface.
  */
 import type { Settings } from './config/settings.ts'
 import type { Skill } from './extensibility/skills.ts'
-import type { XdevState } from './tools/xdev.ts'
 import type { ConflictHistory } from './tools/conflict-detect.ts'
 import type { Model } from '@oh-my-pi/pi-ai'
 
@@ -23,8 +22,6 @@ declare module '@oh-my-pi/pi-agent-core' {
     sessionManager?: {
       saveArtifact: (text: string, toolName: string) => Promise<string | undefined>
     }
-    /** Set on xd:// device dispatches (DSH: never set). */
-    xdevApproved?: boolean
   }
 }
 
@@ -81,8 +78,6 @@ export interface ToolSession {
   authStorage?: import('@oh-my-pi/pi-ai').AuthStorage
   /** Conflict history for conflict:// write-back (DSH: absent). */
   conflictHistory?: ConflictHistory
-  /** `xd://` presentation state (DSH: no X dev protocol — absent). */
-  xdev?: XdevState
 }
 
 /** Tool-choice queue for staged resolution previews (DSH: never present). */

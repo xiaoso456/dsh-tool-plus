@@ -107,7 +107,6 @@ import { REPORT_ISSUE_DEVICE_NAME, reportIssueDeviceUsage } from "../../omp/tool
 import { isResolutionDeviceName, resolutionDeviceUsage } from "../../omp/tools/resolve.ts";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
-import { xdevDocs, xdevListing } from "../../omp/tools/xdev.ts";
 
 /** Largest profile (`*.sample.txt`, `*.cpuprofile`) converted to a bottleneck summary; bigger files read as plain text. */
 const MAX_PROFILE_SUMMARY_BYTES = 32 * 1024 * 1024;
@@ -439,21 +438,12 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Whether the agent can actually reach `inspect_image` right now: exposed
-	 * top-level, or mounted as an `xd://` device while the effective mode wants
-	 * it (mounted devices stay executable via `write xd://inspect_image`, so a
-	 * metadata-only read remains actionable). Sessions with neither
-	 * availability signal (tests, embedded use) fall back to the mode
-	 * computation alone. Restricted slates (subagents without the tool and
-	 * without xdev) resolve to unavailable, so those sessions get inline image
-	 * blocks instead of guidance pointing at an absent tool.
+	 * Whether the agent can actually reach `inspect_image` right now. DSH has
+	 * no `xd://` device mounting, so availability reduces to the effective
+	 * mode computation alone.
 	 */
 	#resolveInspectImageAvailability(): boolean {
-		const topLevel = this.session.isToolActive?.("inspect_image");
-		const xdev = this.session.xdev;
-		if (topLevel === undefined && xdev === undefined) return isInspectImageToolActive(this.session);
-		if (topLevel === true) return true;
-		return xdev?.mountedNames.has("inspect_image") === true && isInspectImageToolActive(this.session);
+		return isInspectImageToolActive(this.session);
 	}
 
 	/**
@@ -1778,9 +1768,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				read: async name => {
 					if (name === REPORT_ISSUE_DEVICE_NAME) return reportIssueDeviceUsage();
 					if (name && isResolutionDeviceName(name)) return resolutionDeviceUsage(name);
-					const xdev = this.session.xdev;
-					if (!xdev) throw new ToolError("xd:// is not mounted in this session.");
-					return name === null ? xdevListing(xdev) : xdevDocs(xdev, name);
+					throw new ToolError(
+						name
+							? `Unknown xd:// device '${name}'.`
+							: "No xd:// tools are mounted in this session.",
+					);
 				},
 			},
 		});
