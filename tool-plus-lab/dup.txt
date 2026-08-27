@@ -1,0 +1,6 @@
+PEAR pie recipe
+PEAR crumble recipe REPLACED
+banana bread recipe
+PEAR appears twice above so single-target edits must fail without replace_all
+target-cherry appears once
+tail line

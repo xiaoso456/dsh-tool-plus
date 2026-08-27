@@ -1,0 +1,5 @@
+fuzzy test: this line uses NORMALIZED spacing
+and tabs	converted here
+next line is normal
+KEEP-ANCHOR-token stable
+last line

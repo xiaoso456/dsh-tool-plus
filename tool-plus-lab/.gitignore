@@ -1,0 +1,4 @@
+# lab-local ignore rules for gitignore-semantics tests
+*.env
+secrets/
+build-output/
