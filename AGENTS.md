@@ -4,7 +4,7 @@
 
 ## 项目
 
-`@xiaoso/dsh-tool-plus`：DeepSeek Harness 工具全家桶插件（bash + read/write/edit/grep/glob/read_image，可选 ast_grep/ast_edit），Oh My Pi 内核移植。一个 git 仓库发两个 npm 包：
+`@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。一个 git 仓库发两个 npm 包：
 
 | 包 | 目录 | 版本线 | 当前 |
 |---|---|---|---|
