@@ -32,6 +32,7 @@ import {
   sanitizePatchPrompt,
   sanitizeReplacePrompt,
 } from '../../shared/omp-prompt.ts'
+import { resolveSandboxPolicy } from '../../shared/sandbox-policy.ts'
 import patchMd from './prompts/tools/patch.md' with { type: 'text' }
 import applyPatchMd from './prompts/tools/apply-patch.md' with { type: 'text' }
 import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
@@ -52,21 +53,25 @@ function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   return { cwd, settings, hasEditTool: true }
 }
 
-/** File-write channel for DSH: write via ctx.fs (no LSP formatting/diagnostics). */
-function createWritethrough(ctx: Context, exec: any): WritethroughCallback {
+/** File-write channel for DSH (方案A, 2026-08-27): every edit mode funnels
+ * through `ctx.fs` with the per-call sandbox policy resolved from the session
+ * (official tool-fs semantics). The OMP engines pass a `file` handle for
+ * patch/hashline modes — previously this adapter wrote through that handle
+ * (OMP node-fs direct write), bypassing the host's sandbox fence entirely,
+ * while replace mode went through `ctx.fs` WITHOUT the policy argument and
+ * was denied by the deployment fallback. Both defects are fixed here: the
+ * handle is ignored and the policy is always attached. */
+export function createWritethrough(ctx: Context, exec: any): WritethroughCallback {
   return async (
     dst: string,
     content: string,
     signal?: AbortSignal,
-    file?: { write(content: string): Promise<void> },
+    _file?: { write(content: string): Promise<void> },
   ): Promise<void> => {
-    if (file) {
-      await file.write(content)
-      return
-    }
     const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
     const target = await ctx.fs.resolve(dst, { cwd, signal })
-    await ctx.fs.writeText(target, content, undefined, signal)
+    const sandboxPolicy = resolveSandboxPolicy(ctx, exec)
+    await ctx.fs.writeText(target, content, undefined, signal, sandboxPolicy)
   }
 }
 
@@ -253,7 +258,12 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
           fuzzyThreshold,
           writethrough,
         })
-        totalReplacements += (result.details as any)?.replacements ?? 0
+        // 引擎 details 无 replacements 字段（计数只在 resultText："Successfully
+        // replaced N occurrences in ..." / "Successfully replaced text in ..."），
+        // 从文本回解计数；单命中句式计 1。
+        const text = toText(result)
+        const occ = /replaced (\d+) occurrences/.exec(text)
+        totalReplacements += occ ? Number(occ[1]) : text.startsWith('Successfully replaced') ? 1 : 0
         if (result.isError) {
           const first = result.content.find((b): b is { type: 'text'; text: string } => b.type === 'text')
           throw new Error(first?.text ?? 'edit failed')
