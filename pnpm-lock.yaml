@@ -23,9 +23,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
-      '@oh-my-pi/hashline':
-        specifier: link:src\tools\hashline\omp-hashline
-        version: link:src/tools/hashline/omp-hashline
       '@oh-my-pi/omptype':
         specifier: 17.3.5
         version: 17.3.5

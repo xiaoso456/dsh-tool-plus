@@ -19,6 +19,7 @@ export default defineConfig({
       // copies); map them onto vitest so the originals run unmodified.
       'bun:test': SHIM('tests/bun-test-shim.ts'),
       'node:fs/promises': SHIM('src/tools/shared/fs-promises-shim.ts'),
+      '@oh-my-pi/hashline': SHIM('src/tools/hashline/engine/index.ts'),
     },
   },
   plugins: [
@@ -41,7 +42,7 @@ export default defineConfig({
       'tests/unit/**/*.spec.ts',
       'tests/boot/**/*.spec.ts',
       // OMP's own hashline test suite (verbatim, run unmodified via bun:test shim).
-      'src/tools/hashline/omp-hashline/test/*.test.ts',
+      'src/tools/hashline/test/*.test.ts',
     ],
     testTimeout: 60_000,
     // OMP tool code (Bun-origin) needs the Bun global before any module

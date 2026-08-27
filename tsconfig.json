@@ -4,7 +4,8 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "paths": {
-      "bun:sqlite": ["./src/tools/shared/bun-sqlite-shim.ts"]
+      "bun:sqlite": ["./src/tools/shared/bun-sqlite-shim.ts"],
+      "@oh-my-pi/hashline": ["./src/tools/hashline/engine/index.ts"]
     },
     "lib": ["esnext", "dom"],
     "types": ["node"],
@@ -24,7 +25,6 @@
   "include": ["src"],
   "exclude": [
     "src/tools/_raw_omp",
-    "src/tools/hashline/omp-hashline/test",
-    "src/tools/hashline/omp-hashline/bench"
+    "src/tools/hashline/test"
   ]
 }

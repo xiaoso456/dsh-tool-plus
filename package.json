@@ -3,8 +3,11 @@
   "description": "Oh My Pi bash runtime ported as a deepseek-harness tool plugin: persistent shell session, output minimizer, managed background jobs, command interception",
   "version": "0.0.1",
   "license": "MIT",
-  "private": true,
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
@@ -24,6 +27,7 @@
   "files": [
     "lib",
     "presets",
+    "scripts/patch-pi-natives.mjs",
     "src/bash-runtime/shell-snapshot-fn-env.sh",
     "cordis.patch.yml",
     "README.md",
@@ -48,7 +52,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "presets:install": "node presets/install-presets.mjs",
-    "presets:install:force": "node presets/install-presets.mjs --force"
+    "presets:install:force": "node presets/install-presets.mjs --force",
+    "postinstall": "node scripts/patch-pi-natives.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -67,7 +72,6 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@oh-my-pi/hashline": "link:src\\tools\\hashline\\omp-hashline",
     "@oh-my-pi/omptype": "17.3.5",
     "@oh-my-pi/pi-agent-core": "17.3.5",
     "@oh-my-pi/pi-ai": "17.3.5",

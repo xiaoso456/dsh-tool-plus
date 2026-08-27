@@ -36,7 +36,7 @@ import { resolveSandboxPolicy } from '../../shared/sandbox-policy.ts'
 import patchMd from './prompts/tools/patch.md' with { type: 'text' }
 import applyPatchMd from './prompts/tools/apply-patch.md' with { type: 'text' }
 import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
-import hashlinePromptMd from '../../hashline/omp-hashline/src/prompt.md' with { type: 'text' }
+import hashlinePromptMd from '../../hashline/engine/prompt.md' with { type: 'text' }
 
 /** OMP 原版按模式渲染的 edit 描述（prompts/tools/*.md verbatim + hashline 引擎 prompt.md）。 */
 const EDIT_MODE_DESCRIPTIONS = {

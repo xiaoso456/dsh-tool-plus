@@ -61,6 +61,8 @@ export default defineConfig([
       'node:fs/promises': SHIM('src/tools/shared/fs-promises-shim.ts'),
       'bun': SHIM('src/tools/shared/bun-named-shim.ts'),
       'bun:ffi': SHIM('src/tools/shared/bun-ffi-shim.ts'),
+      // Fused in-repo OMP hashline sources (no package.json / link: anymore).
+      '@oh-my-pi/hashline': SHIM('src/tools/hashline/engine/index.ts'),
     },
     deps: {
       // @deepseek-ai/* and pi-natives resolve through node_modules (workspace
