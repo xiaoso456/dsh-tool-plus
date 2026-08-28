@@ -6,7 +6,9 @@
  * this adapter only:
  *  - builds an OMP `ToolSession` from the DSH exec context + tool-plus config,
  *  - constructs the verbatim `GrepTool` and calls its `execute`,
- *  - converts the `AgentToolResult` back to a DSH tool result.
+ *  - converts the `AgentToolResult` back to a DSH tool result, appending the
+ *    OMP session-layer meta notice (`formatOutputNotice`, A-6) to the
+ *    model-visible text.
  *
  * Parameters follow OMP's native style (`pattern` regex + `path` with inline
  * `:N-M` selectors); the DSH tool exposes the same schema so nothing is lost.
@@ -19,6 +21,7 @@ import { renderOmpPrompt, sanitizeGrepPrompt } from '../../shared/omp-prompt.ts'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
+import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { GrepTool } from '../../omp/tools/grep.ts'
 import grepMd from './prompts/tools/grep.md' with { type: 'text' }
 
@@ -43,6 +46,58 @@ function toText(result: AgentToolResult<any>): string {
     throw new Error(text || 'grep failed')
   }
   return text
+}
+
+/** DSH grep 工具输出形状（output.schema 镜像）。 */
+export interface GrepToolOutput {
+  text: string
+  matchCount?: number
+  fileCount?: number
+  files?: string[]
+  scopePath?: string
+  truncated?: boolean
+}
+
+/**
+ * 把 OMP AgentToolResult 转成 DSH grep 工具输出。
+ *
+ * 上游 session 层会把 `formatOutputNotice(details.meta)` 的限量/截断提示追加
+ * 进模型可见文本（wrapToolWithMetaNotice → appendOutputNotice，refs
+ * tools/output-meta.ts:586）；DSH 无 session 层，适配层在此补上（A-6），
+ * 否则 grep 的列宽截断/限量对模型静默。
+ */
+export function toGrepToolResult(result: AgentToolResult<any>): GrepToolOutput {
+  const text = toText(result)
+  const details = (result.details ?? {}) as Record<string, unknown>
+  const notice = formatOutputNotice(details.meta as OutputMeta | undefined)
+  return {
+    text: text + notice,
+    ...(typeof details.matchCount === 'number' ? { matchCount: details.matchCount } : {}),
+    ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
+    ...(Array.isArray(details.files) ? { files: details.files as string[] } : {}),
+    ...(typeof details.scopePath === 'string' ? { scopePath: details.scopePath } : {}),
+    ...(details.truncated === true ? { truncated: true } : {}),
+  }
+}
+
+/**
+ * 完整执行链路（defineTool.execute 与单测共用）。
+ *
+ * `ctx` 参数与 read 的 executeReadTool 对齐（grep 引擎不需要 image bridge /
+ * session state，仅占位保持签名一致）。
+ */
+export async function executeGrepTool(exec: any, cfg: RuntimeConfig, args: any, ctx: Context): Promise<GrepToolOutput> {
+  const session = createToolSession(exec, cfg)
+  const tool = new GrepTool(session)
+  const params: Record<string, unknown> = { pattern: String(args.pattern ?? '') }
+  if (args.path !== undefined && args.path !== null && args.path !== '') {
+    params.path = String(args.path)
+  }
+  if (typeof args.case === 'boolean') params.case = args.case
+  if (typeof args.gitignore === 'boolean') params.gitignore = args.gitignore
+  if (typeof args.skip === 'number') params.skip = args.skip
+  const result = await tool.execute('grep', params as never, exec.signal)
+  return toGrepToolResult(result)
 }
 
 /**
@@ -82,26 +137,7 @@ export function registerGrep(ctx: Context, getConfig: () => RuntimeConfig): void
       }) as any,
     },
     async execute(args: any, exec: any) {
-      const session = createToolSession(exec, getConfig())
-      const tool = new GrepTool(session)
-      const params: Record<string, unknown> = { pattern: String(args.pattern ?? '') }
-      if (args.path !== undefined && args.path !== null && args.path !== '') {
-        params.path = String(args.path)
-      }
-      if (typeof args.case === 'boolean') params.case = args.case
-      if (typeof args.gitignore === 'boolean') params.gitignore = args.gitignore
-      if (typeof args.skip === 'number') params.skip = args.skip
-      const result = await tool.execute('grep', params as never, exec.signal)
-      const text = toText(result)
-      const details = (result.details ?? {}) as Record<string, unknown>
-      return {
-        text,
-        ...(typeof details.matchCount === 'number' ? { matchCount: details.matchCount } : {}),
-        ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
-        ...(Array.isArray(details.files) ? { files: details.files as string[] } : {}),
-        ...(typeof details.scopePath === 'string' ? { scopePath: details.scopePath } : {}),
-        ...(details.truncated === true ? { truncated: true } : {}),
-      }
+      return executeGrepTool(exec, getConfig(), args, ctx)
     },
     presentCall: (args: any) => ({
       card: 'generic',

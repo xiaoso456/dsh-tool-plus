@@ -19,7 +19,7 @@ import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult
 import { isEnoent } from "@oh-my-pi/pi-utils";
 import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
-import { assertEditableFileContent } from "../../../edit/adapter/tools/auto-generated-guard";
+import { assertEditableFileContent } from "../../../omp/tools/auto-generated-guard.ts";
 import { invalidateFsScanAfterWrite } from "../../../omp/tools/fs-cache-invalidation.ts";
 import { isInternalUrlPath } from "../../../omp/tools/path-utils.ts";
 import { enforcePlanModeWrite, resolvePlanPath, targetsLocalSandbox } from "../../../edit/adapter/tools/plan-mode-guard";

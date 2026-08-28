@@ -12,7 +12,7 @@ import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { isEnoent } from "@oh-my-pi/pi-utils";
 import { type WritethroughCallback } from "../../../omp/tools/writethrough.ts";
 import type { ToolSession } from "../../../omp/tools/index.ts";
-import { assertEditableFile } from "../../../shared/auto-generated-guard.dsh";
+import { assertEditableFile } from "../../../omp/tools/auto-generated-guard.ts";
 import {
 	invalidateFsScanAfterDelete,
 	invalidateFsScanAfterRename,

@@ -6,7 +6,9 @@
  * this adapter only:
  *  - builds an OMP `ToolSession` from the DSH exec context + tool-plus config,
  *  - constructs the verbatim `GlobTool` and calls its `execute`,
- *  - converts the `AgentToolResult` back to a DSH tool result.
+ *  - converts the `AgentToolResult` back to a DSH tool result, appending the
+ *    OMP session-layer meta notice (`formatOutputNotice`, A-6) to the
+ *    model-visible text.
  *
  * plan.md 拍板：glob keeps OMP's native single-param style (`path` with a
  * semicolon-delimited multi-target list). DSH `hidden`/`gitignore`/`limit`
@@ -20,6 +22,7 @@ import { renderOmpPrompt, sanitizeGlobPrompt } from '../../shared/omp-prompt.ts'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
+import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { GlobTool } from '../../omp/tools/glob.ts'
 import globMd from './prompts/tools/glob.md' with { type: 'text' }
 
@@ -44,6 +47,52 @@ function toText(result: AgentToolResult<any>): string {
     throw new Error(text || 'glob failed')
   }
   return text
+}
+
+/** DSH glob 工具输出形状（output.schema 镜像）。 */
+export interface GlobToolOutput {
+  path: string
+  text: string
+  fileCount?: number
+  truncated?: boolean
+}
+
+/**
+ * 把 OMP AgentToolResult 转成 DSH glob 工具输出。
+ *
+ * 上游 session 层会把 `formatOutputNotice(details.meta)` 的限量/截断提示追加
+ * 进模型可见文本（wrapToolWithMetaNotice → appendOutputNotice，refs
+ * tools/output-meta.ts:586）；DSH 无 session 层，适配层在此补上（A-6），
+ * 否则 glob 超限截断对模型静默。
+ */
+export function toGlobToolResult(result: AgentToolResult<any>, args: any): GlobToolOutput {
+  const text = toText(result)
+  const details = (result.details ?? {}) as Record<string, unknown>
+  const notice = formatOutputNotice(details.meta as OutputMeta | undefined)
+  return {
+    path: String(details.scopePath ?? args.path ?? ''),
+    text: text + notice,
+    ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
+    ...(typeof details.truncated === 'boolean' ? { truncated: details.truncated } : {}),
+  }
+}
+
+/**
+ * 完整执行链路（defineTool.execute 与单测共用）。
+ *
+ * `ctx` 参数与 read 的 executeReadTool 对齐（glob 引擎不需要 image bridge /
+ * session state，仅占位保持签名一致）。
+ */
+export async function executeGlobTool(exec: any, cfg: RuntimeConfig, args: any, ctx: Context): Promise<GlobToolOutput> {
+  const session = createToolSession(exec, cfg)
+  const tool = new GlobTool(session)
+  const result = await tool.execute('glob', {
+    path: args.path !== undefined ? String(args.path) : undefined,
+    hidden: args.hidden,
+    gitignore: args.gitignore,
+    limit: args.limit,
+  }, exec.signal)
+  return toGlobToolResult(result, args)
 }
 
 /**
@@ -79,22 +128,7 @@ export function registerGlob(ctx: Context, getConfig: () => RuntimeConfig): void
       }) as any,
     },
     async execute(args: any, exec: any) {
-      const session = createToolSession(exec, getConfig())
-      const tool = new GlobTool(session)
-      const result = await tool.execute('glob', {
-        path: args.path !== undefined ? String(args.path) : undefined,
-        hidden: args.hidden,
-        gitignore: args.gitignore,
-        limit: args.limit,
-      }, exec.signal)
-      const text = toText(result)
-      const details = (result.details ?? {}) as Record<string, unknown>
-      return {
-        path: String(details.scopePath ?? args.path ?? ''),
-        text,
-        ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
-        ...(typeof details.truncated === 'boolean' ? { truncated: details.truncated } : {}),
-      }
+      return executeGlobTool(exec, getConfig(), args, ctx)
     },
     presentCall: (args: any) => ({
       card: 'generic',

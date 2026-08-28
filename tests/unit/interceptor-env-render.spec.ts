@@ -38,7 +38,8 @@ describe('checkBashInterception', () => {
 
   it('default rules target dsh tool names', () => {
     const tools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))]
-    expect(tools.sort()).toEqual(['edit', 'glob', 'grep', 'read'])
+    // A-2：规则表对齐上游 10 条裁剪 hub 3 条后含 echo/printf 重定向 → write（second-impl-audit.md A-2）
+    expect(tools.sort()).toEqual(['edit', 'glob', 'grep', 'read', 'write'])
   })
 })
 

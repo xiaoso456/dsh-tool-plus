@@ -21,7 +21,10 @@
 export interface OmpSessionState {
   /** 冲突注册表（read 注册 / write 消费）。 */
   conflictHistory?: unknown
-  /** hashline 快照存储（read 锚点 / edit 校验；预留，暂未接入）。 */
+  /**
+   * hashline 快照存储（read 锚点 / edit seen-lines 校验 / 锚点漂移恢复；
+   * A-4 桥接，与 conflictHistory 对称：attach/persist round-trip）。
+   */
   fileSnapshotStore?: unknown
 }
 
@@ -42,24 +45,27 @@ export function getOmpSessionState(sessionKey: object): OmpSessionState {
  * 无 sessionKey（无会话上下文）时跳过——状态不跨调用保持。
  */
 export function attachOmpSessionState(
-  session: { conflictHistory?: unknown },
+  session: { conflictHistory?: unknown; fileSnapshotStore?: unknown },
   sessionKey: object | undefined,
 ): void {
   if (!sessionKey) return
   const state = getOmpSessionState(sessionKey)
   if (state.conflictHistory) session.conflictHistory = state.conflictHistory
+  if (state.fileSnapshotStore) session.fileSnapshotStore = state.fileSnapshotStore
 }
 
 /**
  * 把 ToolSession 上引擎新建/更新的状态写回共享存储（execute 结束后调用）。
- * OMP 引擎惰性创建 ConflictHistory 并赋到 session 对象上，必须回写才能
- * 被下一次调用恢复。
+ * OMP 引擎会惰性新建 ConflictHistory / fileSnapshotStore 并赋到 session
+ * 对象上（如 read.ts 经 getFileSnapshotStore 挂快照库），必须回写才能被
+ * 下一次调用恢复。
  */
 export function persistOmpSessionState(
   sessionKey: object | undefined,
-  session: { conflictHistory?: unknown },
+  session: { conflictHistory?: unknown; fileSnapshotStore?: unknown },
 ): void {
   if (!sessionKey) return
   const state = getOmpSessionState(sessionKey)
   if (session.conflictHistory) state.conflictHistory = session.conflictHistory
+  if (session.fileSnapshotStore) state.fileSnapshotStore = session.fileSnapshotStore
 }

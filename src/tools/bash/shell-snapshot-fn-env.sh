@@ -1,12 +1,35 @@
 # From oh-my-pi (https://github.com/can1357/oh-my-pi) — MIT (c) Mario Zechner, Can Bölük.
+# DSH adaptation note: body below is verbatim from refs oh-my-pi packages/coding-agent/src/utils/
+# shell-snapshot-fn-env.sh (audit S-12); loaded at runtime by loadFnEnvHelper() in shell-snapshot.ts
+# (upstream inlines it via `import … with { type: "text" }`).
+#!/bin/sh
+
+# Helpers inlined into `generateSnapshotScript` (shell-snapshot.ts).
+#
+# Activation idioms like `mise activate` install a shell function whose body
+# expands a sidecar env var (e.g. `mise() { command "$__MISE_EXE" "$@"; }`).
+# The function survives `declare -f`/`typeset -f` capture, but the helper var
+# is set on the rc-sourced shell and lost when only PATH gets re-exported.
+# The replay shell then calls `command "" …` and dies with
+# `command: command not found:` (issue #3470).
+#
+# `__omp_emit_referenced_exports` reads captured function bodies from stdin,
+# extracts every `$VAR` / `${VAR…}` reference, and emits a single
+# `export VAR='value'` line to stdout for each referenced var that
+# (a) is currently set in this shell and (b) is not a shell-internal name.
+# The script bodies are scanned, not interpreted — over-inclusion (refs inside
+# comments / heredocs) is harmless because we only emit names that are set.
+#
+# Pure POSIX so the same helper works under bash and zsh.
+
 # Wrap $1 in single quotes, escaping every embedded `'` as `'\''`.
 __omp_sq_quote() {
 	__omp_qbuf=$1
 	__omp_qout=
 	__omp_sq=\'
 	while case "$__omp_qbuf" in *$__omp_sq*) true ;; *) false ;; esac; do
-		__omp_qout=$__omp_qout${__omp_qbuf%%$__omp_sq*}"'\\''"
-		__omp_qbuf=${__omp_qbuf#*$__omp_sq}
+		__omp_qout=$__omp_qout${__omp_qbuf%%"$__omp_sq"*}"'\\''"
+		__omp_qbuf=${__omp_qbuf#*"$__omp_sq"}
 	done
 	__omp_qout=$__omp_qout$__omp_qbuf
 	printf "'%s'" "$__omp_qout"
@@ -28,6 +51,7 @@ __omp_emit_export_for() {
 		*TOKEN*|*SECRET*|*PASSWORD*|*PASSWD*|*API_KEY*|*PRIVATE_KEY*|*ACCESS_KEY*|*CREDENTIAL*|*SESSION_KEY*) return ;;
 	esac
 	eval "[ \"\${$1+x}\" = x ]" 2>/dev/null || return
+	__omp_xv=
 	eval "__omp_xv=\"\${$1}\"" 2>/dev/null || return
 	printf 'export %s=%s\n' "$1" "$(__omp_sq_quote "$__omp_xv")"
 }

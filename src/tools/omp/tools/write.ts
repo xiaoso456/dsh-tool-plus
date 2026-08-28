@@ -24,7 +24,7 @@ import type { ToolSession } from "../../omp/sdk.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
 import { type ArchiveMemberContent, archiveFormatFromPath, parseArchivePathCandidates, readArchiveEntries, writeArchive } from "../../omp/utils/zip.ts";
 import { truncateForPrompt } from "../../omp/tools/approval.ts";
-import { assertEditableFile } from "../../shared/auto-generated-guard.dsh";
+import { assertEditableFile } from "./auto-generated-guard.ts";
 import { type ConflictEntry, conflictRegionPresent, conflictRegionsEqual, expandContentTokens, getConflictHistory, parseConflictUri, spliceConflict } from "../../omp/tools/conflict-detect.ts";
 import { invalidateFsScanAfterWrite } from "../../omp/tools/fs-cache-invalidation.ts";
 import type { OutputMeta } from "../../omp/tools/output-meta.ts";

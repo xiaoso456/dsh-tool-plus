@@ -723,6 +723,22 @@ async function archiveWrite(
 }
 
 // ---------------------------------------------------------------------------
+// Bun.stripANSI — strip ANSI escape sequences (S-2)
+// ---------------------------------------------------------------------------
+// pi-utils sanitizeText calls `Bun.stripANSI` on ESC-bearing text
+// (@oh-my-pi/pi-utils src/sanitize-text.ts:35). The verbatim
+// src/tools/omp/session/streaming-output.ts OutputSink instantiated on the
+// bash chain (A-1) feeds every chunk through it, so the shim must provide it.
+// Regex identical to src/tools/bash/sanitize-text.ts (CSI / OSC / simple
+// escapes). Bun's built-in is a fuller ANSI parser (OSC 8 / DCS corner
+// cases); for sanitize-then-strip usage this equivalence is sufficient.
+const ANSI_RE = /\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][0-9A-B]|[^\[\]()])/g
+
+function bunStripANSI(text: string): string {
+  return text.replace(ANSI_RE, '')
+}
+
+// ---------------------------------------------------------------------------
 // Global installation
 // ---------------------------------------------------------------------------
 export interface BunShimSurface {
@@ -738,6 +754,7 @@ export interface BunShimSurface {
   Image: typeof BunImageShim
   CryptoHasher: typeof CryptoHasherShim
   color(color: string, format?: string): string
+  stripANSI(text: string): string
   JSON: { parse(s: string): unknown; stringify(v: unknown): string }
   JSON5: { parse(s: string): unknown }
   Encoding: Record<string, never>
@@ -767,6 +784,7 @@ export function installBunShim(): void {
     Image: BunImageShim,
     CryptoHasher: CryptoHasherShim,
     color: bunColor,
+    stripANSI: bunStripANSI,
     JSON: JSON,
     JSON5,
     Encoding: {},
