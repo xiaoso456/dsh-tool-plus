@@ -1,14 +1,22 @@
 /**
  * OMP prompt.md → DSH tool description 适配层（verbatim md 不动，适配在此）。
  *
- * OMP 的 prompts/tools/*.md 用 Handlebars 条件渲染（prompt.render），DSH 的
- * defineTool description 是静态字符串，这里提供：
- * - `renderOmpPrompt`：支持 `{{#if KEY}}A{{else}}B{{/if}}` 与
- *   `{{#if KEY}}A{{/if}}` 两种条件（md 内无嵌套、无插值变量，无需完整引擎）
+ * OMP 的 prompts/tools/*.md 用 Handlebars 条件渲染，DSH 的 defineTool
+ * description 是静态字符串，这里提供：
+ * - `renderOmpPrompt`：完全委托 OMP 自家引擎（@oh-my-pi/pi-utils 的
+ *   prompt.render = 结构化 Handlebars 解析 + post-render format 后处理，
+ *   与上游 read.ts 渲染工具描述同一条管线）。按「移植绝不允许第二套实现」
+ *   （notebook T10-1 同类教训）：自写 regex 渲染器已删除——其全文懒匹配
+ *   会跨条件边界吞并并在真值分支残留孤立 `{{/if}}`（2026-08-28 tools:sdk
+ *   "malformed prompt variable" 事故根源）。strict:false → 未传变量按 falsy
+ *   取 else 分支；畸形模板 compile 期抛错（注册期 fail-loud）。
  * - `sanitizeOmpPrompt`：按工具剔除 DSH 不适用的 OMP 提法（内部协议
  *   artifact:// ssh:// memory:// xd://、browser、scout/Task 子代理、inspect_image），
  *   全部剔除点记录在 step.md「提示词接入」节；md 源文件保持 verbatim 不变。
  */
+
+import { prompt as ompPrompt } from '@oh-my-pi/pi-utils'
+
 
 export interface OmpPromptVars {
   /** read 输出是否带 [PATH#TAG] hashline 锚点头（= edit.mode === 'hashline'） */
@@ -21,15 +29,12 @@ export interface OmpPromptVars {
   scoutAvailable?: boolean
 }
 
-/** 渲染 {{#if KEY}}A{{else}}B{{/if}} 与 {{#if KEY}}A{{/if}}（不支持嵌套）。 */
+/** 渲染 {{#if KEY}}A{{else}}B{{/if}} 与 {{#if KEY}}A{{/if}}——委托 OMP 引擎
+ *  （@oh-my-pi/pi-utils prompt.render，strict:false：未传变量按 falsy 取 else
+ *  分支；畸形模板 compile 期抛错，注册期 fail-loud）。保留首尾 trim 对齐
+ *  既有调用点行为。 */
 export function renderOmpPrompt(text: string, vars: OmpPromptVars): string {
-  const pick = (key: string): boolean => vars[key as keyof OmpPromptVars] === true
-  return text
-    .replace(/\{\{#if\s+([A-Za-z_]+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g, (_m, key, a, b) =>
-      pick(key) ? a : b,
-    )
-    .replace(/\{\{#if\s+([A-Za-z_]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (m, key, body) => (pick(key) ? body : ''))
-    .trim()
+  return ompPrompt.render(text, { ...vars }).trim()
 }
 
 /** 剔除非空白/注释行——供剔除后再次 trim。 */
