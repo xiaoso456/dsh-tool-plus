@@ -10,7 +10,7 @@ import type {
 	ToolTier,
 } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { type ImageMetadata, isProbablyBinary, logger, prompt, readImageMetadata } from "@oh-my-pi/pi-utils";
+import { isProbablyBinary, type ImageMetadata, logger, prompt, readImageMetadata } from "@oh-my-pi/pi-utils";
 import {
 	canonicalSnapshotKey,
 	getFileSnapshotStore,
@@ -37,13 +37,6 @@ import {
 import { buildLineEntriesWithBlockContext, lineEntriesToPlainText } from "../../omp/utils/block-context.ts";
 import { isCpuProfilePath, renderCpuProfile } from "../utils/cpuprofile";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
-import {
-	ImageInputTooLargeError,
-	loadImageInput,
-	MAX_IMAGE_INPUT_BYTES,
-	webpExclusionForModel,
-} from "../../omp/utils/image-loading.ts";
-import { isInspectImageToolActive } from "../../read/adapter/utils/inspect-image-mode";
 import { CONVERTIBLE_EXTENSIONS, convertFileWithMarkit } from "../../omp/utils/markit.ts";
 import { isSampleProfilePath, renderSampleProfile } from "../utils/sample-profile";
 import { buildDirectoryTree, type DirectoryTree } from "../workspace-tree";
@@ -59,6 +52,16 @@ import {
 	scanFileForConflicts,
 } from "../../omp/tools/conflict-detect.ts";
 import { executeReadUrl, fetchReadUrl, parseReadUrlTarget } from "../../omp/tools/fetch.ts";
+import { ImageInputTooLargeError, type LoadedImageInput, loadImageInput, MAX_IMAGE_INPUT_BYTES, webpExclusionForModel } from "../../omp/utils/image-loading.ts";
+import type { ImageResizeOptions } from "../../omp/utils/image-resize.ts";
+import {
+	formatImageUnsupportedNote,
+	imageByteCap,
+	imageContentBlocks,
+	imageMediaTypeForExtension,
+	saveImageViaBridge,
+	type SavedImageRef,
+} from "../../shared/image-bridge.ts";
 import { type OutputMeta, resolveOutputMaxColumns } from "../../omp/tools/output-meta.ts";
 import {
 	expandPath,
@@ -338,9 +341,6 @@ async function streamLinesFromFile(
 	};
 }
 
-// Maximum image file size (20MB) - larger images will be rejected to prevent OOM during serialization
-const MAX_IMAGE_SIZE = MAX_IMAGE_INPUT_BYTES;
-
 const readSchema = type({
 	path: type("string").describe(
 		"Local path, internal URI (e.g. memory://, skill://), or URL. Inline selectors are supported.",
@@ -359,6 +359,8 @@ export interface ReadToolDetails {
 	isDirectory?: boolean;
 	resolvedPath?: string;
 	suffixResolution?: { from: string; to: string };
+	/** DSH image bridge (拍板#22): committed attachment facts for an image read. */
+	image?: import("../../shared/image-bridge.ts").SavedImageRef;
 	url?: string;
 	finalUrl?: string;
 	contentType?: string;
@@ -407,24 +409,44 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 	readonly strict = true;
 
-	readonly #autoResizeImages: boolean;
 	readonly #defaultLimit: number;
-	#inspectImageActive: boolean;
+	/** OMP `images.autoResize` (default true): downscale via resizeImage before commit. */
+	readonly #autoResizeImages: boolean;
+	/** OMP `images.blockImages` (default false): kill switch — no resize, no commit, text note only. */
+	readonly #blockImages: boolean;
+	/** DSH knob `images.excludeWebp`: manual override of the automatic stb/Ollama webp exclusion. */
+	readonly #forceExcludeWebp: boolean;
+	/** DSH knob `images.inputMaxBytes`: admission cap (upstream hardcoded 20 MiB). */
+	readonly #imageInputMaxBytes: number;
+	/** DSH knobs wired onto `ImageResizeOptions` (upstream hardcoded; defaults are byte-identical). */
+	readonly #imageResizeOptions: ImageResizeOptions;
 
 	constructor(private readonly session: ToolSession) {
-		this.#autoResizeImages = session.settings.get("images.autoResize");
 		this.#defaultLimit = Math.max(
 			1,
 			Math.min(session.settings.get("read.defaultLimit") ?? DEFAULT_MAX_LINES, DEFAULT_MAX_LINES),
 		);
-		this.#inspectImageActive = this.#resolveInspectImageAvailability();
+		this.#autoResizeImages = session.settings.get("images.autoResize");
+		this.#blockImages = session.settings.get("images.blockImages") === true;
+		this.#forceExcludeWebp = session.settings.get("images.excludeWebp") === true;
+		this.#imageInputMaxBytes = session.settings.get("images.inputMaxBytes") ?? MAX_IMAGE_INPUT_BYTES;
+		const resizeMaxSide = session.settings.get("images.resizeMaxSide");
+		this.#imageResizeOptions = {
+			maxWidth: resizeMaxSide,
+			maxHeight: resizeMaxSide,
+			minDimension: session.settings.get("images.resizeMinSide"),
+			maxBytes: session.settings.get("images.resizeMaxBytes"),
+			jpegQuality: session.settings.get("images.resizeJpegQuality"),
+		};
 		this.description = this.#renderDescription();
 	}
 
 	/**
-	 * Re-render the tool description for the current display mode and the
-	 * effective inspect_image state (mode setting, `/vision` override, and
-	 * active-model image capability all feed it, so it can change at runtime).
+	 * Re-render the tool description for the current display mode. Images are
+	 * read through the restored OMP image path (DSH: committed to the host
+	 * attachment store as an `attachment` reference block, 拍板#22); there is
+	 * no inspect_image tool, so the conditional renders the disabled branch.
+	 * The DSH adapter overrides this description with the sanitized prompt anyway.
 	 */
 	#renderDescription(): string {
 		const displayMode = resolveFileDisplayMode(this.session);
@@ -433,33 +455,135 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			DEFAULT_MAX_LINES: String(DEFAULT_MAX_LINES),
 			IS_HL_MODE: displayMode.hashLines,
 			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
-			INSPECT_IMAGE_ENABLED: this.#inspectImageActive,
+			INSPECT_IMAGE_ENABLED: false,
 		});
 	}
 
 	/**
-	 * Whether the agent can actually reach `inspect_image` right now. DSH has
-	 * no `xd://` device mounting, so availability reduces to the effective
-	 * mode computation alone.
+	 * Image read path — OMP pipeline (loadImageInput → resizeImage) as the
+	 * skeleton, DSH attachment commit as the exit (upstream's inline base64
+	 * `ImageContent` has no counterpart in DSH's content model).
+	 *
+	 * - `images.autoResize` (omp default true): bytes are downscaled/re-encoded
+	 *   to the OMP 500KB/1568px budget before commit; WebP is always re-encoded
+	 *   for stb-family models regardless of the switch (omp semantics).
+	 * - autoResize off: original bytes are committed and the host's normalization
+	 *   keeps the official `originalDimensions` coordinate-multiplier envelope.
+	 * - Route cannot see images, or no attachment bridge: soft refusal — a plain
+	 *   text note describing the limitation, never a thrown program error.
 	 */
-	#resolveInspectImageAvailability(): boolean {
-		return isInspectImageToolActive(this.session);
-	}
-
-	/**
-	 * Re-evaluate the effective inspect_image state; it can flip when the model
-	 * or the `/vision` override changes after this tool was constructed. Keeps
-	 * the behavior branch and the advertised description in lockstep. Called
-	 * per image read and by tool reconciliation before prompt rebuilds (which
-	 * passes the post-change availability as `availableOverride`).
-	 */
-	syncInspectImageState(availableOverride?: boolean): boolean {
-		const active = availableOverride ?? this.#resolveInspectImageAvailability();
-		if (active !== this.#inspectImageActive) {
-			this.#inspectImageActive = active;
-			this.description = this.#renderDescription();
+	async #loadImageContent(options: {
+		readPath: string;
+		absolutePath: string;
+		mimeType: string;
+		imageMetadata: ImageMetadata | null;
+		fileSize: number;
+		displayPath: string;
+	}): Promise<AgentToolResult<ReadToolDetails>> {
+		const { readPath, absolutePath, mimeType, imageMetadata, fileSize, displayPath } = options;
+		const finish = (
+			content: Array<TextContent | ImageContent>,
+			image?: SavedImageRef,
+		): AgentToolResult<ReadToolDetails> => {
+			const details: ReadToolDetails = {};
+			if (image) details.image = image;
+			return toolResult<ReadToolDetails>(details).content(content).sourcePath(absolutePath).done();
+		};
+		// `images.blockImages` (omp default false): kill switch at the tool entry —
+		// upstream swaps committed images for exactly this sentence at the provider
+		// boundary; here nothing is resized or stored in the first place.
+		if (this.#blockImages) {
+			return finish([{ type: "text", text: "Image reading is disabled." }]);
 		}
-		return active;
+
+		const bridge = this.session.imageBridge?.();
+		if (!bridge?.attachments?.saveImage) {
+			return finish([
+				{
+					type: "text",
+					text: formatImageUnsupportedNote(
+						displayPath,
+						{ mimeType, width: imageMetadata?.width, height: imageMetadata?.height, bytes: fileSize },
+						"this deployment has no attachment store mounted, so images cannot be shown",
+					),
+				},
+			]);
+		}
+		if ((await bridge.routeImageSupport()) === "unsupported") {
+			return finish([
+				{
+					type: "text",
+					text: formatImageUnsupportedNote(
+						displayPath,
+						{ mimeType, width: imageMetadata?.width, height: imageMetadata?.height, bytes: fileSize },
+						"the current model does not accept image input",
+					),
+				},
+			]);
+		}
+
+		const maxBytes = Math.min(this.#imageInputMaxBytes, imageByteCap(bridge, this.#imageInputMaxBytes));
+		if (fileSize > maxBytes) {
+			throw new ToolError(`Image file too large: ${fileSize} bytes exceeds ${maxBytes} bytes; downscale the image and read the smaller copy`);
+		}
+		let loaded: LoadedImageInput;
+		try {
+			const maybeLoaded = await loadImageInput({
+				path: readPath,
+				cwd: this.session.cwd,
+				autoResize: this.#autoResizeImages,
+				maxBytes,
+				resolvedPath: absolutePath,
+				detectedMimeType: mimeType,
+				excludeWebP: this.#forceExcludeWebp ? true : webpExclusionForModel(this.session.getActiveModel?.()),
+				resize: this.#imageResizeOptions,
+			});
+			if (!maybeLoaded) {
+				throw new ToolError(`Read image file [${mimeType}] failed: unsupported image format.`);
+			}
+			loaded = maybeLoaded;
+		} catch (error) {
+			if (error instanceof ImageInputTooLargeError) throw new ToolError(error.message);
+			throw error;
+		}
+
+		// Media-type declaration MUST describe the bytes we commit: autoResize may
+		// re-encode (e.g. tiny PNG → smallest WebP), so the pipeline's detected
+		// output mime wins over the file extension (magic-byte validation at the
+		// attachment store stays authoritative — a mismatch fails as
+		// IMAGE_TYPE_MISMATCH). Only when the pipeline mime is outside the
+		// committed-format whitelist do we consult the extension.
+		const WHITELIST = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+		const commitMediaType = (WHITELIST.has(loaded.mimeType) ? (loaded.mimeType as import("../../shared/image-bridge.ts").ImageMediaType) : undefined) ??
+			imageMediaTypeForExtension(path.extname(absolutePath));
+		if (!commitMediaType) {
+			return finish([
+				{
+					type: "text",
+					text: formatImageUnsupportedNote(
+						displayPath,
+						{ mimeType: loaded.mimeType, width: imageMetadata?.width, height: imageMetadata?.height, bytes: fileSize },
+						`the ${loaded.mimeType} format is not accepted by this deployment's image pipeline (PNG/JPEG/WebP/GIF only)`,
+					),
+				},
+			]);
+		}
+
+		const saved = await saveImageViaBridge(bridge, {
+			data: new Uint8Array(Buffer.from(loaded.data, "base64")),
+			mediaType: commitMediaType,
+			name: path.basename(absolutePath),
+			displayPath,
+		});
+		const blocks = imageContentBlocks(displayPath, saved);
+		// OMP dimension note keeps its meaning when our pre-resize downscaled the
+		// committed bytes (host originalDimensions then only reports the host-side
+		// hop); append it after the official envelope line.
+		if (loaded.dimensionNote) {
+			const first = blocks[0] as { text: string }
+			first.text = `${first.text}\n${loaded.dimensionNote}`;
+		}
+		return finish(blocks as Array<TextContent | ImageContent>, saved);
 	}
 
 	/**
@@ -534,79 +658,6 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		flushText();
 
 		return toolResult<ReadToolDetails>({ notes, displayReadTargets }).content(content).done();
-	}
-
-	/**
-	 * Build content blocks for an on-disk image file: an `inspect_image`
-	 * metadata note when inspection is active, otherwise the decoded image
-	 * block. Shared by the plain-file read path and the `local://` image fast
-	 * path so both honor the effective inspect_image state, the size cap, and
-	 * auto-resize identically. Too-large / unsupported images surface as {@link ToolError}.
-	 */
-	async #loadImageContent(options: {
-		readPath: string;
-		absolutePath: string;
-		mimeType: string;
-		imageMetadata: ImageMetadata | null;
-		fileSize: number;
-	}): Promise<{ content: Array<TextContent | ImageContent>; details: ReadToolDetails; sourcePath: string }> {
-		const { readPath, absolutePath, mimeType, imageMetadata, fileSize } = options;
-		if (this.syncInspectImageState()) {
-			const outputMime = imageMetadata?.mimeType ?? mimeType;
-			const metadataLines = [
-				"Image metadata:",
-				`- MIME: ${outputMime}`,
-				`- Bytes: ${fileSize} (${formatBytes(fileSize)})`,
-				imageMetadata?.width !== undefined && imageMetadata.height !== undefined
-					? `- Dimensions: ${imageMetadata.width}x${imageMetadata.height}`
-					: "- Dimensions: unknown",
-				imageMetadata?.channels !== undefined ? `- Channels: ${imageMetadata.channels}` : "- Channels: unknown",
-				imageMetadata?.hasAlpha === true
-					? "- Alpha: yes"
-					: imageMetadata?.hasAlpha === false
-						? "- Alpha: no"
-						: "- Alpha: unknown",
-				"",
-				`If you want to analyze the image, call inspect_image with path="${formatPathRelativeToCwd(
-					absolutePath,
-					this.session.cwd,
-				)}" and a question describing what to inspect and the desired output format.`,
-			];
-			return { content: [{ type: "text", text: metadataLines.join("\n") }], details: {}, sourcePath: absolutePath };
-		}
-
-		if (fileSize > MAX_IMAGE_SIZE) {
-			const sizeStr = formatBytes(fileSize);
-			const maxStr = formatBytes(MAX_IMAGE_SIZE);
-			throw new ToolError(`Image file too large: ${sizeStr} exceeds ${maxStr} limit.`);
-		}
-		try {
-			const imageInput = await loadImageInput({
-				path: readPath,
-				cwd: this.session.cwd,
-				autoResize: this.#autoResizeImages,
-				maxBytes: MAX_IMAGE_SIZE,
-				resolvedPath: absolutePath,
-				detectedMimeType: mimeType,
-				excludeWebP: webpExclusionForModel(this.session.getActiveModel?.()),
-			});
-			if (!imageInput) {
-				throw new ToolError(`Read image file [${mimeType}] failed: unsupported image format.`);
-			}
-			return {
-				content: [
-					{ type: "text", text: imageInput.textNote },
-					{ type: "image", data: imageInput.data, mimeType: imageInput.mimeType },
-				],
-				details: {},
-				sourcePath: imageInput.resolvedPath,
-			};
-		} catch (error) {
-			if (error instanceof ImageInputTooLargeError) {
-				throw new ToolError(error.message);
-			}
-			throw error;
-		}
 	}
 
 	/**
@@ -1006,13 +1057,14 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			| undefined;
 
 		if (mimeType) {
-			({ content, details, sourcePath } = await this.#loadImageContent({
+			return this.#loadImageContent({
 				readPath,
 				absolutePath,
 				mimeType,
 				imageMetadata,
 				fileSize,
-			}));
+				displayPath: resolvedDisplayPath,
+			});
 		} else if (isNotebookPath(absolutePath) && !isRawSelector(parsed)) {
 			const notebookText = await readEditableNotebookText(absolutePath, resolvedDisplayPath);
 			if (isMultiRange(parsed) && parsed.kind === "lines") {
@@ -1741,15 +1793,15 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			return this.#readArtifactFile(urlMeta, parsedSel, signal);
 		}
 
-		// local:// files are real on-disk paths. Detect image files and emit a
-		// decoded image block before the text-only resource contract UTF-8
-		// decodes the binary into mojibake. The fast path returns null for
-		// non-images, directories, listings, or any resolution failure, so the
-		// text path below reproduces the router's not-found / symlink-escape
-		// behavior unchanged.
+		// local:// files are real on-disk paths. Route image targets straight to
+		// the OMP image read path (拍板#22) before the text-only resource contract
+		// UTF-8 decodes the binary into mojibake. Non-images, directories,
+		// listings, and any resolution failure return quietly, so the text path
+		// below reproduces the router's not-found / symlink-escape behavior
+		// unchanged.
 		if (scheme === "local") {
-			const imageResult = await this.#tryReadLocalImage(urlMeta, signal);
-			if (imageResult) return imageResult;
+			const localImage = await this.#loadLocalImageUrl(urlMeta, signal);
+			if (localImage) return localImage;
 		}
 
 		// Reject line selectors when query extraction is used
@@ -1808,17 +1860,14 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
-	 * Fast path for `local://` image files. Resolves the URL to its real
-	 * on-disk path with the same realpath + containment checks as
-	 * {@link LocalProtocolHandler.resolve} (via {@link resolveLocalUrlToFile}),
-	 * and — only when the target is a genuine image — emits a decoded image
-	 * block. Returns null for non-images, directories, listings, or any
-	 * resolution failure (not-found, symlink escape) so the caller falls back to
-	 * normal text resolution, which reproduces the router's errors. Errors from
-	 * a confirmed image (too large / unsupported) propagate rather than
-	 * degrading into a corrupted text read.
+	 * Resolve `local://` image targets to the OMP image read path (拍板#22).
+	 * Resolves the URL to its real on-disk path with the same realpath +
+	 * containment checks as {@link LocalProtocolHandler.resolve} (via
+	 * `resolveLocalUrlToFile`). Non-images, directories, listings, and any
+	 * resolution failure return quietly so the caller falls back to normal
+	 * text resolution, which reproduces the router's errors.
 	 */
-	async #tryReadLocalImage(url: InternalUrl, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails> | null> {
+	async #loadLocalImageUrl(url: InternalUrl, signal?: AbortSignal): Promise<AgentToolResult<ReadToolDetails> | undefined> {
 		let file: { path: string; size: number } | null;
 		try {
 			file = await resolveLocalUrlToFile(url, {
@@ -1830,24 +1879,21 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		} catch {
 			// Not found / containment escape / no session — let the text path
 			// surface the router's canonical error.
-			return null;
+			return undefined;
 		}
-		if (!file) return null;
+		if (!file) return undefined;
 
 		const imageMetadata = await readImageMetadata(file.path);
-		const mimeType = imageMetadata?.mimeType;
-		if (!mimeType) return null;
+		if (!imageMetadata?.mimeType) return undefined;
 
-		const { content, details, sourcePath } = await this.#loadImageContent({
-			readPath: url.href,
+		return this.#loadImageContent({
+			readPath: file.path,
 			absolutePath: file.path,
-			mimeType,
+			mimeType: imageMetadata.mimeType,
 			imageMetadata,
 			fileSize: file.size,
+			displayPath: formatPathRelativeToCwd(file.path, this.session.cwd),
 		});
-		const resultBuilder = toolResult(details).content(content).sourceInternal(url.href);
-		if (sourcePath) resultBuilder.sourcePath(sourcePath);
-		return resultBuilder.done();
 	}
 
 	/** Read directory contents as a formatted listing */

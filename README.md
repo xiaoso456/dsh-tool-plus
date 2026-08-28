@@ -1,5 +1,7 @@
 # dsh-tool-plus — DeepSeek Harness 基础工具增强
 
+简体中文 | [English](./README.en.md)
+
 DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 edit、原子 write、全文搜索、图像直读，一个插件全覆盖。基于 [Oh My Pi](https://github.com/can1357/oh-my-pi) 内核移植，安装后自动接管官方 bash / pwsh / 文件 / 搜索工具，另有可选的 `ast_grep` / `ast_edit` 结构化搜索与重写。
 
 > 当前为早期测试版（beta），行为与配置可能随时调整。
@@ -7,11 +9,10 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 ## 功能特性
 
 - **bash**：持久 shell，`cd`、`export` 跨调用保持状态；冗长日志（git/npm/cargo…）自动压缩；超长输出只保留头尾，完整内容落盘可回读；长命令自动转后台；可选拦截 `cat`、`grep`、`find`、`sed -i`，引导改用专用工具
-- **read**：按行区间精准读取（支持 `:N-M`、`:raw`、多区间）；大代码文件默认返回结构摘要，细节按需展开；zip/tar 归档、SQLite、notebook、PDF 直接读；可抓取网页内容
+- **read**：按行区间精准读取（支持 `:N-M`、`:raw`、多区间）；大代码文件默认返回结构摘要，细节按需展开；zip/tar 归档、SQLite、notebook、PDF 直接读；PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放；可抓取网页内容（含网页内图片）
 - **write**：原子写入，返回修改 diff；支持补丁式写入，可直接写 zip/tar 归档成员与 SQLite 数据
 - **edit**：replace 默认，另支持 patch / hashline / apply-patch 三种补丁格式；多段编辑、唯一性校验、空白差异模糊匹配
 - **grep / glob**：全文搜索与文件名匹配；mtime 排序、上下文行、忽略规则可配置
-- **read_image**：直读 PNG / JPEG / WebP / GIF，超大图自动缩放。*备注：图像读取不在本插件的初始规划内——官方工具套件把多个工具捆绑在同一插件里，为保证完整体验而一并移植。*
 - **ast_grep / ast_edit**（可选）：基于语法树的结构化代码搜索与重写，可在设置中开启
 - **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板，一条命令安装（见安装章节）
 

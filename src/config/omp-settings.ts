@@ -38,11 +38,18 @@ export const OMP_KEY_TO_FIELD: Record<string, string | undefined> = {
   // 工具启用开关（ast_grep/ast_edit；glob/grep 不设开关，默认开启）
   'astGrep.enabled': 'astGrepEnabled',
   'astEdit.enabled': 'astEditEnabled',
-  // fetch.* / tools.* / images.* / inspect_image.*（read/write 抓取与读图路径）
+  // fetch.* / tools.* / images.*（URL 抓取与图片读取路径；read_image 融合进 read 后 inspect_image.* 保持删除）
   'fetch.enabled': 'fetchEnabled',
   'tools.maxTimeout': 'fetchMaxTimeoutSeconds',
   'images.autoResize': 'imagesAutoResize',
-  'inspect_image.mode': 'inspectImageMode',
+  'images.blockImages': 'imagesBlockImages',
+  // DSH 扩展键（上游不存在）：OMP_NO_WEBP 环境变量的配置化 + 上游硬编码阈值的接通
+  'images.excludeWebp': 'imagesExcludeWebp',
+  'images.inputMaxBytes': 'imagesInputMaxBytes',
+  'images.resizeMaxSide': 'imagesResizeMaxSide',
+  'images.resizeMaxBytes': 'imagesResizeMaxBytes',
+  'images.resizeMinSide': 'imagesResizeMinSide',
+  'images.resizeJpegQuality': 'imagesResizeJpegQuality',
   // 顶层键（非 dotted）
   readLineNumbers: 'readLineNumbers',
 }
@@ -87,10 +94,17 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   // 需用户在设置面板开启）；astEdit.enabled 默认 true（settings-schema.ts:3842）。
   'astGrep.enabled': false,
   'astEdit.enabled': true,
-  // images.*
+  // images.*（OMP settings-schema.ts:838-858：autoResize 默认 true，blockImages 默认 false）
   'images.autoResize': true,
-  // inspect_image.*
-  'inspect_image.mode': 'auto',
+  'images.blockImages': false,
+  // DSH 扩展：默认值 = 上游硬编码常量（不配零行为变化）——image-resize.ts:27-44 /
+  // image-loading.ts:15（20MiB）；excludeWebp 等价 OMP_NO_WEBP=1 的手动 override。
+  'images.excludeWebp': false,
+  'images.inputMaxBytes': 20 * 1024 * 1024,
+  'images.resizeMaxSide': 1568,
+  'images.resizeMaxBytes': 500 * 1024,
+  'images.resizeMinSide': 200,
+  'images.resizeJpegQuality': 80,
   // memory.*（DSH 虚拟路由去掉，恒 off）
   'memory.backend': 'off',
   // providers.*（fetch 抓取偏好；DSH 默认 auto）

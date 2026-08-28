@@ -13,7 +13,9 @@
 export interface OmpPromptVars {
   /** read 输出是否带 [PATH#TAG] hashline 锚点头（= edit.mode === 'hashline'） */
   IS_HL_MODE?: boolean
-  /** DSH 无 inspect_image 工具（有 read_image），恒 false → 取 else 分支 */
+  /** DSH 无 inspect_image 工具：read.md 图片条件句恒渲染 else 分支（引擎内部
+   *  #renderDescription 用），DSH 面再经 sanitizeReadPrompt 改写为附件提交语义
+   *  （拍板#22：图片经 attachments 入库，非 vision 路由降级 metadata 文本）。 */
   INSPECT_IMAGE_ENABLED?: boolean
   /** DSH 无 OMP Task/scout 子代理，恒 false → 相关句在 sanitize 中整体剔除，无需变量 */
   scoutAvailable?: boolean
@@ -58,10 +60,13 @@ export function sanitizeGlobPrompt(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
 }
 
-/** read.md：browser/inspect_image 提法剔除 + internal URIs 段删除（{{#if}} 由 renderer 处理）。 */
+/** read.md：browser 提法剔除 + 图片句改为 DSH 实际行为（拍板#22 附件提交）+ internal URIs 段删除（{{#if}} 由 renderer 处理）。 */
 export function sanitizeReadPrompt(text: string): string {
   return text
-    .replace('Read files, directories, archives, SQLite, images, documents, internal resources, and web URLs via `path`.', 'Read files, directories, archives, SQLite, images, documents, and web URLs via `path`.')
+    .replace(
+      'Images → {{#if INSPECT_IMAGE_ENABLED}}metadata; call `inspect_image`{{else}}decoded inline{{/if}}.',
+      'Images (PNG/JPEG/WebP/GIF) → returned as an image block beside a `<path>` envelope; large images are downscaled before display, and text-only models get a metadata note instead.',
+    )
     .replace('- SHOULD use `read` (not browser) for web content; browser only when `read` can\'t deliver.\n', '')
     .replace(/\n- Internal URIs — all schemes take selectors.*?\n  Literal `:`, `?`, `#` → percent-encode \(`%3A`\/`%3F`\/`%23`\)\. Requires POSIX shell \(else `ssh` tool\)\.\n?/s, '\n')
     .replace(/\n{3,}/g, '\n\n')

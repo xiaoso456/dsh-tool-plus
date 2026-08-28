@@ -24,6 +24,7 @@ export type BashPlusLocaleKey =
   | 'readDefaultLimit' | 'readDefaultLimitHint'
   | 'readLineNumbers' | 'readLineNumbersHint'
   | 'readRenderMarkdown' | 'readRenderMarkdownHint'
+  | 'readConcurrentSafe' | 'readConcurrentSafeHint'
   | 'editMode' | 'editModeHint'
   | 'editFuzzyMatch' | 'editFuzzyMatchHint'
   | 'editFuzzyThreshold' | 'editFuzzyThresholdHint'
@@ -32,12 +33,17 @@ export type BashPlusLocaleKey =
   | 'grepContextAfter' | 'grepContextAfterHint'
   | 'astGrepEnabled' | 'astGrepEnabledHint'
   | 'astEditEnabled' | 'astEditEnabledHint'
-  | 'optAuto' | 'optReplace' | 'optPatch' | 'optHashline' | 'optApplyPatch'
+  | 'optReplace' | 'optPatch' | 'optHashline' | 'optApplyPatch'
   | 'fetchEnabled' | 'fetchEnabledHint'
   | 'fetchMaxTimeoutSeconds' | 'fetchMaxTimeoutSecondsHint'
   | 'imagesAutoResize' | 'imagesAutoResizeHint'
-  | 'inspectImageMode' | 'inspectImageModeHint'
-  | 'optOn' | 'optOff'
+  | 'imagesBlockImages' | 'imagesBlockImagesHint'
+  | 'imagesExcludeWebp' | 'imagesExcludeWebpHint'
+  | 'imagesInputMaxBytes' | 'imagesInputMaxBytesHint'
+  | 'imagesResizeMaxSide' | 'imagesResizeMaxSideHint'
+  | 'imagesResizeMaxBytes' | 'imagesResizeMaxBytesHint'
+  | 'imagesResizeMinSide' | 'imagesResizeMinSideHint'
+  | 'imagesResizeJpegQuality' | 'imagesResizeJpegQualityHint'
   | 'autoBackgroundMs' | 'autoBackgroundMsHint'
   | 'defaultTimeoutMs' | 'defaultTimeoutMsHint'
   | 'maxTimeoutMs' | 'maxTimeoutMsHint'
@@ -85,7 +91,6 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   groupBehavior: '行为',
     groupReading: '读取',
   groupSummary: '代码摘要',
-  groupImages: '图片',
   groupEditMode: '编辑模式',
   groupGuard: '文件守卫',
   noConfigTitle: '该工具无全局配置项',
@@ -112,15 +117,28 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   fetchEnabledHint: 'read 处理 http(s) URL（网页转 Markdown 供模型阅读）时是否启用抓取。',
   fetchMaxTimeoutSeconds: '抓取超时（秒）',
   fetchMaxTimeoutSecondsHint: 'URL 抓取超时上限；0 表示使用默认的 30 秒。',
-  imagesAutoResize: '图片自动缩放',
-  imagesAutoResizeHint: 'read 读取图片时自动缩放到可展示尺寸。',
-  inspectImageMode: '图片检查模式',
-  inspectImageModeHint: '读图工具的行为模式：auto/on/off。',
   groupFetch: '抓取',
-  optOn: 'on（开启）',
-  optOff: 'off（关闭）',
+  groupImages: '图片',
+  imagesAutoResize: '图片自动缩放',
+  imagesAutoResizeHint: 'read 读取图片时自动缩放到可展示尺寸（关则原图入库，由宿主归一化）。',
+  imagesBlockImages: '禁用图片读取',
+  imagesBlockImagesHint: '开启后 read 与 URL 抓取遇到图片一律只回文字提示，不展示图片（省 token，或规避敏感图外发）。',
+  imagesResizeMaxSide: '缩放目标最长边',
+  imagesResizeMaxSideHint: '自动缩放时把图片长边压到该像素以内（默认 1568，主流视觉模型的实际处理上限）。',
+  imagesResizeMaxBytes: '缩放目标字节数',
+  imagesResizeMaxBytesHint: '自动缩放的压缩预算（默认 512000 即 500KB）；已小于预算四分之一的图跳过重编码。',
+  imagesResizeMinSide: '缩放尺寸下限',
+  imagesResizeMinSideHint: '过小的图会被放大到该边长（默认 200 像素）——多数视觉模型拒收退化小图。',
+  imagesResizeJpegQuality: '首次编码质量',
+  imagesResizeJpegQualityHint: '缩放后首次有损编码的质量参数，1-100（默认 80）；超出字节预算时仍会自动降质降尺寸。',
+  imagesExcludeWebp: '禁用 WebP 输出',
+  imagesExcludeWebpHint: '部分本地推理后端（llama.cpp/Ollama 系）不能解码 WebP，命中名单的模型已自动规避；此开关对名单外的网关模型强制改出 PNG/JPEG。',
+  imagesInputMaxBytes: '图片输入大小上限',
+  imagesInputMaxBytesHint: '超过该大小的图片文件直接拒读（默认 20971520 即 20MB；实际还与宿主附件限额取小）。',
 readRenderMarkdown: '渲染 Markdown',
   readRenderMarkdownHint: '读取 .md 文件时按 Markdown 渲染输出。',
+  readConcurrentSafe: '并发安全读取',
+  readConcurrentSafeHint: '声明 read 可并发执行（宿主并行调度多个 read 调用，含图片读取）；关闭后宿主串行执行。默认开启，改动即时生效。',
   editMode: '编辑模式',
   editModeHint: 'edit 工具的输入解释模式：replace=字面量替换；patch=unified diff；hashline=行锚点补丁；apply_patch=Codex 信封。默认 replace。',
   editFuzzyMatch: '模糊匹配',
@@ -139,7 +157,6 @@ readRenderMarkdown: '渲染 Markdown',
   astEditEnabledHint: '启用 ast_edit 工具做结构化 AST 重写（默认开启）。',
   groupGrep: '匹配上下文',
   groupAst: 'AST 工具',
-  optAuto: 'auto（自动）',
   optReplace: 'replace（字面量替换）',
   optPatch: 'patch（unified diff）',
   optHashline: 'hashline（行锚点）',
@@ -226,9 +243,9 @@ export const en: Record<BashPlusLocaleKey, string> = {
   groupTiming: 'Timeouts & backgrounding',
   groupOutput: 'Output',
   groupTruncation: 'Completion truncation',
-  groupBehavior: 'Behavior',  groupReading: 'Reading',
+  groupBehavior: 'Behavior',
+  groupReading: 'Reading',
   groupSummary: 'Code summary',
-  groupImages: 'Images',
   groupEditMode: 'Edit mode',
   groupGuard: 'File guard',
 
@@ -256,15 +273,28 @@ export const en: Record<BashPlusLocaleKey, string> = {
   fetchEnabledHint: 'Whether fetching is enabled when read handles http(s) URLs.',
   fetchMaxTimeoutSeconds: 'Fetch timeout (s)',
   fetchMaxTimeoutSecondsHint: 'URL fetch timeout cap; 0 = default 30s.',
-  imagesAutoResize: 'Auto-resize images',
-  imagesAutoResizeHint: 'Auto-resize images to a displayable size when reading.',
-  inspectImageMode: 'Image inspection mode',
-  inspectImageModeHint: 'Behavior mode for inspecting images: auto/on/off.',
   groupFetch: 'Fetching',
-  optOn: 'on',
-  optOff: 'off',
+  groupImages: 'Images',
+  imagesAutoResize: 'Auto-resize images',
+  imagesAutoResizeHint: 'Downscale images to a displayable size when reading (off: store originals and let the host normalize).',
+  imagesBlockImages: 'Disable image reading',
+  imagesBlockImagesHint: 'When on, read and URL fetches return a text note for images instead of showing them (saves tokens; keeps sensitive pictures out of requests).',
+  imagesResizeMaxSide: 'Resize target longest edge',
+  imagesResizeMaxSideHint: 'Auto-resize downscales the longest edge to at most this many pixels (default 1568, the effective vision-processing ceiling of mainstream models).',
+  imagesResizeMaxBytes: 'Resize target bytes',
+  imagesResizeMaxBytesHint: 'Compression budget for auto-resize (default 512000 = 500KB); images already below a quarter of it skip re-encoding.',
+  imagesResizeMinSide: 'Resize minimum edge',
+  imagesResizeMinSideHint: 'Undersized images are upscaled to this edge length (default 200px) — most vision backends reject degenerate tiny images.',
+  imagesResizeJpegQuality: 'First-pass encode quality',
+  imagesResizeJpegQualityHint: 'Quality (1-100, default 80) for the first lossy encode after resizing; the pipeline still walks down quality/scale when over budget.',
+  imagesExcludeWebp: 'Never encode WebP',
+  imagesExcludeWebpHint: "Some local inference backends (llama.cpp/Ollama family) cannot decode WebP; detected models are already auto-excluded. This forces PNG/JPEG output for off-list gateway models.",
+  imagesInputMaxBytes: 'Image input size cap',
+  imagesInputMaxBytesHint: 'Image files above this size are rejected outright (default 20971520 = 20MB; also capped by the host attachment limits).',
   readRenderMarkdown: 'Render Markdown',
   readRenderMarkdownHint: 'Render .md files as Markdown when reading.',
+  readConcurrentSafe: 'Concurrency-safe reads',
+  readConcurrentSafeHint: 'Declare read as concurrency-safe so the host may dispatch multiple read calls (including image reads) in parallel; disable to force serial execution. Default on; changes apply immediately.',
   editMode: 'Edit mode',
   editModeHint: 'How edit interprets its input: replace / patch / hashline / apply_patch. Default: replace.',
   editFuzzyMatch: 'Fuzzy matching',
@@ -283,7 +313,6 @@ export const en: Record<BashPlusLocaleKey, string> = {
   astEditEnabledHint: 'Enable the ast_edit tool for structural AST rewrites (on by default).',
   groupGrep: 'Match context',
   groupAst: 'AST tools',
-  optAuto: 'auto',
   optReplace: 'replace (literal)',
   optPatch: 'patch (unified diff)',
   optHashline: 'hashline (line anchors)',

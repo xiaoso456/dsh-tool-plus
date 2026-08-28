@@ -13,6 +13,12 @@ import type { AgentStorage } from "../session/agent-storage";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
 import { webpExclusionForModel } from "../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";
+import {
+	formatImageUnsupportedNote,
+	imageByteCap,
+	imageContentBlocks,
+	saveImageViaBridge,
+} from "../../shared/image-bridge.ts";
 import { CONVERTIBLE_EXTENSIONS } from "../utils/markit";
 import { ensureTool } from "../utils/tools-manager";
 import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../utils/zip";
@@ -754,6 +760,8 @@ interface FetchImagePayload {
 
 type FetchRenderResult = RenderResult & {
 	image?: FetchImagePayload;
+	/** DSH (拍板#22): attachment facts when the image was committed through the bridge. */
+	attachment?: import("../../shared/image-bridge.ts").SavedImageRef;
 };
 
 const BINARY_SAMPLE_CHARS = 4096;
@@ -1072,6 +1080,7 @@ async function renderUrl(
 	storage: AgentStorage | null,
 	fetchOverride?: FetchImpl,
 	excludeWebP?: true,
+	session?: ToolSession,
 ): Promise<FetchRenderResult> {
 	const notes: string[] = [];
 	const fetchedAt = new Date().toISOString();
@@ -1133,6 +1142,23 @@ async function renderUrl(
 	const imageMimeType = resolveImageMimeType(mime, extHint);
 	let skipConvertibleBinaryRetry = false;
 	if (imageMimeType) {
+		// `images.blockImages` (omp kill switch, default false): no download, no
+		// resize, no commit — the model gets the same sentence upstream uses at
+		// the provider boundary.
+		if (settings.get("images.blockImages") === true) {
+			notes.push("Image reading is disabled (images.blockImages)");
+			const output = finalizeOutput(`Fetched image content (${imageMimeType}). Image reading is disabled.`);
+			return {
+				url,
+				finalUrl,
+				contentType: imageMimeType,
+				method: "image-metadata",
+				content: output.content,
+				fetchedAt,
+				truncated: output.truncated,
+				notes,
+			};
+		}
 		if (!isInlineImageMimeTypeSupported(imageMimeType)) {
 			notes.push(
 				`Image MIME type ${imageMimeType} is unsupported for inline model serialization; returning text metadata only`,
@@ -1163,13 +1189,35 @@ async function renderUrl(
 					};
 				}
 
-				const resized = await resizeImage(
-					{ type: "image", data: Buffer.from(binary.buffer).toBase64(), mimeType: imageMimeType },
-					{ maxBytes: MAX_INLINE_IMAGE_OUTPUT_BYTES, excludeWebP },
-				);
+				let resized: Awaited<ReturnType<typeof resizeImage>> | undefined;
+				try {
+					// DSH config knobs: the manual `images.excludeWebp` override ORs with
+					// the automatic stb/Ollama exclusion (caller-provided `excludeWebP`);
+					// side/min/quality ladder budgets follow the shared images.* config.
+					// maxBytes stays on fetch's own stricter 300KB inline budget by design.
+					const forceNoWebp = settings.get("images.excludeWebp") === true;
+					const resizeSide = settings.get("images.resizeMaxSide");
+					resized = await resizeImage(
+						{ type: "image", data: Buffer.from(binary.buffer).toBase64(), mimeType: imageMimeType },
+						{
+							maxBytes: MAX_INLINE_IMAGE_OUTPUT_BYTES,
+							excludeWebP: excludeWebP === true || forceNoWebp ? true : undefined,
+							maxWidth: resizeSide,
+							maxHeight: resizeSide,
+							minDimension: settings.get("images.resizeMinSide"),
+							jpegQuality: settings.get("images.resizeJpegQuality"),
+						},
+					);
+				} catch (resizeError) {
+					// resizeImage only rethrows when a WebP source cannot be proven
+					// decodable under excludeWebP; treat it like an undecodable payload
+					// instead of failing the whole fetch.
+					notes.push(`Image resize failed: ${(resizeError as Error).message.split("\n")[0]}`);
+				}
 				const isDecodedImage =
+					resized !== undefined &&
 					resized.originalWidth > 0 && resized.originalHeight > 0 && resized.width > 0 && resized.height > 0;
-				if (!isDecodedImage) {
+				if (!resized || !isDecodedImage) {
 					notes.push(`Fetched payload could not be decoded as ${imageMimeType}; returning text metadata only`);
 					const output = finalizeOutput(
 						rawContent ?? `Fetched payload was labeled ${imageMimeType}, but bytes were not a valid image.`,
@@ -1204,9 +1252,49 @@ async function renderUrl(
 					};
 				}
 
+				// DSH (拍板#22): the content model has no inline base64 image block —
+				// commit the resized bytes through the attachment bridge so the model
+				// actually sees the picture. Without a bridge (or when the route
+				// cannot see images) degrade to the honest metadata-only note.
+				const imageBridge = session?.imageBridge?.();
+				const displayName = path.basename(new URL(finalUrl).pathname) || "image";
+				let bridgeNote: string | undefined;
+				let committed: ReturnType<typeof imageContentBlocks> | undefined;
+				let savedRef: import("../../shared/image-bridge.ts").SavedImageRef | undefined;
+				if (imageBridge?.attachments?.saveImage) {
+					if ((await imageBridge.routeImageSupport()) === "unsupported") {
+						bridgeNote = formatImageUnsupportedNote(
+							finalUrl,
+							{ mimeType: resized.mimeType, width: resized.width, height: resized.height, bytes: resized.buffer.byteLength },
+							"the current model does not accept image input",
+						);
+						notes.push("Image committed skipped: route lacks image input");
+					} else {
+						try {
+							const saved = await saveImageViaBridge(imageBridge, {
+								data: resized.buffer,
+								mediaType: resized.mimeType as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+								name: displayName,
+								displayPath: finalUrl,
+							});
+							if (saved.bytes > imageByteCap(imageBridge, MAX_INLINE_IMAGE_SOURCE_BYTES)) {
+								throw new Error("committed image exceeds the deployment's attachment byte cap");
+							}
+							committed = imageContentBlocks(finalUrl, saved);
+							notes.push("Committed image via attachment store");
+							savedRef = saved;
+						} catch (commitError) {
+							bridgeNote = `Fetched image content (${resized.mimeType}), but it could not be committed for display: ${(commitError as Error).message}`;
+							notes.push("Image commit to attachments failed; returning text metadata only");
+						}
+					}
+				}
+
 				const dimensionNote = formatDimensionNote(resized);
-				let imageSummary = `Fetched image content (${resized.mimeType}).`;
-				if (dimensionNote) {
+				let imageSummary = committed
+					? String((committed[0] as { text: string }).text)
+					: bridgeNote ?? `Fetched image content (${resized.mimeType}).`;
+				if (!committed && dimensionNote) {
 					imageSummary += `\n${dimensionNote}`;
 				}
 				const output = finalizeOutput(imageSummary);
@@ -1214,15 +1302,18 @@ async function renderUrl(
 					url,
 					finalUrl,
 					contentType: resized.mimeType,
-					method: "image",
+					method: committed ? "image" : "image-metadata",
 					content: output.content,
 					fetchedAt,
 					truncated: output.truncated,
 					notes,
-					image: {
-						data: resized.data,
-						mimeType: resized.mimeType,
-					},
+					image: committed
+						? undefined
+						: {
+								data: resized.data,
+								mimeType: resized.mimeType,
+							},
+					attachment: savedRef,
 				};
 			}
 			notes.push(binary.error ? `Binary fetch failed: ${binary.error}` : "Binary fetch failed");
@@ -1561,6 +1652,8 @@ export interface ReadUrlToolDetails {
 	truncated: boolean;
 	notes: string[];
 	meta?: OutputMeta;
+	/** DSH (拍板#22): committed attachment facts when the URL image went through the bridge. */
+	image?: import("../../shared/image-bridge.ts").SavedImageRef;
 }
 
 interface ReadUrlEntry {
@@ -1652,6 +1745,7 @@ export async function fetchReadUrl(
 		storage,
 		session.fetch,
 		webpExclusionForModel(session.getActiveModel?.()),
+		session,
 	);
 	const output = buildUrlReadOutput(result, result.content);
 	const artifact = options?.ensureArtifact ? await persistReadUrlArtifact(session, output) : undefined;
@@ -1665,6 +1759,7 @@ export async function fetchReadUrl(
 			finalUrl: result.finalUrl,
 			contentType: result.contentType,
 			method: result.method,
+			...(result.attachment ? { image: result.attachment } : {}),
 			truncated: Boolean(result.truncated),
 			notes: result.notes,
 		},

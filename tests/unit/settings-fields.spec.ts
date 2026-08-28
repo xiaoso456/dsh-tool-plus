@@ -152,12 +152,7 @@ describe('grouping sanity', () => {
     // grep 已挂配置（grepContextBefore/After，2026-08-25 配置统一）；
     // astGrep/astEdit 已挂启用开关（astGrepEnabled/astEditEnabled，2026-08-25）。
     // glob tab 已随拍板#19 移除（无任何配置项，不值得占一个空 tab）。
-    // 剩余无配置 tab：
-    for (const id of ['readImage'] as const) {
-      const tab = TOOL_PLUS_TABS.find(t => t.id === id)
-      expect(tab).toBeDefined()
-      expect(tab!.fields).toHaveLength(0)
-    }
+    // readImage tab 已随 read_image 工具删除（2026-08-28，融合后逃生门一并移除）。
     // grep tab 现在有字段（2 个上下文配置）
     const grepTab = TOOL_PLUS_TABS.find(t => t.id === 'grep')
     expect(grepTab).toBeDefined()

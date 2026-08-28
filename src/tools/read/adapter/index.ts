@@ -22,22 +22,50 @@ import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
 import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { ReadTool } from '../../omp/tools/read.ts'
+import type { AttachmentsService, ImageBridge, LlmRouteService, SavedImageRef } from '../../shared/image-bridge.ts'
 import readMd from '../../omp/prompts/tools/read.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
 export type { Settings } from '../../omp/config/settings.ts'
 export type { ToolSession } from '../../omp/sdk.ts'
 
-/** Build the OMP ToolSession facade over a DSH exec context. */
-function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
+/** Build the OMP ToolSession facade over a DSH exec context + tool-plus config. */
+function createToolSession(exec: any, cfg: RuntimeConfig, ctx: Context): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  // 临时调试日志：read 实际用到的模式（hashline 排查）。
-  console.log(`[tool-plus-debug] read session: cfg.editMode=${cfg.editMode} settings.get(edit.mode)=${String(settings.get('edit.mode'))}`)
-  const session: ToolSession = { cwd, settings, hasEditTool: true }
+  const session: ToolSession = { cwd, settings, hasEditTool: true, imageBridge: () => buildImageBridge(ctx, exec) }
   // 恢复本 DSH session 上次调用保存的 OMP 引擎状态（冲突注册表等，T11-2）。
   attachOmpSessionState(session, exec?.agent?.session)
   return session
+}
+
+/**
+ * DSH image bridge (拍板#22): attachments + llm services wrapped for the OMP
+ * engines, plus the route vision-capability probe mirroring the official
+ * read_image gate (`session.requestHeader().config` → agent options →
+ * `llm.resolveModelInfo`). 'unknown' (route/model not resolvable) passes —
+ * omp-flavored permissiveness; the attachment store's own checks stay
+ * authoritative and non-vision routes still get the soft metadata refusal.
+ */
+function buildImageBridge(ctx: Context, exec: any): ImageBridge {
+  const attachments = (ctx as { get?: (k: never) => unknown } | null | undefined)?.get?.('attachments' as never) as AttachmentsService | undefined
+  return {
+    attachments,
+    routeImageSupport: async () => {
+      const routed = exec?.agent?.session?.requestHeader?.()?.config
+      const provider: string | undefined = routed?.provider ?? exec?.agent?.options?.provider
+      const model: string | undefined = routed?.model ?? exec?.agent?.options?.model
+      const llm = (ctx as { get?: (k: never) => unknown } | null | undefined)?.get?.('llm' as never) as LlmRouteService | undefined
+      if (provider === undefined || model === undefined || typeof llm?.resolveModelInfo !== 'function') return 'unknown'
+      try {
+        const info = await llm.resolveModelInfo(provider, model, new AbortController().signal)
+        if (info?.inputModalities === undefined) return 'unknown'
+        return info.inputModalities.includes('image') ? 'supported' : 'unsupported'
+      } catch {
+        return 'unknown'
+      }
+    },
+  }
 }
 
 /** Extract the text content of an OMP AgentToolResult (throws on isError). */
@@ -60,6 +88,8 @@ export interface ReadToolOutput {
   notice?: string
   totalLines?: number
   truncated?: boolean
+  /** 拍板#22：图片读取的附件提交结果（信封文本已并入 text，此字段供 UI/审计）。 */
+  image?: SavedImageRef
 }
 
 /**
@@ -78,6 +108,7 @@ export function toReadToolResult(result: AgentToolResult<any>, args: any): ReadT
     ...(notice ? { notice } : {}),
     ...(typeof details.totalLines === 'number' ? { totalLines: details.totalLines } : {}),
     ...(typeof details.truncation !== 'undefined' ? { truncated: true } : {}),
+    ...(details.image !== undefined && typeof details.image === 'object' ? { image: details.image as SavedImageRef } : {}),
   }
 }
 
@@ -87,17 +118,13 @@ export function renderReadOutput(value: ReadToolOutput): string {
 }
 
 /** 完整执行链路（defineTool.execute 与单测共用）。 */
-export async function executeReadTool(exec: any, cfg: RuntimeConfig, args: any): Promise<ReadToolOutput> {
-  // 临时调试日志：execute 收到的 cfg 与最终输出（hashline 排查）。
-  console.log(`[tool-plus-debug] read execute: cfg.editMode=${cfg.editMode} path=${String(args.path ?? '')}`)
-  const session = createToolSession(exec, cfg)
+export async function executeReadTool(exec: any, cfg: RuntimeConfig, args: any, ctx: Context): Promise<ReadToolOutput> {
+  const session = createToolSession(exec, cfg, ctx)
   const tool = new ReadTool(session)
   const result = await tool.execute('read', { path: String(args.path ?? '') }, exec.signal)
   // 引擎可能惰性新建了 ConflictHistory 等状态，写回共享存储供下次调用恢复。
   persistOmpSessionState(exec?.agent?.session, session)
-  const out = toReadToolResult(result, args)
-  console.log(`[tool-plus-debug] read output: text=${JSON.stringify(out.text.slice(0, 120))}`)
-  return out
+  return toReadToolResult(result, args)
 }
 
 /**
@@ -128,9 +155,49 @@ export function registerRead(ctx: Context, getConfig: () => RuntimeConfig): () =
           truncated: { type: 'boolean' },
           totalLines: { type: 'number' },
           offset: { type: 'number' },
+          image: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              attachmentId: { type: 'string', required: true },
+              mediaType: { type: 'string', required: true },
+              bytes: { type: 'integer', required: true },
+              width: { type: 'integer', required: true },
+              height: { type: 'integer', required: true },
+              name: { type: 'string' },
+              originalDimensions: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  width: { type: 'integer', required: true },
+                  height: { type: 'integer', required: true },
+                },
+              },
+            },
+          },
         },
       },
-      render: (_args: any, value: any) => [{ type: 'text', text: renderReadOutput(value) }],
+      // 模型可见块：文本（信封/正文 + session 层提示）；图片读取成功时附官方
+      // attachment 引用块（DSH 内容模型唯一的图片形态，拍板#22）。
+      render: (_args: any, value: any) => {
+        const blocks: Array<Record<string, unknown>> = [{ type: 'text', text: renderReadOutput(value) }]
+        const image = value?.image as SavedImageRef | undefined
+        if (image?.attachmentId) {
+          blocks.push({
+            type: 'image',
+            attachment: {
+              attachmentId: image.attachmentId,
+              mediaType: image.mediaType,
+              bytes: image.bytes,
+              width: image.width,
+              height: image.height,
+              ...(image.name === undefined ? {} : { name: image.name }),
+              ...(image.originalDimensions === undefined ? {} : { originalDimensions: image.originalDimensions }),
+            },
+          })
+        }
+        return blocks as never
+      },
       presentationMeta: (_args: any, value: any) => ({
         ...(value.path !== undefined ? { path: value.path } : {}),
         ...(value.offset !== undefined ? { offset: value.offset } : {}),
@@ -138,8 +205,12 @@ export function registerRead(ctx: Context, getConfig: () => RuntimeConfig): () =
       }) as any,
     },
     async execute(args: any, exec: any) {
-      return executeReadTool(exec, getConfig(), args)
+      return executeReadTool(exec, getConfig(), args, ctx)
     },
+    // 并发安全声明（read_image 官方 isConcurrencySafe: true 接过来，2026-08-28）：
+    // 逐调用分类器，每次调度时求值——readConcurrentSafe 配置改动即时生效，无需重启。
+    // `!== false`：默认开启，仅显式关闭才串行（getConfig 可能返回未解析的部分配置）。
+    isConcurrencySafe: () => getConfig().readConcurrentSafe !== false,
     presentCall: (args: any) => ({
       card: 'generic',
       title: `Read ${String(args.path).slice(0, 80)}`,

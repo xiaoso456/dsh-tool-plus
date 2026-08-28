@@ -14,6 +14,9 @@
  * ctx.fs, diagnostics are never produced, and no TUI rendering happens.
  */
 import type { Context } from '@deepseek-ai/cordis'
+// 加载 dsh-fs 对 Context 的模块增强（ctx.fs 类型）。原由 read-image 的
+// side-effect import 提供，read_image 删除后在此显式声明（2026-08-28）。
+import type {} from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import { Settings } from '../../omp/config/settings.ts'

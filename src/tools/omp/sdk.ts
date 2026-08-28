@@ -41,6 +41,12 @@ export interface ToolSession {
   getActiveModelString?: () => string | undefined
   /** Active model object (image-capability checks; optional in DSH). */
   getActiveModel?: () => Model | undefined
+  /**
+   * DSH image bridge (拍板#22): attachment store + route vision-capability
+   * probe handed to the read/fetch image paths. Optional — engines degrade to
+   * a model-facing metadata text when absent.
+   */
+  imageBridge?: () => import('../shared/image-bridge.ts').ImageBridge | undefined
   /** Clipboard state carried on the session (hashline clipboard). */
   editClipboard?: Record<string, unknown>
   /** Hashline snapshot store (created lazily by the engine). */

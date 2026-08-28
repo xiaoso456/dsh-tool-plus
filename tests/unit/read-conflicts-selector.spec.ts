@@ -47,7 +47,7 @@ describe('read :conflicts 选择器（T11-1）', () => {
     const file = path.join(dir, 'conflicted.py')
     fs.writeFileSync(file, CONFLICTED)
 
-    const out = await executeReadTool(execFor(dir), {} as never, { path: `${file}:conflicts` })
+    const out = await executeReadTool(execFor(dir), {} as never, { path: `${file}:conflicts` }, null as never)
 
     expect(out.text).toContain('1 unresolved conflict')
     expect(out.text).toContain('#1')

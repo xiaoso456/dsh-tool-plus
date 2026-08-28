@@ -68,7 +68,7 @@ export interface ToolPlusTab {
 /** Identifiers of every tool tab. */
 export type ToolPlusToolId =
   | 'bash' | 'read' | 'writeEdit'
-  | 'grep' | 'astGrep' | 'astEdit' | 'readImage'
+  | 'grep' | 'astGrep' | 'astEdit'
 
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
@@ -133,6 +133,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'readDefaultLimit', kind: 'number', default: 300, labelKey: 'readDefaultLimit', hintKey: 'readDefaultLimitHint', group: 'reading', tool: 'read' },
   { name: 'readLineNumbers', kind: 'boolean', default: false, labelKey: 'readLineNumbers', hintKey: 'readLineNumbersHint', group: 'reading', tool: 'read' },
   { name: 'readRenderMarkdown', kind: 'boolean', default: false, labelKey: 'readRenderMarkdown', hintKey: 'readRenderMarkdownHint', group: 'reading', tool: 'read' },
+  { name: 'readConcurrentSafe', kind: 'boolean', default: true, labelKey: 'readConcurrentSafe', hintKey: 'readConcurrentSafeHint', group: 'reading', tool: 'read' },
   // ---- Read: 代码摘要（readSummarizeEnabled 主开关 + 从属字段） -------
   { name: 'readSummarizeEnabled', kind: 'boolean', default: true, labelKey: 'readSummarizeEnabled', hintKey: 'readSummarizeEnabledHint', group: 'summary', tool: 'read' },
   { name: 'readSummarizeProse', kind: 'boolean', default: false, labelKey: 'readSummarizeProse', hintKey: 'readSummarizeProseHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
@@ -144,13 +145,15 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // ---- Read: 抓取（fetchEnabled 主开关 + 超时联动） -------------------
   { name: 'fetchEnabled', kind: 'boolean', default: true, labelKey: 'fetchEnabled', hintKey: 'fetchEnabledHint', group: 'fetch', tool: 'read' },
   { name: 'fetchMaxTimeoutSeconds', kind: 'number', default: 0, labelKey: 'fetchMaxTimeoutSeconds', hintKey: 'fetchMaxTimeoutSecondsHint', group: 'fetch', tool: 'read', visibility: { requiresEnabled: 'fetchEnabled' } },
-  // ---- Read: 图片（自动缩放 + 检查模式） ------------------------------
+  // ---- Read: 图片（拍板#22 融合 + 2026-08-28 配置扩充：新键默认全=上游常量，不配零行为变化） --
+  { name: 'imagesBlockImages', kind: 'boolean', default: false, labelKey: 'imagesBlockImages', hintKey: 'imagesBlockImagesHint', group: 'images', tool: 'read' },
   { name: 'imagesAutoResize', kind: 'boolean', default: true, labelKey: 'imagesAutoResize', hintKey: 'imagesAutoResizeHint', group: 'images', tool: 'read' },
-  { name: 'inspectImageMode', kind: 'select', default: 'auto', labelKey: 'inspectImageMode', hintKey: 'inspectImageModeHint', group: 'images', tool: 'read', options: [
-    { value: 'auto', labelKey: 'optAuto' },
-    { value: 'on', labelKey: 'optOn' },
-    { value: 'off', labelKey: 'optOff' },
-  ] },
+  { name: 'imagesResizeMaxSide', kind: 'number', default: 1568, labelKey: 'imagesResizeMaxSide', hintKey: 'imagesResizeMaxSideHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
+  { name: 'imagesResizeMaxBytes', kind: 'number', default: 500 * 1024, labelKey: 'imagesResizeMaxBytes', hintKey: 'imagesResizeMaxBytesHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
+  { name: 'imagesResizeMinSide', kind: 'number', default: 200, labelKey: 'imagesResizeMinSide', hintKey: 'imagesResizeMinSideHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
+  { name: 'imagesResizeJpegQuality', kind: 'number', default: 80, labelKey: 'imagesResizeJpegQuality', hintKey: 'imagesResizeJpegQualityHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
+  { name: 'imagesExcludeWebp', kind: 'boolean', default: false, labelKey: 'imagesExcludeWebp', hintKey: 'imagesExcludeWebpHint', group: 'images', tool: 'read' },
+  { name: 'imagesInputMaxBytes', kind: 'number', default: 20 * 1024 * 1024, labelKey: 'imagesInputMaxBytes', hintKey: 'imagesInputMaxBytesHint', group: 'images', tool: 'read' },
   // ---- Write / Edit: 编辑模式（editMode 主控 + fuzzy/enforceSeen 关联）--
   { name: 'editMode', kind: 'select', default: 'replace', labelKey: 'editMode', hintKey: 'editModeHint', group: 'editMode', tool: 'writeEdit', options: [
     { value: 'replace', labelKey: 'optReplace' },
@@ -181,7 +184,6 @@ export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
   { id: 'grep', labelKey: 'tabGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'grep').map(f => f.name) },
   { id: 'astGrep', labelKey: 'tabAstGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astGrep').map(f => f.name) },
   { id: 'astEdit', labelKey: 'tabAstEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astEdit').map(f => f.name) },
-  { id: 'readImage', labelKey: 'tabReadImage', fields: [] },
 ]
 
 /** Look up one field definition by its schema key. */

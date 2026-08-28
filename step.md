@@ -343,3 +343,31 @@ pi-catalog / puppeteer-core / .md 文本导入 / browser 子系统）。全程�
 - **热更新（2026-08-25 追加）**：DSH 工具注册表同名重复注册会抛错（NamedEntries），但 `register()` 返回 disposer——read/edit 的注册改为返回 disposer，src/index.ts 在配置热更新回调里先 dispose 再重注册（registerModeSensitive），editMode 切换后 read 的 IS_HL_MODE 描述与 edit 的模式描述即时刷新，无需重启。其余工具描述不依赖配置，不受影响。验证：tsc 0 错、376/376、smoke ALL PASS、build 通过。
 - **验证**：typecheck 0 错、smoke ALL PASS、单测 376/376、build 通过
 
+## 2026-08-28：图像链路重建与终态（拍板#22-#25）
+
+### 拍板#22 图像链路重建（另一窗口实施，本节补记）
+- bun-shim：BunImageShim = sharp 懒加载三级解析（optional peer ≥0.33，复用宿主实例）
+- fetch：try/catch 拆 excludeWebP-rethrow-500 雷 + bridge saveImage 出 attachment（无 bridge → image-metadata 文本降级）
+- image-loading.ts 恢复 loadImageInput 管线（agent-boundary 归一化层维持删除，宿主自归一化）
+- read.ts：#loadImageContent（autoResize 默认 true；originalDimensions 信封）+ local:// 图片分派
+- shared/image-bridge.ts：saveImage + 五分支错误映射 verbatim + 官方信封；session.imageBridge 门面；适配器 render 产 [text, image attachment] 块
+- read_image 退役开关 readImageToolEnabled 默认 false；非 vision/无 store 软降级 metadata 文本
+- 真机修复：commit mediaType 字节权威（loaded.mimeType 优先），mock 加 magic 断言（32×32 纯色小图重编码成 WebP 被宿主拒 IMAGE_TYPE_MISMATCH）
+- 验证：真机 headless 文件图+URL 图双冒烟、四象限颜色全对、附件内容寻址去重生效、413/413
+
+### 拍板#23 图像配置扩充 7 字段
+- 7 新字段（blockImages/inputMaxBytes/resizeMaxSide/resizeMaxBytes/resizeMinSide/jpegQuality/excludeWebp）全落 images 分组，默认=上游常量零行为变化；fields 可见性 4 旋钮 requiresEnabled imagesAutoResize
+- image-loading.ts 加 resize? 透传（image-resize.ts 保持零 diff）；read/fetch 图像分支接线
+- 新增 tests/unit/image-config-knobs.spec.ts 5 例；验证链全绿
+
+### 拍板#24 readConcurrentSafe
+- read_image 18 项功能对照后唯一实质差异 isConcurrencySafe → 接到 read：adapter isConcurrencySafe 逐调用分类器读 readConcurrentSafe（默认 true，热生效无需重启）
+- 竞态评估：共享状态仅 ConflictHistory（同一引用+同步操作原子），图片路径无共享可变状态
+- 新增 tests/unit/read-concurrent.spec.ts 4 例；宿主契约坑：defineTool 包装分类器先 validate(args)，测试须传 { path }
+
+### 拍板#25 read_image 删除
+- 删除清单：src/tools/read-image/ 整目录、src/index.ts 注册门控、readImageToolEnabled 四层配置（settings/fields/locales/tab）、settings-fields.spec 断言、IMAGE-KNOBS-TEST.md D1 附录、3081 配置还原 {}、presets 描述、ORIGIN.md 标注；THIRD_PARTY_NOTICES 改措辞级声明
+- 隐藏依赖修复：read-image 的 dsh-fs side-effect type import 是 Context 模块增强唯一加载点 → edit/adapter 显式补 import
+- 真机测试收尾：A1–A6/B1–B9 全绿；C 组全绿（C2-2 断言修正：16-bit PNG 实为宿主 sharp 归一化常规输入，成功提交 702B 8-bit，报错分支仅 sharp 转换失败时触发）；D2 并发安全全绿（并行 3 调用无串扰 + 串行对照）
+- 验证：typecheck 0 错、422/422 全绿、build 7.26MB
+

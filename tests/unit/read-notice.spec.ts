@@ -35,7 +35,7 @@ describe('read 截断提示（T02）', () => {
     const file = path.join(dir, 'longline.txt')
     fs.writeFileSync(file, 'A'.repeat(2000))
 
-    const out = await executeReadTool(execFor(dir), {} as never, { path: file })
+    const out = await executeReadTool(execFor(dir), {} as never, { path: file }, null as never)
 
     // 截断本身发生（尾部省略号）
     expect(out.text).toContain('…')
@@ -50,7 +50,7 @@ describe('read 截断提示（T02）', () => {
     // 20001 行 > MAX_SUMMARY_LINES(20000)，且 > read.defaultLimit(300) → 走普通截断路径
     fs.writeFileSync(file, Array.from({ length: 20_001 }, (_, i) => `line-${i}`).join('\n'))
 
-    const out = await executeReadTool(execFor(dir), {} as never, { path: file })
+    const out = await executeReadTool(execFor(dir), {} as never, { path: file }, null as never)
 
     expect(out.notice).toMatch(/Showing lines \d+-\d+ of 20001/)
     expect(renderReadOutput(out)).toContain('Showing lines')
@@ -61,7 +61,7 @@ describe('read 截断提示（T02）', () => {
     const file = path.join(dir, 'small.txt')
     fs.writeFileSync(file, 'hello\nworld\n')
 
-    const out = await executeReadTool(execFor(dir), {} as never, { path: file })
+    const out = await executeReadTool(execFor(dir), {} as never, { path: file }, null as never)
 
     expect(out.notice).toBeUndefined()
     expect(renderReadOutput(out)).toBe(out.text)

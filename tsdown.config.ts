@@ -69,7 +69,7 @@ export default defineConfig([
       // links / profile install). @oh-my-pi/* source packages (main →
       // src/*.ts) are pure-TS — Node cannot strip types under node_modules,
       // so they MUST be bundled in (deps.alwaysBundle).
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/],
+      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/],
       alwaysBundle: [
         /^@oh-my-pi\/pi-utils/,
         /^@oh-my-pi\/pi-tui/,
@@ -93,7 +93,9 @@ export default defineConfig([
     clean: false,
     deps: {
       // json5 is CJS; keep it external so Node's ESM default-interop applies.
-      neverBundle: [/^json5/],
+      // sharp stays external too — the Bun.Image shim resolves it at runtime
+      // from the host DSH tree (never bundled, never installed by this package).
+      neverBundle: [/^json5/, /^sharp$/],
     },
   },
   {

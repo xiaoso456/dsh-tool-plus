@@ -53,7 +53,7 @@ describe('冲突注册跨调用（T11-2）', () => {
     const exec = execFor(dir, sessionKey)
 
     // 第一次调用：read 注册冲突
-    const readOut = await executeReadTool(exec, {} as never, { path: file })
+    const readOut = await executeReadTool(exec, {} as never, { path: file }, null as never)
     expect(readOut.text).toContain('1 unresolved conflict detected')
 
     // 第二次调用：write 消费冲突 id
@@ -78,7 +78,7 @@ describe('冲突注册跨调用（T11-2）', () => {
     // 无 agent.session（如无会话上下文）→ attach/persist 跳过
     const exec = { signal: undefined }
 
-    const readOut = await executeReadTool(exec, {} as never, { path: file })
+    const readOut = await executeReadTool(exec, {} as never, { path: file }, null as never)
     expect(readOut.text).toContain('1 unresolved conflict detected')
 
     await expect(

@@ -8,8 +8,11 @@
  * `fromBase64` extensions Bun adds. Every change here is recorded in step.md
  * ("Bun 兼容" section).
  *
- * `Bun.Image` deliberately throws: plan.md 拍板 image 从 read 去掉（与官方
- * read_image 重复）。
+ * `Bun.Image` is backed by `sharp` resolved at runtime (拍板#22, 2026-08-28:
+ * 图像链路重建——sharp 兼容层取代构造即抛错的桩，fetch/read 的 resizeImage
+ * 后端由此复活）。sharp 是宿主 DSH 的传递依赖（dsh-attachment-local 直接依
+ * 赖），本包不打包、不安装，运行时经 createRequire/import 级联解析；解析不到
+ * 时抛带指引的错误，`resizeImage` 的 try/catch 降级语义保持不变。
  */
 import * as fs from 'node:fs'
 // NOTE: no `node:` prefix on fs/promises here — tsdown aliases
@@ -481,13 +484,189 @@ function bunColor(color: string, format?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Bun.Image — deliberately unavailable (plan.md: read image handling removed)
+// Bun.Image — sharp-backed chainable pipeline (拍板#22)
+//
+// Implements the subset of the Bun.Image API that OMP's image-resize.ts (and
+// the restored read/fetch image paths) consume: constructor over encoded
+// bytes, async `metadata()`, lazy `.resize(w, h[, fit])`, terminal encoders
+// `.png()/.jpeg({quality})/.webp({quality})`, and `.bytes()/.toBase64()`.
+// Chains are re-playable: every instance is immutable until a terminal call,
+// so `new Bun.Image(buf).resize(...).png().bytes()` and the parallel
+// candidate fan-out in resizeImage all share one source buffer safely.
+//
+// sharp resolution cascade (the plugin bundles neither sharp nor libvips):
+//   1. bare dynamic import — works when the plugin's dependency chain can
+//      resolve sharp from its own chunk location;
+//   2. createRequire(import.meta.url) — CJS interop through this file's
+//      ancestor node_modules (the DSH install tree carries sharp under
+//      @deepseek-ai/dsh/node_modules as dsh-attachment-local's dependency);
+//   3. host-tree probe — walk up from this module for a
+//      `@deepseek-ai/dsh/node_modules/sharp` sibling of the running app.
+// Failures throw a guidance error; callers' try/catch degrade honestly
+// (resizeImage returns the original bytes with decodeFailed metadata).
 // ---------------------------------------------------------------------------
-class BunImageUnavailable {
-  constructor() {
-    throw new Error('DSH: Bun.Image 不可用 — read 内图片读取已按 plan.md 去掉，请用 read_image 工具')
+
+type SharpLike = {
+  (input: Uint8Array, opts?: Record<string, unknown>): SharpLikeInstance
+}
+interface SharpLikeInstance {
+  metadata(): Promise<Record<string, unknown>>
+  resize(width: number, height: number, opts?: Record<string, unknown>): SharpLikeInstance
+  png(opts?: Record<string, unknown>): SharpLikeInstance
+  jpeg(opts?: Record<string, unknown>): SharpLikeInstance
+  webp(opts?: Record<string, unknown>): SharpLikeInstance
+  toBuffer(): Promise<Uint8Array>
+}
+
+let sharpLoaderPromise: Promise<SharpLike> | undefined
+
+async function loadSharp(): Promise<SharpLike> {
+  if (!sharpLoaderPromise) sharpLoaderPromise = resolveSharp()
+  try {
+    return await sharpLoaderPromise
+  } catch (error) {
+    // Cache only successes; let a later call retry resolution (the host tree
+    // may mount sharp after an early boot-time attempt).
+    sharpLoaderPromise = undefined
+    throw error
   }
 }
+
+function normalizeSharp(mod: unknown): SharpLike | undefined {
+  const candidate = (mod as { default?: unknown } | undefined)?.default ?? mod
+  const fn = (candidate as { sharp?: unknown } | undefined)?.sharp ?? candidate
+  return typeof fn === 'function' ? (fn as SharpLike) : undefined
+}
+
+async function resolveSharp(): Promise<SharpLike> {
+  const errors: string[] = []
+  try {
+    const sharp = normalizeSharp(await import('sharp'))
+    if (sharp) return sharp
+    errors.push('import("sharp"): no callable export')
+  } catch (error) {
+    errors.push(`import("sharp"): ${(error as Error).message.split('\n')[0]}`)
+  }
+  try {
+    const { createRequire } = await import('node:module')
+    const required = normalizeSharp(createRequire(import.meta.url)('sharp'))
+    if (required) return required
+    errors.push('createRequire("sharp"): no callable export')
+  } catch (error) {
+    errors.push(`createRequire("sharp"): ${(error as Error).message.split('\n')[0]}`)
+  }
+  try {
+    const { createRequire } = await import('node:module')
+    const { fileURLToPath } = await import('node:url')
+    const { existsSync } = await import('node:fs')
+    let dir = path.dirname(fileURLToPath(import.meta.url))
+    for (let depth = 0; depth < 10; depth++) {
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      const probe = path.join(parent, 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', 'sharp', 'package.json')
+      if (existsSync(probe)) {
+        const hostRequire = createRequire(path.join(parent, 'noop.js'))
+        const sharp = normalizeSharp(hostRequire('sharp'))
+        if (sharp) return sharp
+      }
+      dir = parent
+    }
+  } catch { /* fall through to the guidance error below */ }
+  throw new Error(
+    `DSH: Bun.Image 需要 sharp，但运行时解析失败（${errors.join('；')}）。` +
+    'sharp 应随宿主 @deepseek-ai/dsh（dsh-attachment-local）安装；图片缩放将按调用方的降级路径处理。',
+  )
+}
+
+/** Map sharp's format vocabulary onto Bun.Image's (width/height/format[/hasAlpha]). */
+function mapImageMetadata(meta: Record<string, unknown>): { width: number; height: number; format?: string; hasAlpha?: boolean } {
+  const format = typeof meta.format === 'string' ? meta.format : undefined
+  return {
+    width: typeof meta.width === 'number' ? meta.width : 0,
+    height: typeof meta.height === 'number' ? meta.height : 0,
+    ...(format !== undefined ? { format } : {}),
+    ...(typeof meta.channels === 'number' ? { hasAlpha: meta.channels === 2 || meta.channels === 4 } : {}),
+  }
+}
+
+interface ImageStep {
+  op: 'resize' | 'png' | 'jpeg' | 'webp' | 'rotate' | 'flip' | 'blur' | 'sharpen'
+  args: unknown[]
+}
+
+export class BunImageShim {
+  #source: Uint8Array
+  #steps: readonly ImageStep[]
+
+  constructor(bytes: Uint8Array | ArrayBuffer, steps?: readonly ImageStep[]) {
+    this.#source = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
+    this.#steps = steps ?? []
+  }
+
+  #extend(step: ImageStep): BunImageShim {
+    return new BunImageShim(this.#source, [...this.#steps, step])
+  }
+
+  async metadata(): Promise<{ width: number; height: number; format?: string; hasAlpha?: boolean }> {
+    const sharp = await loadSharp()
+    return mapImageMetadata(await sharp(this.#source, { failOn: 'error' }).metadata())
+  }
+
+  resize(widthOrOpts?: number | { width?: number; height?: number; quality?: number }, height?: number): BunImageShim {
+    if (typeof widthOrOpts === 'object' && widthOrOpts !== null) {
+      return this.#extend({ op: 'resize', args: [widthOrOpts.width, widthOrOpts.height] })
+    }
+    return this.#extend({ op: 'resize', args: [widthOrOpts, height] })
+  }
+
+  /** Bun's resize() accepts { width, height, fit } — expose fit through to sharp. */
+  resizeWithFit(width: number, height: number, fit: 'cover' | 'contain' | 'fill' | 'inside' | 'outside'): BunImageShim {
+    return this.#extend({ op: 'resize', args: [width, height, { fit }] })
+  }
+
+  png(): BunImageShim { return this.#extend({ op: 'png', args: [] }) }
+  jpeg(opts?: { quality?: number }): BunImageShim { return this.#extend({ op: 'jpeg', args: [opts] }) }
+  webp(opts?: { quality?: number }): BunImageShim { return this.#extend({ op: 'webp', args: [opts] }) }
+  rotate(): BunImageShim { return this.#extend({ op: 'rotate', args: [] }) }
+  flip(flip: boolean): BunImageShim { return this.#extend({ op: 'flip', args: [flip] }) }
+  blur(radius: number): BunImageShim { return this.#extend({ op: 'blur', args: [radius] }) }
+  sharpen(radius?: number): BunImageShim { return this.#extend({ op: 'sharpen', args: [radius] }) }
+
+  #build(): Promise<Uint8Array> {
+    return loadSharp().then((sharp) => {
+      let pipe: SharpLikeInstance = sharp(this.#source, { failOn: 'error' })
+      for (const step of this.#steps) {
+        switch (step.op) {
+          case 'resize': {
+            const [w, h, extra] = step.args as [number | undefined, number | undefined, { fit?: string } | undefined]
+            pipe = pipe.resize(w ?? 0, h ?? 0, { fit: (extra?.fit as 'cover' | undefined) ?? 'cover' })
+            break
+          }
+          case 'png': pipe = pipe.png(); break
+          case 'jpeg': pipe = pipe.jpeg((step.args[0] ?? undefined) as { quality?: number } | undefined); break
+          case 'webp': pipe = pipe.webp((step.args[0] ?? undefined) as { quality?: number } | undefined); break
+          default: break // rotate/flip/blur/sharpen: declared for API parity, no in-repo consumer yet
+        }
+      }
+      return pipe.toBuffer()
+    })
+  }
+
+  async bytes(): Promise<Uint8Array> {
+    return this.#build()
+  }
+
+  async toBase64(): Promise<string> {
+    return Buffer.from(await this.#build()).toString('base64')
+  }
+
+  async write(destPath: string): Promise<number> {
+    const data = await this.#build()
+    await fsp.writeFile(destPath, data as never)
+    return data.byteLength
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Bun.Archive.write — tar / tar.gz writing (zip is framed in memory by zip.ts)
@@ -556,7 +735,7 @@ export interface BunShimSurface {
   Glob: typeof GlobShim
   Archive: { write: typeof archiveWrite }
   FileSink: typeof FileSinkShim
-  Image: typeof BunImageUnavailable
+  Image: typeof BunImageShim
   CryptoHasher: typeof CryptoHasherShim
   color(color: string, format?: string): string
   JSON: { parse(s: string): unknown; stringify(v: unknown): string }
@@ -585,7 +764,7 @@ export function installBunShim(): void {
     Glob: GlobShim,
     Archive: { write: archiveWrite },
     FileSink: FileSinkShim,
-    Image: BunImageUnavailable,
+    Image: BunImageShim,
     CryptoHasher: CryptoHasherShim,
     color: bunColor,
     JSON: JSON,

@@ -84,9 +84,10 @@ declare global {
     const Archive: { write(dest: string, record: Record<string, string | Uint8Array | Blob>, opts?: { compress?: 'gzip' }): Promise<void> }
     const FileSink: new (path: string) => FileSink
     interface BunImage {
-      metadata(): Promise<{ width: number; height: number; format?: string }>
+      metadata(): Promise<{ width: number; height: number; format?: string; hasAlpha?: boolean }>
       resize(width?: number, height?: number): BunImage
       resize(opts: { width?: number; height?: number; quality?: number }): BunImage
+      resizeWithFit(width: number, height: number, fit: 'cover' | 'contain' | 'fill' | 'inside' | 'outside'): BunImage
       png(): BunImage
       jpeg(opts?: { quality?: number }): BunImage
       webp(opts?: { quality?: number }): BunImage

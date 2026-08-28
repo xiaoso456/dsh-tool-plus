@@ -85,6 +85,7 @@ export interface RuntimeConfig {
   readDefaultLimit: number
   readLineNumbers: boolean
   readRenderMarkdown: boolean
+  readConcurrentSafe: boolean
   grepContextBefore: number
   grepContextAfter: number
   astGrepEnabled: boolean
@@ -92,7 +93,13 @@ export interface RuntimeConfig {
   fetchEnabled: boolean
   fetchMaxTimeoutSeconds: number
   imagesAutoResize: boolean
-  inspectImageMode: string
+  imagesBlockImages: boolean
+  imagesExcludeWebp: boolean
+  imagesInputMaxBytes: number
+  imagesResizeMaxSide: number
+  imagesResizeMaxBytes: number
+  imagesResizeMinSide: number
+  imagesResizeJpegQuality: number
 }
 
 /** Settings namespace of this plugin, served to the web Plugins page. */
@@ -157,6 +164,7 @@ export interface Config {
   readDefaultLimit?: number
   readLineNumbers?: boolean
   readRenderMarkdown?: boolean
+  readConcurrentSafe?: boolean
   grepContextBefore?: number
   grepContextAfter?: number
   astGrepEnabled?: boolean
@@ -164,7 +172,13 @@ export interface Config {
   fetchEnabled?: boolean
   fetchMaxTimeoutSeconds?: number
   imagesAutoResize?: boolean
-  inspectImageMode?: 'auto' | 'on' | 'off'
+  imagesBlockImages?: boolean
+  imagesExcludeWebp?: boolean
+  imagesInputMaxBytes?: number
+  imagesResizeMaxSide?: number
+  imagesResizeMaxBytes?: number
+  imagesResizeMinSide?: number
+  imagesResizeJpegQuality?: number
 }
 
 /** Schema default of one field, sourced from the single-source field table. */
@@ -217,16 +231,23 @@ export const Config: z<Config> = z.object({
   readDefaultLimit: z.number().default(fieldDefault('readDefaultLimit', 300)),
   readLineNumbers: z.boolean().default(fieldDefault('readLineNumbers', false)),
   readRenderMarkdown: z.boolean().default(fieldDefault('readRenderMarkdown', false)),
+  readConcurrentSafe: z.boolean().default(fieldDefault('readConcurrentSafe', true)),
   grepContextBefore: z.number().default(fieldDefault('grepContextBefore', 1)),
   grepContextAfter: z.number().default(fieldDefault('grepContextAfter', 3)),
   // AST 工具启用开关（OMP settings-schema.ts:3831/3842；astGrep 默认 false）
   astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)),
   astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)),
-  // File tools — fetch/images/inspect_image（read/write 抓取与读图）
+  // File tools — fetch（URL 抓取）与图片（拍板#22：read 图片路径已还原并入）
   fetchEnabled: z.boolean().default(fieldDefault('fetchEnabled', true)),
   fetchMaxTimeoutSeconds: z.number().default(fieldDefault('fetchMaxTimeoutSeconds', 0)),
   imagesAutoResize: z.boolean().default(fieldDefault('imagesAutoResize', true)),
-  inspectImageMode: z.union(['auto', 'on', 'off'] as const).default(fieldDefault('inspectImageMode', 'auto')),
+  imagesBlockImages: z.boolean().default(fieldDefault('imagesBlockImages', false)),
+  imagesExcludeWebp: z.boolean().default(fieldDefault('imagesExcludeWebp', false)),
+  imagesInputMaxBytes: z.number().default(fieldDefault('imagesInputMaxBytes', 20 * 1024 * 1024)),
+  imagesResizeMaxSide: z.number().default(fieldDefault('imagesResizeMaxSide', 1568)),
+  imagesResizeMaxBytes: z.number().default(fieldDefault('imagesResizeMaxBytes', 500 * 1024)),
+  imagesResizeMinSide: z.number().default(fieldDefault('imagesResizeMinSide', 200)),
+  imagesResizeJpegQuality: z.number().default(fieldDefault('imagesResizeJpegQuality', 80)),
 })
 
 /**
@@ -288,6 +309,7 @@ export function resolveConfig(config: Config): RuntimeConfig {
     readDefaultLimit: config.readDefaultLimit ?? fieldDefault('readDefaultLimit', 300),
     readLineNumbers: config.readLineNumbers ?? fieldDefault('readLineNumbers', false),
     readRenderMarkdown: config.readRenderMarkdown ?? fieldDefault('readRenderMarkdown', false),
+    readConcurrentSafe: config.readConcurrentSafe ?? fieldDefault('readConcurrentSafe', true),
     grepContextBefore: config.grepContextBefore ?? fieldDefault('grepContextBefore', 1),
     grepContextAfter: config.grepContextAfter ?? fieldDefault('grepContextAfter', 3),
     astGrepEnabled: config.astGrepEnabled ?? fieldDefault('astGrepEnabled', false),
@@ -295,7 +317,13 @@ export function resolveConfig(config: Config): RuntimeConfig {
     fetchEnabled: config.fetchEnabled ?? fieldDefault('fetchEnabled', true),
     fetchMaxTimeoutSeconds: config.fetchMaxTimeoutSeconds ?? fieldDefault('fetchMaxTimeoutSeconds', 0),
     imagesAutoResize: config.imagesAutoResize ?? fieldDefault('imagesAutoResize', true),
-    inspectImageMode: config.inspectImageMode ?? fieldDefault('inspectImageMode', 'auto'),
+    imagesBlockImages: config.imagesBlockImages ?? fieldDefault('imagesBlockImages', false),
+    imagesExcludeWebp: config.imagesExcludeWebp ?? fieldDefault('imagesExcludeWebp', false),
+    imagesInputMaxBytes: config.imagesInputMaxBytes ?? fieldDefault('imagesInputMaxBytes', 20 * 1024 * 1024),
+    imagesResizeMaxSide: config.imagesResizeMaxSide ?? fieldDefault('imagesResizeMaxSide', 1568),
+    imagesResizeMaxBytes: config.imagesResizeMaxBytes ?? fieldDefault('imagesResizeMaxBytes', 500 * 1024),
+    imagesResizeMinSide: config.imagesResizeMinSide ?? fieldDefault('imagesResizeMinSide', 200),
+    imagesResizeJpegQuality: config.imagesResizeJpegQuality ?? fieldDefault('imagesResizeJpegQuality', 80),
   }
 }
 
