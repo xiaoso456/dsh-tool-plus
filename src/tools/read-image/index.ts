@@ -38,6 +38,7 @@ export interface ImageReadValue {
     width: number
     height: number
     name?: string
+    originalDimensions?: { width: number; height: number }
   }
 }
 
@@ -125,11 +126,21 @@ export function imageRefFromValue(image: ImageReadValue['image']): ImageAttachme
     width: image.width,
     height: image.height,
     ...(image.name === undefined ? {} : { name: image.name }),
+    ...(image.originalDimensions === undefined
+      ? {}
+      : { originalDimensions: { ...image.originalDimensions } }),
   }
 }
 
 export function formatImageReadOutput(displayPath: string, image: ImageReadValue['image']): string {
-  return `<path>${displayPath}</path>\n<type>image</type>\n<content>\n${image.mediaType} image, ${image.width}x${image.height} px, ${image.bytes} bytes\n</content>`
+  let scaled = ''
+  if (image.originalDimensions !== undefined) {
+    const x = (image.originalDimensions.width / image.width).toFixed(2)
+    const y = (image.originalDimensions.height / image.height).toFixed(2)
+    const advice = x === y ? `multiply coordinates by ${x}` : `multiply x coordinates by ${x} and y coordinates by ${y}`
+    scaled = ` (downscaled from ${image.originalDimensions.width}x${image.originalDimensions.height} px; ${advice} to locate features in the original file)`
+  }
+  return `<path>${displayPath}</path>\n<type>image</type>\n<content>\n${image.mediaType} image, ${image.width}x${image.height} px, ${image.bytes} bytes${scaled}\n</content>`
 }
 
 function imageReadContent(value: ImageReadValue): ContentBlock[] {
@@ -148,7 +159,7 @@ function applyReadImageTool(ctx: Context): void {
     defineTool({
       name: 'read_image',
       description:
-        'Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input.',
+        'Read a PNG/JPEG/WebP/GIF file and return the image itself. Harness validates and downscales large supported images before the next model request, so use this tool directly instead of installing image libraries or creating thumbnails merely to inspect an image. Independent files may be read concurrently in small batches. Requires the current model to accept image input.',
       parameters: {
         file_path: {
           type: 'string',
@@ -177,6 +188,14 @@ function applyReadImageTool(ctx: Context): void {
                 width: { type: 'integer', required: true },
                 height: { type: 'integer', required: true },
                 name: { type: 'string' },
+                originalDimensions: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    width: { type: 'integer', required: true },
+                    height: { type: 'integer', required: true },
+                  },
+                },
               },
             },
           },
@@ -233,6 +252,18 @@ function applyReadImageTool(ctx: Context): void {
               { cause: error },
             )
           }
+          if (error.code === 'IMAGE_TOO_LARGE') {
+            throw new Error(
+              `cannot read "${target.displayPath}": the image cannot be stored within the deployment's byte limits; downscale the image and read the smaller copy`,
+              { cause: error },
+            )
+          }
+          if (error.code === 'ATTACHMENT_WRITE_FAILED' && /16-bit PNG/iu.test(error.message)) {
+            throw new Error(
+              `cannot read "${target.displayPath}": the 16-bit PNG could not be converted to the normalized 8-bit sRGB form; convert it to an 8-bit PNG/JPEG/WebP and retry`,
+              { cause: error },
+            )
+          }
           if (error.code !== 'IMAGE_TYPE_MISMATCH') throw error
           const extension = extname(target.displayPath).toLowerCase()
           throw new Error(
@@ -250,6 +281,9 @@ function applyReadImageTool(ctx: Context): void {
             width: ref.width,
             height: ref.height,
             ...(ref.name === undefined ? {} : { name: ref.name }),
+            ...(ref.originalDimensions === undefined
+              ? {}
+              : { originalDimensions: { ...ref.originalDimensions } }),
           },
         }
         return value
