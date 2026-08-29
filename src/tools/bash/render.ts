@@ -30,9 +30,10 @@ export function formatWallTimeNotice(wallTimeMs: number): string {
  * middle elision, shown range for one-sided truncation) plus elided stats,
  * then the spill-file pointer and a read-back hint. Range reconstruction rides
  * the shared OMP algorithm (`outputMeta().truncationFromSummary`), with the
- * upstream `artifact://` clause replaced by the filesystem path — DSH has no
- * artifact URL space, and the read tool's `:N-M` inline selectors take their
- * place.
+ * upstream `artifact://N` clause replaced by the spill-file path — bash spill
+ * files are plain files (deliberately not registered in the read tool's
+ * artifact:// space, see adapter/spill.ts) and are recovered with `:N-M`
+ * inline selectors instead.
  * @returns the notice lines, or `undefined` when output was not truncated.
  */
 export function formatTruncationNotice(value: CollectedOutput): string[] | undefined {

@@ -68,7 +68,8 @@ async function main() {
     // hashline 模式专用驱动：read 输出 [path#TAG] 头 + edit hashline input 用例
     // 依赖 edit.mode=hashline。DSH 默认是 replace（plan.md 拍板#15，与 OMP 默认
     // hashline 不同）——默认 replace 的验证见真实 dsh 回归。
-    await ctx.plugin(ToolPlus, { editMode: 'hashline' }),
+    // astGrepEnabled: smoke 全工具面驱动；生产默认 false（OMP astGrep.enabled=false 语义）。
+    await ctx.plugin(ToolPlus, { editMode: 'hashline', astGrepEnabled: true }),
   ]
   const agent = {
     id: 'smoke-session',

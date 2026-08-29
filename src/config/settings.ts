@@ -114,7 +114,15 @@ export const DEFAULT_OUTPUT_TRUNCATE: OutputTruncateConfig = {
   lines: { mode: 'middle', headLines: 50, tailLines: 100 },
 }
 
-/** OMP-parity defaults for the timing knobs (timeouts in ms; OMP uses seconds). */
+/**
+ * Timing knobs (ms). DEFAULT_MAX_TIMEOUT_MS is OMP-parity (= upstream bash
+ * per-tool max 3600s); DEFAULT_TIMEOUT_MS was deliberately relaxed from
+ * 300_000 to 3_600_000 with the bash-plus settings card (763023e,
+ * 2026-08-19) — NOT OMP-parity (OMP bash default is 300s), compensated by
+ * auto-backgrounding after DEFAULT_AUTO_BACKGROUND_MS. By design there is no
+ * upstream `tools.maxTimeout` global-cap equivalent: maxTimeoutMs always
+ * applies. (second-impl-audit.md S-11 终局, 2026-08-29.)
+ */
 export const DEFAULT_TIMEOUT_MS = 3_600_000
 export const DEFAULT_MAX_TIMEOUT_MS = 3_600_000
 export const DEFAULT_AUTO_BACKGROUND_MS = 60_000
@@ -200,7 +208,7 @@ export const Config: z<Config> = z.object({
   outputSinkTailBytes: z.number().default(fieldDefault('outputSinkTailBytes', 51_200)),
   outputSinkHeadBytes: z.number().default(fieldDefault('outputSinkHeadBytes', 20_480)),
   minimizerEnabled: z.boolean().default(fieldDefault('minimizerEnabled', true)),
-  interceptorEnabled: z.boolean().default(fieldDefault('interceptorEnabled', false)),
+  interceptorEnabled: z.boolean().default(fieldDefault('interceptorEnabled', true)),
   nonInteractiveEnv: z.boolean().default(fieldDefault('nonInteractiveEnv', true)),
   snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)),
   useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)),
@@ -274,7 +282,7 @@ export function resolveConfig(config: Config): RuntimeConfig {
     outputSinkTailBytes: config.outputSinkTailBytes ?? fieldDefault('outputSinkTailBytes', 51_200),
     outputSinkHeadBytes: config.outputSinkHeadBytes ?? fieldDefault('outputSinkHeadBytes', 20_480),
     minimizer: resolveMinimizer(),
-    interceptorEnabled: config.interceptorEnabled ?? fieldDefault('interceptorEnabled', false),
+    interceptorEnabled: config.interceptorEnabled ?? fieldDefault('interceptorEnabled', true),
     nonInteractiveEnv: config.nonInteractiveEnv ?? fieldDefault('nonInteractiveEnv', true),
     snapshotEnabled: config.snapshotEnabled ?? fieldDefault('snapshotEnabled', true),
     useShellCommandWrapper: config.useShellCommandWrapper ?? fieldDefault('useShellCommandWrapper', false),

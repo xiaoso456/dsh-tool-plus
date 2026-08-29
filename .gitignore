@@ -12,7 +12,8 @@ coverage/
 # Local logs
 debug.log
 *.log
-ORIGIN.md
+# Root-only: the archived copy under docs/archive/ is tracked
+/ORIGIN.md
 
 # OMP reference copy (plan.md methodology: raw material, never committed)
 src/tools/_raw_omp/
@@ -23,5 +24,5 @@ refs/
 # Local memory store
 .dsh-meow/
 
-# Working plans (draft documents, not committed)
-docs/plan/
+# Docs stay local (archives/plans/audits, not committed)
+docs/

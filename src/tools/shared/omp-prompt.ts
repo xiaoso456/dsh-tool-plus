@@ -37,16 +37,7 @@ export function renderOmpPrompt(text: string, vars: OmpPromptVars): string {
   return ompPrompt.render(text, { ...vars }).trim()
 }
 
-/** 剔除非空白/注释行——供剔除后再次 trim。 */
-export function cleanLines(text: string): string {
-  return text
-    .split('\n')
-    .map(line => line.trimEnd())
-    .join('\n')
-    .trim()
-}
 
-const SCOUT_IF_LINE = /^\s*.*\{\{#if scoutAvailable\}\}.*\{\{\/if\}\}.*$/m
 
 /** grep.md：internal URLs 提法 + scout 句剔除。 */
 export function sanitizeGrepPrompt(text: string): string {

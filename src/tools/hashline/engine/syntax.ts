@@ -15,9 +15,16 @@ import { enclosingBlockBoundaries } from "@oh-my-pi/pi-natives";
 const parseCache = new Map<string, boolean>();
 const PARSE_CACHE_MAX = 256;
 
+/** Syntactic node boundaries outside a visible source range; FIFO-bounded. */
 const boundaryCache = new Map<string, readonly number[]>();
 
-/** Syntactic node boundaries outside a visible source range. */
+/**
+ * FNV-1a over UTF-16 code units → base36 parse-cache key. In-process only
+ * (boundary/parse caches, FIFO ≤256): equal to the bun-shim `Bun.hash`
+ * shim's UTF-8 FNV-1a on ASCII keys, differs on non-ASCII; no cross-runtime
+ * or persistence contract (second-impl-audit.md S-3). Bun's native
+ * `Bun.hash` is wyhash64 — a different function by design.
+ */
 function hashStr(s: string): string {
 	let h = 2166136261
 	for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }

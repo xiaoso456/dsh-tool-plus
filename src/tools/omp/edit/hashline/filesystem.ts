@@ -148,6 +148,10 @@ export class HashlineFilesystem extends Filesystem {
 		return { text: content };
 	}
 
+	// Via the BunFile shim: a directory exists→true (real Bun: false). No
+	// current caller depends on the difference — the patcher reads via
+	// #tryRead, and patch-mode's directory-exists branch surfaces the
+	// friendlier error. Intentional adaptation (second-impl-audit.md S-15c).
 	override async exists(relativePath: string): Promise<boolean> {
 		const absolutePath = this.resolveAbsolute(relativePath);
 		return Bun.file(absolutePath).exists();

@@ -23,7 +23,8 @@ describe('resolveConfig', () => {
     expect(cfg.outputSinkTailBytes).toBe(51_200)
     expect(cfg.outputSinkHeadBytes).toBe(20_480)
     expect(cfg.minimizer).toEqual({ enabled: true, only: [], except: [], maxCaptureBytes: 512 * 1024 })
-    expect(cfg.interceptorEnabled).toBe(false)
+    // User decision 2026-08-29: interception defaults ON (upstream default is false).
+    expect(cfg.interceptorEnabled).toBe(true)
     expect(cfg.nonInteractiveEnv).toBe(true)
     expect(cfg.snapshotEnabled).toBe(true)
     expect(cfg.useShellCommandWrapper).toBe(false)

@@ -1,13 +1,17 @@
 /**
- * Config-driven output truncation for background→foreground completion text,
- * ported verbatim in behavior from the OMP bash-runtime
- * `applyConfiguredTruncation` (index.ts). Pure functions over a policy value —
- * no plugin state — so the ported runtime files stay pristine and the
- * `bash-plus` settings surface drives this module.
+ * Config-driven output truncation for background→foreground completion text.
+ * Provenance (second-impl-audit.md S-1, 2026-08-29): the truncation
+ * primitives (truncateHead/Middle/Tail, TruncationResult) are OMP 17.3.5
+ * verbatim, imported directly from `../omp/session/streaming-output.ts`;
+ * the composition layer below (trigger threshold + retention mode + notice
+ * format) is a plugin-specific design shipped with the bash-plus settings
+ * card (763023e, 2026-08-19) — `applyConfiguredTruncation` has no
+ * counterpart in refs/oh-my-pi 17.3.5, so the old "ported verbatim from the
+ * OMP bash-runtime" claim was unverifiable and has been dropped.
  * @module @xiaoso/dsh-tool-plus/truncate
  */
 
-import { truncateHead, truncateMiddle, truncateTail, type TruncationResult } from '../tools/bash/streaming-output.ts'
+import { truncateHead, truncateMiddle, truncateTail, type TruncationResult } from '../tools/omp/session/streaming-output.ts'
 import type { OutputTruncateConfig } from './settings.ts'
 
 /** Upper bound standing in for "no limit", matching the OMP helper. */

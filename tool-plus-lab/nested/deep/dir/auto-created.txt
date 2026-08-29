@@ -1,1 +1,0 @@
-created by write tool with auto parent directory mkdir - deep path test

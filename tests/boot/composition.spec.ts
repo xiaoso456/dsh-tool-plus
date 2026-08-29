@@ -158,13 +158,13 @@ describeBash('bash-plus composition', () => {
     expect(textOf(result)).toContain('boot-scoped')
   })
 
-  it('does not intercept commands by default (interceptorEnabled defaults to false)', async () => {
-    // Interception defaults OFF: even with the dedicated `read` tool visible
-    // (registered by the plugin itself), `cat` runs as a normal command
-    // instead of being blocked.
+  it('intercepts cat by default (interceptorEnabled defaults to true)', async () => {
+    // Interception defaults ON (user decision 2026-08-29; upstream default is
+    // false): `cat` is blocked with a redirect to the `read` tool whenever the
+    // dedicated tool is visible (registered by the plugin itself).
     const result = await call(ctx, 'bash', { command: 'cat package.json', description: 'read file' }, agent)
-    expect(result.isError).toBe(false)
-    expect(textOf(result)).toContain('package.json')
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('Use the `read` tool')
   })
 
   it('supports run_in_background through ctx.jobs and job reads', async () => {

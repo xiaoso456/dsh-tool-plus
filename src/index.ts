@@ -20,6 +20,7 @@ import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './tools/b
 import { closeSessionShells, executeBash } from './tools/bash/bash-executor.ts'
 import { allocateSpillFile, sweepStaleSpillFiles } from './tools/bash/adapter/spill.ts'
 import { startBashJob, type ManagedBashJob } from './tools/bash/background.ts'
+import { expandTilde, extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { setRuntimeLogger } from './tools/bash/logger.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
@@ -42,7 +43,6 @@ export const inject = ['tools', 'systemPrompt', 'shellEnv', 'fs']
 export { Config } from './config/settings.ts'
 
 const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
-const CD_PREFIX_PATTERN = /^cd[ \t]+((?:[^&\\\n\r]|\\.)+?)[ \t]*&&[ \t]*/
 const ANONYMOUS_SESSION = 'anonymous'
 
 function abortError(): HarnessError {
@@ -70,7 +70,7 @@ function normalizeBashEnv(env: Record<string, string> | undefined): Record<strin
 }
 function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTimeMs: number, timeoutMs: number | undefined): BashForegroundOutput {
   return {
-    kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.cancelled, aborted: false, timeoutMs: timeoutMs ?? null, wallTimeMs,
+    kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.timedOut ?? false, aborted: false, timeoutMs: timeoutMs ?? null, wallTimeMs,
     ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
     ...result.minimized !== undefined ? { minimized: result.minimized } : {},
     output: {
@@ -180,10 +180,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       const commandEnv = normalizeBashEnv(args.env)
       let workdir = args.workdir
       if (workdir === undefined) {
-        const match = CD_PREFIX_PATTERN.exec(command)
-        if (match !== null && !/[$`(]/.test(match[1]!)) { workdir = match[1]!.trim().replace(/^['"]|['"]$/g, ''); command = command.slice(match[0].length) }
+        const cd = extractCdWorkdir(command)
+        if (cd !== null) { workdir = cd.workdir; command = cd.command }
       }
-      const commandCwd = workdir === undefined ? state.cwd : (path.isAbsolute(workdir) ? workdir : path.resolve(state.cwd, workdir))
+      const commandCwd = workdir === undefined ? state.cwd : path.resolve(state.cwd, expandTilde(workdir))
       if (cfg.interceptorEnabled) {
         const availableTools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))].filter(tool => ctx.tools.get(tool, exec.agent) !== undefined)
         const interception = checkBashInterception(command, availableTools)
@@ -191,7 +191,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
       const rawTimeoutMs = args.timeoutMs ?? cfg.defaultTimeoutMs
       const timeoutDisabled = rawTimeoutMs === 0
-      const timeoutMs = timeoutDisabled ? undefined : Math.min(Math.max(1_000, rawTimeoutMs), cfg.maxTimeoutMs)
+      // `timeoutMs: 0` passes through as a real disable (the executor skips
+      // both its watchdog and the native timeoutMs); explicit values are
+      // capped before the 1s floor so a maxTimeoutMs below 1s cannot produce
+      // a sub-floor deadline.
+      const timeoutMs = timeoutDisabled ? 0 : Math.max(1_000, Math.min(rawTimeoutMs, cfg.maxTimeoutMs))
       const dshEnv = ctx.shellEnv.collect(exec)
       const env = { ...dshEnv, ...commandEnv }
       const jobs = ctx.get('jobs')
@@ -201,7 +205,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         return live < cfg.maxBackgroundJobs
       }
       const startManagedJob = (): ManagedBashJob => {
-        const managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs, env, config: cfg })
+        // Background jobs: unset timeout = no deadline (upstream bash.ts
+        // `timeout: options.timeoutMs ?? 0`), not the foreground default.
+        const managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs: args.timeoutMs ?? 0, env, config: cfg })
         let settled = false
         let settledSpillPath: string | undefined
         void managed.completion.then(
@@ -233,7 +239,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         return { kind: 'background', jobId: id } satisfies BashBackgroundOutput
       }
       if (cfg.autoBackgroundMs > 0 && jobs !== undefined && backgroundSlotsAvailable() && !exec.signal.aborted) {
-        const autoBgWaitMs = timeoutMs === undefined ? cfg.autoBackgroundMs : Math.max(0, Math.min(cfg.autoBackgroundMs, timeoutMs - 1_000))
+        // timeoutMs 0 (deadline disabled) waits like the no-deadline case:
+        // the full autoBackgroundMs window, not an instant hand-off.
+        const autoBgWaitMs = timeoutMs === 0 ? cfg.autoBackgroundMs : Math.max(0, Math.min(cfg.autoBackgroundMs, timeoutMs - 1_000))
         let managed: ManagedBashJob
         let id: JobId
         try {

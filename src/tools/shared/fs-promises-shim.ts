@@ -13,14 +13,15 @@ import * as fsp from 'fs/promises'
 
 export * from 'fs/promises'
 
-/** Bun's `node:fs/promises` extension: `exists(path)` → `Promise<boolean>`. */
+/** Bun's `node:fs/promises` extension: `exists(path)` → `Promise<boolean>`.
+  * Bun swallows every stat error, not just ENOENT — ENAMETOOLONG on a 60k-char
+  * path also yields false (probe audit-probes/S15/s15-exists4.ts). */
 export async function exists(path: string): Promise<boolean> {
   try {
     await fsp.stat(path)
     return true
-  } catch (e: any) {
-    if (e?.code === 'ENOENT') return false
-    throw e
+  } catch {
+    return false
   }
 }
 

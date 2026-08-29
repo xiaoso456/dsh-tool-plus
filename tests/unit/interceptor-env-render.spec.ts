@@ -4,13 +4,15 @@
  * @module tests
  */
 
+import * as fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from '../../src/tools/bash/bash-interceptor.ts'
 import { buildNonInteractiveEnv, NON_INTERACTIVE_ENV } from '../../src/tools/bash/non-interactive-env.ts'
 import { parseExitStatus, renderBashResult } from '../../src/tools/bash/render.ts'
 import { sanitizeSnapshotForBrush } from '../../src/tools/bash/shell-snapshot.ts'
-import { clampTimeout } from '../../src/tools/bash/tool-timeouts.ts'
+import { clampTimeout } from '../../src/tools/omp/tools/tool-timeouts.ts'
 import type { BashForegroundOutput } from '../../src/tools/bash/types.ts'
+import { findOnPath } from '../../src/tools/bash/which.ts'
 
 describe('checkBashInterception', () => {
   it('blocks cat/head/tail and suggests the read tool when available', () => {
@@ -38,8 +40,9 @@ describe('checkBashInterception', () => {
 
   it('default rules target dsh tool names', () => {
     const tools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))]
-    // A-2：规则表对齐上游 10 条裁剪 hub 3 条后含 echo/printf 重定向 → write（second-impl-audit.md A-2）
-    expect(tools.sort()).toEqual(['edit', 'glob', 'grep', 'read', 'write'])
+    // A-2：规则表对齐上游 10 条（含 echo/printf 重定向 → write），hub 3 条映射为
+    // tool:"bash" 的 run_in_background 引导（second-impl-audit.md A-2 终局）。
+    expect(tools.sort()).toEqual(['bash', 'edit', 'glob', 'grep', 'read', 'write'])
   })
 })
 
@@ -65,6 +68,37 @@ describe('buildNonInteractiveEnv', () => {
     // A base env that already carries the group value suppresses the defaults.
     const withExisting = buildNonInteractiveEnv(undefined, { PYTHONUTF8: '0' }, 'win32')
     expect(withExisting.PYTHONUTF8).toBeUndefined()
+  })
+
+  it('reports CI=true for clap-style strict bool parsers', () => {
+    const env = buildNonInteractiveEnv(undefined, { PATH: '/bin' }, 'linux')
+    expect(env.CI).toBe('true')
+  })
+
+  it('marks the child as an agent via AGENT=1', () => {
+    const env = buildNonInteractiveEnv(undefined, { PATH: '/bin' }, 'linux')
+    expect(env.AGENT).toBe('1')
+  })
+
+  it('drops CI when PI_BASH_NO_CI or its legacy alias opts out', () => {
+    const gated = buildNonInteractiveEnv(undefined, { PI_BASH_NO_CI: '1' }, 'linux')
+    expect(gated.CI).toBeUndefined()
+    const legacy = buildNonInteractiveEnv(undefined, { CLAUDE_BASH_NO_CI: '1' }, 'linux')
+    expect(legacy.CI).toBeUndefined()
+  })
+
+  it('applies the no-CI gate on the win32 branch, keeping UTF-8 defaults', () => {
+    const gated = buildNonInteractiveEnv(undefined, { PI_BASH_NO_CI: '1' }, 'win32')
+    expect(gated.CI).toBeUndefined()
+    expect(gated.PYTHONUTF8).toBe('1')
+  })
+
+  it('resolves SSH_ASKPASS to a real reject-prompt command', () => {
+    const env = buildNonInteractiveEnv(undefined, { PATH: '/bin' }, 'linux')
+    // REJECT_PROMPT_COMMAND semantics: PATH-resolved `false`, else literal "false".
+    const expected = findOnPath('false') ?? 'false'
+    expect(env.SSH_ASKPASS).toBe(expected)
+    expect(fs.existsSync(env.SSH_ASKPASS) || env.SSH_ASKPASS === 'false').toBe(true)
   })
 })
 

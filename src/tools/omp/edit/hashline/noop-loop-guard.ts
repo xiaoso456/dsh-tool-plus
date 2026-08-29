@@ -91,8 +91,10 @@ export function resetNoopEdit(session: NoopLoopGuardOwner, canonicalPath: string
 }
 
 /**
- * Stable hash of the raw patch input. Bun's `Bun.hash` is xxHash64 — fast,
+ * Stable hash of the raw patch input. Bun's `Bun.hash` is wyhash64 — fast,
  * non-cryptographic, more than adequate for "is this the same payload?".
+ * (xxHash64 is the separate `Bun.hash.xxHash64` namespace; the shim serves
+ * both — second-impl-audit.md S-3.)
  */
 export function hashPatchInput(input: string): string {
 	return Bun.hash(input).toString(16);

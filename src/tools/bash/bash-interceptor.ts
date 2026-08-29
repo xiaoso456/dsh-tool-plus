@@ -27,11 +27,13 @@ export interface BashInterceptorRule {
 }
 
 /**
- * 规则表逐字对齐上游 refs/oh-my-pi/packages/coding-agent/src/config/settings-schema.ts:325-387（10 条）。
+ * 规则表对齐上游 refs/oh-my-pi/packages/coding-agent/src/config/settings-schema.ts:325-387（10 条）。
  * 既有 6 条（read/grep/glob/edit×3）语义与消息文案保持不变；新增 echo/printf 重定向 → write（上游 :356-367）。
- * hub 类 3 条（nohup/后台语法、dev/start 服务、--watch，上游 :368-386，tool:"hub"）暂不加入：
- * DSH 无 hub 工具，待拍板，见 second-impl-audit.md A-2。
- * `bashInterceptor.patterns` 配置键不在本次范围（待拍板），未引入。
+ * hub 类 3 条（nohup/后台语法、dev/start 服务、--watch，上游 :368-386）按映射决策加入：
+ * pattern 逐字照抄；tool hub → bash（DSH 等价受管机制 = bash 工具 run_in_background:true，
+ * startBashJob → jobs 注册表 → job_output 读输出 / job_kill 停止）；文案改写为 run_in_background 引导。
+ * DSH 无 hub 的 stdin-send/restart/跨实例观察能力，属有意不移植。
+ * `bashInterceptor.patterns` 配置键不在本次范围，未引入。
  */
 export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
 	{
@@ -76,7 +78,29 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
 		tool: "write",
 		message: "Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation.",
 	},
-	// hub 类 3 条规则待拍板，见 second-impl-audit.md A-2（上游 settings-schema.ts:368-386，tool:"hub"）。
+	{
+		pattern: "^\\s*nohup\\s+|(?<!&)\\&\\s*$",
+		tool: "bash",
+		message:
+			"Use the bash tool with `run_in_background: true` instead of nohup/background shell syntax, so the process runs as a managed background job (job id returned immediately; result delivered on completion; stop with job_kill) instead of an untracked detached process.",
+	},
+	{
+		// dev-server/长驻服务类；`tail\s+-f` 只拦 follow 模式，`tail -n 5` 等一次性读取
+		// 由表首 read 规则先行接管（规则序与上游一致）。
+		pattern:
+			"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))",
+		tool: "bash",
+		message:
+			"Run services, watchers, and debuggers via the bash tool with `run_in_background: true` so their output, lifecycle, and exit stay observable as a background job (job_output / job_kill) instead of hanging the foreground call.",
+	},
+	{
+		// watch 模式；`-w` 分支较宽松（如 `npm run build -- -w` 也命中），与上游逐字一致。
+		pattern:
+			"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)",
+		tool: "bash",
+		message:
+			"Run watch mode via the bash tool with `run_in_background: true` so its output, input, and lifecycle stay managed as a background job (job_output / job_kill).",
+	},
 ];
 
 export interface InterceptionResult {

@@ -7,6 +7,11 @@
  * Bash command execution with streaming support and cancellation.
  *
  * Uses brush-core via native bindings for shell execution.
+
+ * Known deviations from upstream exec/bash-executor.ts:
+ * - POSIX getShellConfig does not add `-l` to zsh args and does not honor
+ *   PI_BASH_NO_LOGIN — DSH has no PI_BASH_NO_LOGIN semantics and the shell
+ *   `args` currently have no consumer beyond the user-shell spawn path.
  */
 import * as fs from "node:fs";
 import { type MinimizerOptions, Shell, type ShellRunResult } from "@oh-my-pi/pi-natives";
@@ -14,6 +19,7 @@ import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
 import { OutputSink } from "./streaming-output.ts";
+import { resolveWindowsShell } from "./windows-shell.ts";
 import { ExponentialYield } from "./yield.ts";
 
 // ── Shell configuration ─────────────────────────────────────────────────
@@ -51,19 +57,14 @@ export function getShellConfig(): ShellConfig {
 	if (cachedShellConfig) return cachedShellConfig;
 
 	if (process.platform === "win32") {
-		const paths: string[] = [];
-		const programFiles = process.env.ProgramFiles;
-		if (programFiles) paths.push(`${programFiles}\\Git\\bin\\bash.exe`);
-		const programFilesX86 = process.env["ProgramFiles(x86)"];
-		if (programFilesX86) paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
-		for (const p of paths) {
-			if (fs.existsSync(p)) {
-				cachedShellConfig = { shell: p, args: ["--login", "-c"], env: {}, prefix: undefined };
-				return cachedShellConfig;
-			}
-		}
-		// Fallback: bash on PATH
-		cachedShellConfig = { shell: "bash", args: ["--login", "-c"], env: {}, prefix: undefined };
+		// Windows shell discovery via the procmgr port (windows-shell.ts):
+		// Git install roots → scoop → bash.exe on PATH → sh.exe sibling → cmd.exe.
+		cachedShellConfig = {
+			shell: resolveWindowsShell(),
+			args: ["--login", "-c"],
+			env: {},
+			prefix: undefined,
+		};
 		return cachedShellConfig;
 	}
 
@@ -141,6 +142,8 @@ export interface BashResult {
 	output: string;
 	exitCode: number | undefined;
 	cancelled: boolean;
+	/** True when the command was killed by its timeout deadline (not a user abort). */
+	timedOut?: boolean;
 	truncated: boolean;
 	totalLines: number;
 	totalBytes: number;
@@ -196,6 +199,10 @@ export function closeSessionShells(sessionId: string): void {
  */
 const retainedShells = new Set<Shell>();
 const RETAIN_REAP_INTERVAL_MS = 5_000;
+
+// Native cancellation may spend two seconds unwinding the shell before its
+// N-API chunk bridge drains. The JS watchdog must not race that teardown.
+const NATIVE_TIMEOUT_FALLBACK_GRACE_MS = 5_000;
 
 async function retainShellWithLiveBackgroundJobs(shell: Shell): Promise<void> {
 	let live: number;
@@ -271,9 +278,9 @@ function isBashShell(shell: string): boolean {
 	return basename.includes("bash");
 }
 
-function needsInteractiveShellArg(shell: string): boolean {
+export function needsInteractiveShellArg(shell: string): boolean {
 	const basename = shellBasename(shell);
-	return basename.includes("zsh");
+	return basename.includes("zsh") || basename.includes("fish");
 }
 
 function supportsAutoUserShell(shell: string): boolean {
@@ -285,20 +292,32 @@ function hasInteractiveShellArg(args: string[]): boolean {
 	return args.some((arg) => arg === "--interactive" || /^-[^-]*i/.test(arg));
 }
 
-function ensureInteractiveShellArgs(shell: string, args: string[]): string[] {
-	if (!needsInteractiveShellArg(shell) || hasInteractiveShellArg(args)) return args;
+export function ensureInteractiveShellArgs(shell: string, args: string[]): string[] {
+	if (!needsInteractiveShellArg(shell)) return args;
 
-	const commandIndex = args.findIndex((arg) => arg === "-c" || arg === "--command");
+	// fish sources the same config files (config.fish + conf.d) for interactive
+	// shells as for login shells, so the inherited `-l` adds nothing — it only
+	// marks the shell as login, firing `status is-login` blocks in user config
+	// (agent/keychain setup, path mutation) on every `!` command. zsh keeps `-l`
+	// because .zprofile is login-only. Args originate from procmgr's
+	// getShellArgs(), so login only ever appears as a standalone `-l`/`--login`.
+	const effectiveArgs = shellBasename(shell).includes("fish")
+		? args.filter((arg) => arg !== "-l" && arg !== "--login")
+		: args;
+
+	if (hasInteractiveShellArg(effectiveArgs)) return effectiveArgs;
+
+	const commandIndex = effectiveArgs.findIndex((arg) => arg === "-c" || arg === "--command");
 	if (commandIndex !== -1) {
-		return [...args.slice(0, commandIndex), "-i", ...args.slice(commandIndex)];
+		return [...effectiveArgs.slice(0, commandIndex), "-i", ...effectiveArgs.slice(commandIndex)];
 	}
 
-	const compactCommandIndex = args.findIndex((arg) => /^-[^-]*c[^-]*$/.test(arg));
+	const compactCommandIndex = effectiveArgs.findIndex((arg) => /^-[^-]*c[^-]*$/.test(arg));
 	if (compactCommandIndex !== -1) {
-		return args.map((arg, index) => (index === compactCommandIndex ? arg.replace("c", "ic") : arg));
+		return effectiveArgs.map((arg, index) => (index === compactCommandIndex ? arg.replace("c", "ic") : arg));
 	}
 
-	return [...args, "-i"];
+	return [...effectiveArgs, "-i"];
 }
 
 function quoteShellArg(value: string): string {
@@ -448,16 +467,18 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const nativeTimeoutMs = requestedTimeoutMs !== undefined && requestedTimeoutMs > 0 ? requestedTimeoutMs : undefined;
 	const nativeOwnsTimeout = nativeTimeoutMs !== undefined;
 	if (deadlineTimeoutMs !== undefined) {
+		const fallbackTimeoutMs = nativeOwnsTimeout
+			? deadlineTimeoutMs + NATIVE_TIMEOUT_FALLBACK_GRACE_MS
+			: deadlineTimeoutMs;
 		timeoutTimer = setTimeout(() => {
-			// Explicit timeouts are already enforced inside pi-natives via
-			// `timeoutMs`. Do not also abort the JS AbortSignal here: on Windows,
-			// aborting that signal while a piped command is still forwarding output
-			// can terminate the Bun host before the native timeout result resolves.
+			// Explicit timeouts are enforced inside pi-natives via `timeoutMs`.
+			// Give native cancellation time to flush pipeline output and drain the
+			// N-API bridge before this result-only watchdog quarantines the run.
 			if (!nativeOwnsTimeout) {
 				abortCurrentExecution();
 			}
 			timeoutDeferred.resolve("timeout");
-		}, deadlineTimeoutMs);
+		}, fallbackTimeoutMs);
 	}
 
 	let resetSession = false;
@@ -499,6 +520,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
+				...(winner.kind === "timeout" ? { timedOut: true } : {}),
 				...(await settle(
 					winner.kind === "timeout" && deadlineTimeoutMs !== undefined
 						? `Command timed out after ${Math.round(deadlineTimeoutMs / 1000)} seconds`
@@ -523,6 +545,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
+				timedOut: true,
 				...(await settle(annotation)),
 			};
 		}

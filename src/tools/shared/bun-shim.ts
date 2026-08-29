@@ -146,14 +146,37 @@ export class BunFileSliceShim extends BunFileShim {
     this.#end = end
   }
 
-  override get size(): number {
-    const total = super.size
-    return Math.max(0, (this.#end ?? total) - this.#start)
+  /** Resolve the slice window against `total` with Bun's Blob semantics:
+    * negative endpoints count from the end (slice(-8) is a window of length 8,
+    * so the sliced object's size is 8), NaN → 0, out-of-range clamps. */
+  #window(total: number): [number, number] {
+    const from = Number.isNaN(this.#start) ? 0 : this.#start
+    const to = this.#end === undefined ? total : Number.isNaN(this.#end) ? 0 : this.#end
+    const start = from < 0 ? Math.max(0, total + from) : Math.min(from, total)
+    const end = to < 0 ? Math.max(0, total + to) : Math.min(to, total)
+    return [start, Math.max(start, end)]
   }
 
+  /** S-15a: positional read — open the file and read only the window instead
+    * of reading the whole file and subarray-ing (30MB file + slice(1000,2000)
+    * spiked 29.7MB under the old whole-read). */
   async #sliced(): Promise<Uint8Array> {
-    const all = await fsp.readFile(this.path)
-    return all.subarray(this.#start, this.#end)
+    const fh = await fsp.open(this.path, 'r')
+    try {
+      const [start, end] = this.#window((await fh.stat()).size)
+      const length = end - start
+      if (length <= 0) return new Uint8Array(0)
+      const buf = new Uint8Array(length)
+      const { bytesRead } = await fh.read(buf, 0, length, start)
+      return bytesRead < length ? buf.subarray(0, bytesRead) : buf
+    } finally {
+      await fh.close()
+    }
+  }
+
+  override get size(): number {
+    const [start, end] = this.#window(super.size)
+    return end - start
   }
 
   override async text(): Promise<string> {
@@ -167,6 +190,16 @@ export class BunFileSliceShim extends BunFileShim {
   override async arrayBuffer(): Promise<ArrayBuffer> {
     const b = await this.#sliced()
     return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+  }
+
+  /** Blob semantics: stream yields only the slice window. */
+  override stream(): ReadableStream<Uint8Array> {
+    return new ReadableStream<Uint8Array>({
+      start: async controller => {
+        controller.enqueue(await this.#sliced())
+        controller.close()
+      },
+    })
   }
 }
 
@@ -723,19 +756,70 @@ async function archiveWrite(
 }
 
 // ---------------------------------------------------------------------------
-// Bun.stripANSI — strip ANSI escape sequences (S-2)
+// Bun.stripANSI — strip ANSI escape sequences (S-2, ECMA-48 state machine S-8)
 // ---------------------------------------------------------------------------
 // pi-utils sanitizeText calls `Bun.stripANSI` on ESC-bearing text
 // (@oh-my-pi/pi-utils src/sanitize-text.ts:35). The verbatim
 // src/tools/omp/session/streaming-output.ts OutputSink instantiated on the
 // bash chain (A-1) feeds every chunk through it, so the shim must provide it.
-// Regex identical to src/tools/bash/sanitize-text.ts (CSI / OSC / simple
-// escapes). Bun's built-in is a fuller ANSI parser (OSC 8 / DCS corner
-// cases); for sanitize-then-strip usage this equivalence is sufficient.
-const ANSI_RE = /\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][0-9A-B]|[^\[\]()])/g
+// S-8: full ECMA-48 state-machine scan replacing the old single regex, whose
+// greedy OSC branch ate text between ST terminators (OSC8 hyperlinks lost
+// their "link text") and which left private-marker CSI / DCS / unterminated
+// OSC / double-ESC residue behind (13/24 corpus diffs vs real Bun). Semantics:
+//   CSI            ESC [ [private 3C-3F]? [params 30-3F]* [inter 20-2F]* final 40-7E
+//   string seqs    OSC(]) DCS(P) SOS(X) PM(^) APC(_) — swallow to BEL(07) or
+//                  ST(ESC \); unterminated eats to end of input
+//   simple escape  ESC + intermediates (20-2F)* + final (30-7E); lone ESC dies
+// Golden corpus with real-Bun expected outputs (locked in
+// tests/unit/bun-shim-ansi.spec.ts): tool-plus-lab/audit-probes/S8/baseline-bun.json.
 
-function bunStripANSI(text: string): string {
-  return text.replace(ANSI_RE, '')
+/** Consume one escape sequence starting at `esc` (text[esc] === ESC); returns
+  * the index of the first char after it. Malformed / unterminated sequences
+  * swallow through their last consumed byte (Bun parity on the S-8 corpus). */
+function scanAnsiEscape(text: string, esc: number): number {
+  const n = text.length
+  const next = esc + 1 < n ? text.charCodeAt(esc + 1) : -1
+  if (next === -1) return n // lone ESC at end of input
+  if (next === 0x1b) return esc + 1 // ESC ESC — first one is abandoned
+  if (next === 0x5b) {
+    // CSI: introducer consumed; optional private marker, params, intermediates, final.
+    let i = esc + 2
+    if (i < n && text.charCodeAt(i) >= 0x3c && text.charCodeAt(i) <= 0x3f) i++
+    while (i < n && text.charCodeAt(i) >= 0x30 && text.charCodeAt(i) <= 0x3f) i++
+    while (i < n && text.charCodeAt(i) >= 0x20 && text.charCodeAt(i) <= 0x2f) i++
+    return i < n && text.charCodeAt(i) >= 0x40 && text.charCodeAt(i) <= 0x7e ? i + 1 : i
+  }
+  if (next === 0x5d || next === 0x50 || next === 0x58 || next === 0x5e || next === 0x5f) {
+    // String sequence: OSC(]) / DCS(P) / SOS(X) / PM(^) / APC(_).
+    let i = esc + 2
+    while (i < n) {
+      const c = text.charCodeAt(i)
+      if (c === 0x07) return i + 1 // BEL
+      if (c === 0x1b && i + 1 < n && text.charCodeAt(i + 1) === 0x5c) return i + 2 // ST (ESC \)
+      i++
+    }
+    return n // unterminated — eats to end of input
+  }
+  // Simple escape: ESC + intermediates (charset designators, DECALN, …) + final.
+  let i = esc + 1
+  while (i < n && text.charCodeAt(i) >= 0x20 && text.charCodeAt(i) <= 0x2f) i++
+  return i < n && text.charCodeAt(i) >= 0x30 && text.charCodeAt(i) <= 0x7e ? i + 1 : i
+}
+
+export function bunStripANSI(text: string): string {
+  if (text.indexOf('\x1b') === -1) return text
+  let out = ''
+  let i = 0
+  const n = text.length
+  while (i < n) {
+    if (text.charCodeAt(i) !== 0x1b) {
+      out += text[i]
+      i++
+      continue
+    }
+    i = scanAnsiEscape(text, i)
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------

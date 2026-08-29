@@ -244,6 +244,11 @@ export class NodeFilesystem extends Filesystem {
 		return pathModule.resolve(path);
 	}
 
+	// fs.access-based exists: a directory returns true, while upstream's
+	// `Bun.file().exists()` returns false. Intentional Node adaptation with
+	// narrowed semantics — the patcher never consumes exists (it goes through
+	// #tryRead/readText), and patch-mode's directory-exists branch produces
+	// the friendlier "destination already exists" error (S-15c).
 	override async exists(path: string): Promise<boolean> {
 		try {
 			await fs.access(path);

@@ -25,7 +25,7 @@ import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/tools/index.ts'
 import type { WritethroughCallback } from '../../omp/tools/writethrough.ts'
-import { executeReplace } from '../../omp/edit/modes/replace.ts'
+import { DEFAULT_FUZZY_THRESHOLD, executeReplace } from '../../omp/edit/modes/replace.ts'
 import { executePatchSingle, type PatchEditEntry } from '../../omp/edit/modes/patch.ts'
 import { executeHashlineSingle } from '../../omp/edit/hashline/execute.ts'
 import { expandApplyPatchToEntries } from '../../omp/edit/modes/apply-patch.ts'
@@ -46,10 +46,32 @@ import applyPatchMd from './prompts/tools/apply-patch.md' with { type: 'text' }
 import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
 import hashlinePromptMd from '../../hashline/engine/prompt.md' with { type: 'text' }
 
+/**
+ * S-14c：patch.md 是 OMP JSON patch 入口的 verbatim 提示词，其 <parameters>
+ * 块教模型发 `{ path, edits: Entry[] }` 形状；而 DSH schema（registerEdit）只收
+ * `patch: string`（unified-diff 文本 + `file_path` 定位文件），create/delete/
+ * rename 走 `input` 的 `*** Begin Patch` 信封（apply_patch 模式）。此处把该块
+ * 重写为与 schema 一致的参数说明，其余段落（hunk/anchor 语法、critical、avoid）
+ * 保持 verbatim。sanitize 本体在 shared/omp-prompt.ts（不动）。
+ */
+function rewritePatchParametersForSchema(description: string): string {
+  const block = /<parameters>[\s\S]*?<\/parameters>/.exec(description)
+  if (!block) return description
+  return description.replace(
+    block[0],
+    [
+      '<parameters>',
+      '- `file_path` (string, required): the file to patch.',
+      '- `patch` (string, required): unified diff applied to that file — one or more hunks, each beginning with `@@` (anchor optional); hunk body lines start with a space (context), `+` (add), or `-` (remove); every hunk must contain at least one change.',
+      '- Creating, deleting or renaming files is not available in patch mode: pass an `input` string with a Codex `*** Begin Patch` envelope instead (`*** Add File:`, `*** Delete File:`, `*** Update File:` with `*** Move to:`).',
+      '</parameters>',
+    ].join('\n'),
+  )
+}
 /** OMP 原版按模式渲染的 edit 描述（prompts/tools/*.md verbatim + hashline 引擎 prompt.md）。 */
-const EDIT_MODE_DESCRIPTIONS = {
+export const EDIT_MODE_DESCRIPTIONS = {
   replace: renderOmpPrompt(sanitizeReplacePrompt(replaceMd), {}),
-  patch: renderOmpPrompt(sanitizePatchPrompt(patchMd), {}),
+  patch: rewritePatchParametersForSchema(renderOmpPrompt(sanitizePatchPrompt(patchMd), {})),
   apply_patch: renderOmpPrompt(sanitizeApplyPatchPrompt(applyPatchMd), {}),
   hashline: renderOmpPrompt(sanitizeHashlinePrompt(hashlinePromptMd), {}),
 } as const
@@ -165,6 +187,15 @@ function toEditToolResult(
   return { text }
 }
 
+/**
+ * S-13：edit.fuzzyThreshold 解析——上游 settings 面原样放行显式 0/负值
+ * （0 = 接受任意置信度的最佳匹配，refs edit/index.ts:112 同款语义），仅
+ * undefined/非数值回退引擎默认 0.95。env 层（上游 PI_EDIT_FUZZY* 环境变量
+ * 串解析）有意不移植：DSH 无该环境变量面，面板字段是唯一入口。
+ */
+export function resolveFuzzyThreshold(raw: unknown): number {
+  return typeof raw === 'number' ? raw : DEFAULT_FUZZY_THRESHOLD
+}
 /** 完整执行链路（defineTool.execute 与单测共用，镜像 read 的 executeReadTool）。 */
 export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, ctx: Context | null): Promise<EditToolOutput> {
   const session = createToolSession(exec, cfg)
@@ -173,10 +204,11 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
   const cwd = session.cwd
   const signal = exec?.signal
   // fuzzy 配置补线：面板 edit.fuzzyMatch/edit.fuzzyThreshold 经 Settings 门面
-  // （OMP_KEY_TO_FIELD）直达引擎，替代原硬编码 true/0.95（0 值边界 S-13 另行处理）。
+  // （OMP_KEY_TO_FIELD）直达引擎，替代原硬编码 true/0.95。S-13：显式 0/负值
+  // 原样放行（0 = 接受任意置信度的最佳匹配），仅 undefined/非数值回退引擎
+  // 默认 0.95；env 层（上游 PI_EDIT_FUZZY*）有意不移植。
   const allowFuzzy = session.settings.get('edit.fuzzyMatch') !== false
-  const fuzzyThresholdRaw = session.settings.get('edit.fuzzyThreshold')
-  const fuzzyThreshold = typeof fuzzyThresholdRaw === 'number' && fuzzyThresholdRaw > 0 ? fuzzyThresholdRaw : 0.95
+  const fuzzyThreshold = resolveFuzzyThreshold(session.settings.get('edit.fuzzyThreshold'))
 
   try {
     // ---- hashline / apply_patch mode ------------------------------------
@@ -249,9 +281,13 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
 
     // ---- patch mode (unified diff) ---------------------------------------
     if (typeof args.patch === 'string' && args.patch.trim().length > 0) {
+      // A-8 后继：执行前与 replace/apply_patch 同款走 resolveEditPath 路径纠错
+      // （refs tools/edit/index.ts:556-560 三模式统一；本模式恒 op:update，
+      // mustExist 恒 true）。无近邻时原样返回，由引擎报 File not found。
+      const targetPath = await resolveEditPath(session, filePath, { mustExist: true, signal })
       const result = await runPatchEntry({
         session,
-        path: filePath,
+        path: targetPath,
         entry: { op: 'update', diff: args.patch },
         signal,
         writethrough,

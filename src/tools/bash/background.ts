@@ -31,7 +31,7 @@ export interface StartBashJobOptions {
   sessionId: string
   command: string
   cwd: string
-  /** Effective deadline in ms; `undefined` disables the job deadline. */
+  /** Effective deadline in ms; `undefined`/0 disables the job deadline. */
   timeoutMs: number | undefined
   /** Command-scoped environment (already merged with dshEnv). */
   env: Record<string, string> | undefined
@@ -95,16 +95,28 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
     settledText = preview.text()
     const wallTimeMs = performance.now() - startedAt
     const aborted = result.cancelled && abortController.signal.aborted
+    const timedOut = result.timedOut ?? (result.cancelled && !aborted)
+    // OMP parity (refs tools/bash.ts:#buildCompletedResult, :841-858): a run
+    // killed by its own deadline must SAY so in the delivered text — the
+    // sink annotation exists for the foreground path only, so background
+    // completions would otherwise go out as raw output with no marker.
+    let text = result.output
+    if (timedOut) {
+      const seconds = Math.max(1, Math.round((timeoutMs ?? 0) / 1000))
+      if (!text.includes('[Command timed out after')) {
+        text = `[Command timed out after ${seconds} seconds]\n\n${text}`
+      }
+    }
     return {
       kind: 'foreground',
       exitCode: result.exitCode ?? null,
-      timedOut: result.cancelled && !aborted,
+      timedOut,
       aborted,
       timeoutMs: timeoutMs ?? null,
       wallTimeMs,
       ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
       output: {
-        text: result.output,
+        text,
         truncated: result.truncated,
         ...result.spillPath !== undefined ? { spillPath: result.spillPath } : {},
         ...result.originalOutputPath !== undefined ? { originalSpillPath: result.originalOutputPath } : {},
@@ -121,6 +133,13 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
   const done = completion.then(
     (value): JobOutcome => {
       if (value.aborted) return { status: 'killed', detail: 'cancelled' }
+      // OMP parity (refs tools/bash.ts:852-856): a deadline-killed run is
+      // isError → the job manager records the job as failed and delivers the
+      // rendered error text, not a plain completion.
+      if (value.timedOut) {
+        const seconds = Math.max(1, Math.round((value.timeoutMs ?? 0) / 1000))
+        return { status: 'failed', detail: `Command timed out after ${seconds} seconds` }
+      }
       const detail = value.exitCode === null ? undefined : `exit code: ${value.exitCode}`
       return { status: 'completed', detail }
     },

@@ -48,3 +48,36 @@ describe('bash-interceptor 与 OMP 匹配面对齐（A-2）', () => {
     expect(r.suggestedTool).toBe('glob')
   })
 })
+
+describe('hub 类 3 条规则 → DSH 原生后台任务（A-2 收尾）', () => {
+  // 与 src/index.ts:188 一致：availableTools 由规则表 tool 集合经注册表过滤；
+  // bash 工具由本插件必然注册，故 hub 类规则 tool:"bash" 不会被静默跳过。
+  const TOOLS_WITH_BASH = [...TOOLS, 'bash']
+
+  it.each([
+    ['nohup node server.js &'],
+    ['sleep 100 &'],
+    ['npm run dev'],
+    ['vite'],
+    ['next dev'],
+    ['docker compose up'],
+    ['pytest --watch'],
+  ])('应拦截：%s → 拦截到 bash，message 引导 run_in_background', (cmd) => {
+    const r = checkBashInterception(cmd, TOOLS_WITH_BASH)
+    expect(r.block).toBe(true)
+    expect(r.suggestedTool).toBe('bash')
+    expect(r.message).toContain('run_in_background')
+  })
+
+  it('不应拦：npm run build（非 dev/start，无 --watch/-w，无任何规则命中）', () => {
+    expect(checkBashInterception('npm run build', TOOLS_WITH_BASH).block).toBe(false)
+  })
+
+  it('不应拦（hub 类）：tail -n 5 log.txt 不被 hub 规则改道 bash', () => {
+    // 既有 read 规则（cat|head|tail|…，表首条）先于 hub 规则命中——与上游规则序一致，
+    // 改道 read 属既有行为；此处钉住的是 hub 规则不误伤 `tail -n 5`（只拦 `tail -f`），
+    // 与 probe-a2.ts 语料同源语义（非目标、不误伤）。
+    const r = checkBashInterception('tail -n 5 log.txt', TOOLS_WITH_BASH)
+    expect(r.suggestedTool).not.toBe('bash')
+  })
+})

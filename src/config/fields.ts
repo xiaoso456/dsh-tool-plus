@@ -95,7 +95,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // ---- Bash: behavior -------------------------------------------------
   { name: 'enableRunInBackground', kind: 'boolean', default: true, labelKey: 'enableRunInBackground', hintKey: 'enableRunInBackgroundHint', group: 'behavior', tool: 'bash' },
   { name: 'minimizerEnabled', kind: 'boolean', default: true, labelKey: 'minimizerEnabled', hintKey: 'minimizerEnabledHint', group: 'behavior', tool: 'bash' },
-  { name: 'interceptorEnabled', kind: 'boolean', default: false, labelKey: 'interceptorEnabled', hintKey: 'interceptorEnabledHint', group: 'behavior', tool: 'bash' },
+  { name: 'interceptorEnabled', kind: 'boolean', default: true, labelKey: 'interceptorEnabled', hintKey: 'interceptorEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'nonInteractiveEnv', kind: 'boolean', default: true, labelKey: 'nonInteractiveEnv', hintKey: 'nonInteractiveEnvHint', group: 'behavior', tool: 'bash' },
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },

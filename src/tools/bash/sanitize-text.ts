@@ -13,9 +13,16 @@
  * malformed path; when it changes the input, replacement characters are
  * dropped and the normalized result goes through the well-formed sanitizer.
  *
+ * S-8 normalization: ANSI stripping re-exports the ECMA-48 state machine from
+ * `src/tools/shared/bun-shim.ts` — the same function installed as
+ * `Bun.stripANSI`; `toWellFormed()` delegates to the native
+ * `String.prototype.toWellFormed`.
+ *
  * Fast path: well-formed input with no controls or ANSI returns the original
  * string after the control probe.
  */
+
+import { bunStripANSI as stripAnsi } from "../shared/bun-shim.ts";
 
 const ESC_CHAR = "\x1b";
 
@@ -23,20 +30,10 @@ const ESC_CHAR = "\x1b";
 // CR, DEL, and C1. ESC (0x1B) is in \x0B-\x1F.
 const CONTROL_RE = /[\x00-\x08\x0B-\x1F\x7F-\x9F]/g;
 
-// Matches all ANSI escape sequences (CSI, OSC, simple escapes).
-const ANSI_RE = /\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[()][0-9A-B]|[^[\]()])/g;
-
-function stripAnsi(text: string): string {
-	return text.replace(ANSI_RE, "");
-}
-
 const REPLACEMENT_CHAR = "\ufffd";
 
-// Matches lone surrogates (unpaired high/low surrogates).
-const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
 function toWellFormed(text: string): string {
-	return text.replace(LONE_SURROGATE_RE, REPLACEMENT_CHAR);
+	return text.toWellFormed();
 }
 
 export function sanitizeText(text: string): string {

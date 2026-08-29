@@ -1,0 +1,146 @@
+[
+  {
+    "name": "osc8-hyperlink-basic",
+    "input": "A\u001b]8;;https://example.org\u001b\\link text\u001b]8;;\u001b\\tail",
+    "sanitized": "Alink texttail",
+    "stripped": "Alink texttail"
+  },
+  {
+    "name": "osc8-hyperlink-prefix-gap",
+    "input": "before\u001b]8;;https://a.example/\u001b\\mid\u001b]8;;\u001b\\after",
+    "sanitized": "beforemidafter",
+    "stripped": "beforemidafter"
+  },
+  {
+    "name": "osc8-hyperlink-multiple",
+    "input": "\u001b]8;;https://a\u001b\\one\u001b]8;;\u001b\\ \u001b]8;;https://b\u001b\\two\u001b]8;;\u001b\\",
+    "sanitized": "one two",
+    "stripped": "one two"
+  },
+  {
+    "name": "osc8-hyperlink-empty-url",
+    "input": "\u001b]8;;;;\u001b\\x\u001b]8;;\u001b\\",
+    "sanitized": "x",
+    "stripped": "x"
+  },
+  {
+    "name": "osc8-hyperlink-title-osc",
+    "input": "\u001b]8;;https://x\u001b\\t\u001b]8;;\u001b\\ \u001b]0;window title\u0007",
+    "sanitized": "t ",
+    "stripped": "t "
+  },
+  {
+    "name": "osc8-hyperlink-unterminated",
+    "input": "start\u001b]8;;https://x\u001b\\keep rest",
+    "sanitized": "startkeep rest",
+    "stripped": "startkeep rest"
+  },
+  {
+    "name": "osc-title-bel",
+    "input": "hi\u001b]0;term\u0007bye",
+    "sanitized": "hibye",
+    "stripped": "hibye"
+  },
+  {
+    "name": "osc-clipboard-bel",
+    "input": "\u001b]52;c;AAAA\u0007mid",
+    "sanitized": "mid",
+    "stripped": "mid"
+  },
+  {
+    "name": "private-csi-hide-show-cursor",
+    "input": "a\u001b[?25l\u001b[?25hb",
+    "sanitized": "ab",
+    "stripped": "ab"
+  },
+  {
+    "name": "private-csi-report-version",
+    "input": "\u001b[>c",
+    "sanitized": "",
+    "stripped": ""
+  },
+  {
+    "name": "private-csi-alternate-screen",
+    "input": "\u001b[?1049h\u001b[?1049l",
+    "sanitized": "",
+    "stripped": ""
+  },
+  {
+    "name": "private-csi-margin",
+    "input": "\u001b[?69h",
+    "sanitized": "",
+    "stripped": ""
+  },
+  {
+    "name": "csi-sgr-colors",
+    "input": "red\u001b[31mRED\u001b[0mplain",
+    "sanitized": "redREDplain",
+    "stripped": "redREDplain"
+  },
+  {
+    "name": "csi-sgr-256",
+    "input": "\u001b[38;5;196mX\u001b[0m",
+    "sanitized": "X",
+    "stripped": "X"
+  },
+  {
+    "name": "csi-cursor-move-clear",
+    "input": "\u001b[2J\u001b[Hhead",
+    "sanitized": "head",
+    "stripped": "head"
+  },
+  {
+    "name": "csi-intermediate-param",
+    "input": "\u001b[1;5Hmid",
+    "sanitized": "mid",
+    "stripped": "mid"
+  },
+  {
+    "name": "csi-incomplete",
+    "input": "x\u001b[31",
+    "sanitized": "x",
+    "stripped": "x"
+  },
+  {
+    "name": "dcs-window-title",
+    "input": "\u001bP+q12345\u001b\\mid",
+    "sanitized": "mid",
+    "stripped": "mid"
+  },
+  {
+    "name": "sos-escape",
+    "input": "a\u001bXraw\u001b\\b",
+    "sanitized": "ab",
+    "stripped": "ab"
+  },
+  {
+    "name": "pm-escape",
+    "input": "a\u001b^raw\u001b\\b",
+    "sanitized": "ab",
+    "stripped": "ab"
+  },
+  {
+    "name": "apc-escape",
+    "input": "a\u001b_raw\u001b\\b",
+    "sanitized": "ab",
+    "stripped": "ab"
+  },
+  {
+    "name": "lone-esc",
+    "input": "a\u001bb",
+    "sanitized": "a",
+    "stripped": "a"
+  },
+  {
+    "name": "double-esc-then-csi",
+    "input": "a\u001b\u001b[31mX",
+    "sanitized": "aX",
+    "stripped": "aX"
+  },
+  {
+    "name": "esc-space-intermediate",
+    "input": "a\u001b Fb",
+    "sanitized": "ab",
+    "stripped": "ab"
+  }
+]
