@@ -37,7 +37,11 @@ export default defineConfig([
     platform: 'node',
     target: 'es2024',
     dts: false,
-    clean: false,
+    // Clean the outDir before each build: chunk hashes change between builds
+    // (models-*.mjs etc.), and stale chunks were accumulating in lib/ — the
+    // published tarball grew to 86 MiB (beta.4) and exceeded the npmmirror
+    // 80 MiB sync cap. 2026-08-29.
+    clean: true,
     // OMP/bundled packages read `Bun.env` at module top-level, so the shim
     // must be installed before ANY module body in this chunk graph runs.
     outputOptions: {
@@ -90,7 +94,7 @@ export default defineConfig([
     platform: 'node',
     target: 'es2024',
     dts: false,
-    clean: false,
+    clean: true,
     deps: {
       // json5 is CJS; keep it external so Node's ESM default-interop applies.
       // sharp stays external too — the Bun.Image shim resolves it at runtime
@@ -107,7 +111,7 @@ export default defineConfig([
     format: ['cjs'],
     platform: 'browser',
     dts: false,
-    clean: false,
+    clean: true,
     deps: {
       neverBundle: CLIENT_EXTERNALS,
     },
