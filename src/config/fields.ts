@@ -18,7 +18,7 @@ import type { BashPlusLocaleKey } from '../client/locales.ts'
 export type ToolPlusFieldValue = number | boolean | string
 
 /** Field control kinds the settings UI renders. */
-export type ToolPlusFieldKind = 'number' | 'boolean' | 'select'
+export type ToolPlusFieldKind = 'number' | 'boolean' | 'select' | 'action'
 
 /** One selectable option of a `select` field. */
 export interface ToolPlusSelectOption {
@@ -55,6 +55,8 @@ export interface ToolPlusField {
   options?: readonly ToolPlusSelectOption[]
   /** Conditional visibility (master switches, strategy-dependent fields). */
   visibility?: ToolPlusFieldVisibility
+  /** Host RPC endpoint for `action` fields (channel-relative, e.g. `browser/detect`). */
+  actionKey?: string
 }
 
 /** Tool tabs of the settings page; `fields: []` = no global settings. */
@@ -145,6 +147,17 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // ---- Read: 抓取（fetchEnabled 主开关 + 超时联动） -------------------
   { name: 'fetchEnabled', kind: 'boolean', default: true, labelKey: 'fetchEnabled', hintKey: 'fetchEnabledHint', group: 'fetch', tool: 'read' },
   { name: 'fetchMaxTimeoutSeconds', kind: 'number', default: 0, labelKey: 'fetchMaxTimeoutSeconds', hintKey: 'fetchMaxTimeoutSecondsHint', group: 'fetch', tool: 'read', visibility: { requiresEnabled: 'fetchEnabled' } },
+  { name: 'fetchReader', kind: 'select', default: 'auto', labelKey: 'fetchReader', hintKey: 'fetchReaderHint', group: 'fetch', tool: 'read', options: [
+    { value: 'auto', labelKey: 'optReaderAuto' },
+    { value: 'native', labelKey: 'optReaderNative' },
+    { value: 'trafilatura', labelKey: 'optReaderTrafilatura' },
+    { value: 'lynx', labelKey: 'optReaderLynx' },
+    { value: 'parallel', labelKey: 'optReaderParallel' },
+    { value: 'jina', labelKey: 'optReaderJina' },
+    { value: 'browser', labelKey: 'optReaderBrowser' },
+  ] },
+  { name: 'browserReaderEnabled', kind: 'boolean', default: true, labelKey: 'browserReaderEnabled', hintKey: 'browserReaderEnabledHint', group: 'fetch', tool: 'read' },
+  { name: 'browserProbe', kind: 'action', default: '', labelKey: 'browserProbe', hintKey: 'browserProbeHint', group: 'fetch', tool: 'read', actionKey: 'browser/detect' },
   // ---- Read: 图片（拍板#22 融合 + 2026-08-28 配置扩充：新键默认全=上游常量，不配零行为变化） --
   { name: 'imagesBlockImages', kind: 'boolean', default: false, labelKey: 'imagesBlockImages', hintKey: 'imagesBlockImagesHint', group: 'images', tool: 'read' },
   { name: 'imagesAutoResize', kind: 'boolean', default: true, labelKey: 'imagesAutoResize', hintKey: 'imagesAutoResizeHint', group: 'images', tool: 'read' },

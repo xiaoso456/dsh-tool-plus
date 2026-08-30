@@ -592,18 +592,37 @@ function parseJinaReaderContent(responseBody: string): string | null {
 }
 
 /** Reader backends for {@link renderHtmlToText}, in default priority order. */
-export type FetchProvider = "native" | "trafilatura" | "lynx" | "parallel" | "jina";
+export type FetchProvider = "native" | "trafilatura" | "lynx" | "parallel" | "jina" | "browser";
 
-const FETCH_PROVIDER_ORDER: readonly FetchProvider[] = ["native", "trafilatura", "lynx", "parallel", "jina"];
+export const FETCH_PROVIDER_ORDER: readonly FetchProvider[] = [
+	"native",
+	"trafilatura",
+	"lynx",
+	"parallel",
+	"jina",
+	"browser",
+];
+
+/** Backends that cannot execute page JavaScript — held back on CSR shells. */
+const CSR_SUSCEPTIBLE: ReadonlySet<FetchProvider> = new Set(["native", "trafilatura", "lynx"]);
 
 /**
  * Render HTML to markdown by trying reader backends in priority order: native
- * (in-process), trafilatura, lynx, Parallel, then Jina. The `providers.fetch`
- * setting picks the order — `auto` uses the default above; any specific backend
- * is tried first, then the remaining backends as fallbacks. Every backend's
- * output must clear the same quality gate (>100 non-whitespace chars and not
- * {@link isLowQualityOutput}) before it is accepted, otherwise the next backend
- * is tried.
+ * (in-process), trafilatura, lynx, Parallel, Jina, then the browser
+ * (headless-Chromium JS rendering, see {@link renderUrlWithBrowser} — gated
+ * behind `browser.readerEnabled`). The `providers.fetch` setting picks the
+ * order — `auto` uses the default above; any specific backend is tried first,
+ * then the remaining backends as fallbacks. Every backend's output must clear
+ * the same quality gate (>100 non-whitespace chars and not
+ * {@link isLowQualityOutput}) before it is accepted, otherwise the next
+ * backend is tried.
+ *
+ * When the raw HTML is a CSR app shell (script-heavy, text-light), output
+ * from {@link CSR_SUSCEPTIBLE} backends (which cannot execute page
+ * JavaScript) is held back as low quality so the chain still reaches the
+ * browser backend; with no usable browser the parked shell is returned as
+ * before, so degradation is unchanged. The browser's own output on a shell
+ * is accepted as-is (a noscript remnant is expected in it).
  *
  * The overall `timeout` budget bounds the whole call; remote backends (Parallel,
  * Jina) are additionally capped at `REMOTE_READER_MAX_MS` so a hung endpoint
@@ -678,6 +697,19 @@ export async function renderHtmlToText(
 			if (Number.isFinite(contentLength) && contentLength > JINA_READER_MAX_BYTES) return null;
 			return parseJinaReaderContent(await response.text());
 		},
+		browser: async () => {
+			// Headless-Chromium JS rendering (SPA pages). Gated by the
+			// `browser.readerEnabled` switch so a deployment can keep the
+			// browser out of the reader chain entirely; when enabled but no
+			// usable browser exists, rendering degenerates to null and the
+			// chain falls through to whatever is left (or raw HTML).
+			if (settings.get("browser.readerEnabled") === false) return null;
+			const { renderUrlWithBrowser } = await import("../web/browser-render");
+			return renderUrlWithBrowser(url, {
+				timeoutMs: remoteBudgetMs,
+				signal: userSignal,
+			});
+		},
 	};
 
 	const preference = settings.get("providers.fetch");
@@ -692,6 +724,13 @@ export async function renderHtmlToText(
 	// returning the unrendered raw HTML.
 	let lowQuality: { content: string; method: FetchProvider } | null = null;
 
+	// A CSR app shell (script-heavy, text-light HTML) cannot be expanded by the
+	// JS-unaware backends — their output is the shell's metadata remnant
+	// (Excalidraw/Tldraw-shaped). Hold such output back so the chain still
+	// reaches the browser backend; when no browser runs (disabled or absent)
+	// the parked shell is returned exactly as before.
+	const csrShell = isCsrHtmlShell(html);
+
 	for (const method of order) {
 		// Honour real user cancellation between attempts; remote per-attempt and
 		// overall-budget timeouts still fall through to later (local) renderers.
@@ -699,7 +738,15 @@ export async function renderHtmlToText(
 		try {
 			const content = await runners[method]();
 			if (!content || content.trim().length <= 100) continue;
-			if (!isLowQualityOutput(content)) {
+			// On a CSR app shell the browser is the designated renderer: accept
+			// its output as-is — a noscript "enable JavaScript" remnant inside
+			// the rendered body is expected there and must not re-flag it as
+			// low quality.
+			if (csrShell && method === "browser") {
+				return { content, ok: true, method };
+			}
+			const holdForBrowser = csrShell && CSR_SUSCEPTIBLE.has(method);
+			if (!holdForBrowser && !isLowQualityOutput(content)) {
 				return { content, ok: true, method };
 			}
 			lowQuality ??= { content, method };
@@ -740,6 +787,31 @@ function isLowQualityOutput(content: string): boolean {
 	}
 
 	return false;
+}
+
+/**
+ * Detect a client-side-rendered (CSR) app shell in raw HTML: script-dense
+ * markup with almost no statically visible text. Such pages only produce body
+ * content after JavaScript executes, so JS-unaware extractors (native/
+ * trafilatura/lynx) necessarily return a shell remnant (title/meta remnants)
+ * while the browser backend can render the real body. Deliberately
+ * conservative — compact HTML, multiple script tags, sparse static text — so
+ * genuine SSR pages are never flagged and their rendering order is unchanged.
+ * @returns true when the HTML looks like an unrendered SPA shell.
+ */
+export function isCsrHtmlShell(html: string): boolean {
+	if (html.length > 200_000) return false;
+	const scripts = html.match(/<script\b/gi)?.length ?? 0;
+	if (scripts < 3) return false;
+	const staticText = html
+		.replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+		.replace(/<!--[\s\S]*?-->/g, " ")
+		.replace(/<[^>]+>/g, " ")
+		.replace(/&[a-z#0-9]+;/gi, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return staticText.length < 2000;
 }
 
 /**

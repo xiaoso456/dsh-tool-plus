@@ -222,7 +222,9 @@ export function useToolForm(scope: SettingsScope<ToolSettingsValue>, fields: rea
       }
       if (field.kind === 'number') group.numbers.push(renderNumber(field, numbers, value, snap, defaults))
       else if (field.kind === 'select') group.selects.push(renderSelect(field, selects, value, snap, defaults))
-      else group.toggles.push(renderToggle(field, toggles, value, snap, defaults))
+      else if (field.kind === 'boolean') group.toggles.push(renderToggle(field, toggles, value, snap, defaults))
+      // kind === 'action': not part of the staged form — the section renders
+      // its own button row and never contributes to dirty/validation.
     }
     return order.map(key => map.get(key)!)
   }, [fields, numbers, selects, toggles, value, snap, defaults])

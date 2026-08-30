@@ -72,6 +72,15 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astGrepEnabled).toBe(true)
     expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astEditEnabled).toBe(false)
   })
+
+  it('fetch reader preference and browser rendering default to auto/on', () => {
+    const cfg = resolveConfig({})
+    expect(cfg.fetchReader).toBe('auto')
+    expect(cfg.browserReaderEnabled).toBe(true)
+    // Explicit overrides win; a specific backend still resolves.
+    expect(resolveConfig({ fetchReader: 'browser', browserReaderEnabled: false }).fetchReader).toBe('browser')
+    expect(resolveConfig({ fetchReader: 'browser', browserReaderEnabled: false }).browserReaderEnabled).toBe(false)
+  })
 })
 
 describe('BASH_PLUS_SETTINGS_NS', () => {

@@ -19,6 +19,7 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-runtime',
   '@deepseek-ai/dsh-client-runtime/client',
   '@deepseek-ai/dsh-client-connection',
+  '@deepseek-ai/dsh-client-connection/client',
   '@deepseek-ai/dsh-client-locale',
   '@deepseek-ai/dsh-client-ui-settings',
 ]
@@ -73,7 +74,10 @@ export default defineConfig([
       // links / profile install). @oh-my-pi/* source packages (main →
       // src/*.ts) are pure-TS — Node cannot strip types under node_modules,
       // so they MUST be bundled in (deps.alwaysBundle).
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/],
+      // puppeteer-core stays external: it is a runtime dependency resolved
+      // from the install tree (never bundled — bundling it would re-trigger
+      // the beta.4 86MiB npm-pack cap).
+      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/, /^puppeteer-core$/],
       alwaysBundle: [
         /^@oh-my-pi\/pi-utils/,
         /^@oh-my-pi\/pi-tui/,

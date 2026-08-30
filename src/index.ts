@@ -24,6 +24,7 @@ import { expandTilde, extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { setRuntimeLogger } from './tools/bash/logger.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
+import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { installBunShim } from './tools/shared/bun-shim.ts'
 import { applyConfiguredTruncation } from './config/truncate.ts'
 import { cleanupSnapshots } from './tools/bash/shell-snapshot.ts'
@@ -132,6 +133,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     registerModeSensitive()
   })
 
+  // Browser-detection RPC (`/tool-plus` channel, `browser/detect` endpoint)
+  // served to the settings panel; teardown on plugin dispose. Best-effort:
+  // without a Connection service (CLI-only deployments) this is a no-op.
+  const disposeBrowserProbe = installBrowserProbeRpc(ctx)
+
   ctx.systemPrompt.section({
     name: 'tool:bash',
     order: 105,
@@ -141,7 +147,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       + 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.',
   })
 
-  ctx.effect(() => () => { closeSessionShells(''); cleanupSnapshots(); sessionStates.clear() }, 'bash-plus teardown')
+  ctx.effect(() => () => { closeSessionShells(''); cleanupSnapshots(); sessionStates.clear(); disposeBrowserProbe() }, 'bash-plus teardown')
   ctx.on('agent/disposed', ({ agent }) => { closeSessionShells(agent.session.id); sessionStates.delete(agent.session.id) })
 
   ctx.tools.register(defineTool({

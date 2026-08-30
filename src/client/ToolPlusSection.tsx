@@ -9,18 +9,24 @@
  * without keeping hidden panels mounted — the same flat schema the Bash card
  * edits, from the same single-source field table.
  *
+ * `action`-kind fields (e.g. 探测浏览器) are not part of the staged form:
+ * they run a host RPC endpoint over the official Connection channel
+ * (`/tool-plus`), with per-field running/result state kept at the page level.
+ *
  * Tab chrome mirrors the official Plugins settings section
  * (ui-settings-plugins): `role="tablist"` + tab/panel roles, aria wiring,
  * and arrow/Home/End keyboard roaming.
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
+import { TOOL_PLUS_RPC_CHANNEL } from '../tools/shared/browser-rpc-channel.ts'
+import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
-import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
+import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the bound settings scope. */
@@ -109,7 +115,8 @@ function isFieldVisible(field: ToolPlusField, form: ReturnType<typeof useToolFor
  * Render one tool tab's panel content: fields in table order (master
  * switches first, per their declaration order), grouped under their group
  * heading, or the no-config placeholder for tools without global settings.
- * Fields whose visibility condition is unmet are omitted.
+ * Fields whose visibility condition is unmet are omitted. `action` fields
+ * render their own button row (host RPC via the caller's `run`).
  */
 function ToolTabPanel(props: {
   tab: ToolPlusTab
@@ -118,8 +125,11 @@ function ToolTabPanel(props: {
   writable: boolean
   openSelect: string | null
   onOpenChange: (field: string | null) => void
+  actionState: Record<string, 'idle' | 'running' | 'done'>
+  actionResults: Record<string, { ok: boolean; text: string } | null>
+  runAction: (field: ToolPlusField) => void
 }): ReactNode {
-  const { tab, t, form, writable, openSelect, onOpenChange } = props
+  const { tab, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction } = props
   if (tab.fields.length === 0) {
     return (
       <div className="tps-empty">
@@ -163,6 +173,27 @@ function ToolTabPanel(props: {
         <section key={group.group} className="tps-group">
           <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS[group.group] ?? 'title')}</h4>
           {group.fields.map(field => {
+            // Action fields are not part of the staged form: render the
+            // button row directly (host RPC via the section-level runAction).
+            if (field.kind === 'action') {
+              const actionControl: ActionControl = {
+                field: field.name,
+                labelKey: field.labelKey,
+                hintKey: field.hintKey,
+                actionKey: field.actionKey ?? '',
+              }
+              return (
+                <ActionRow
+                  key={field.name}
+                  t={t}
+                  control={actionControl}
+                  disabled={!writable}
+                  running={actionState[field.name] === 'running'}
+                  result={actionResults[field.name] ?? null}
+                  onRun={(_actionKey) => runAction(field)}
+                />
+              )
+            }
             const entry = controlOf(field)
             if (entry === undefined) return null
             if (entry.kind === 'number') {
@@ -216,6 +247,37 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [activeId, setActiveId] = useState<string | undefined>()
   const [openSelect, setOpenSelect] = useState<string | null>(null)
+  // Action controls (`kind: 'action'`) run host RPC endpoints; their state is
+  // per-field here at the section level so drafts and panel switches survive.
+  const [actionState, setActionState] = useState<Record<string, 'idle' | 'running' | 'done'>>({})
+  const [actionResults, setActionResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
+
+  const runAction = useCallback((field: ToolPlusField) => {
+    const actionKey = field.actionKey
+    if (!actionKey) return
+    setActionState(prev => ({ ...prev, [field.name]: 'running' }))
+    setActionResults(prev => ({ ...prev, [field.name]: null }))
+    void (async () => {
+      try {
+        const rpc = createWebConnectionRpc()
+        const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, actionKey, {})
+        if (!result.ok) {
+          setActionResults(prev => ({ ...prev, [field.name]: { ok: false, text: result.error.message } }))
+        } else {
+          const value = result.value as { found?: Array<{ name: string; path: string }> } | undefined
+          const found = value?.found ?? []
+          const text = found.length === 0
+            ? t('browserProbeNone')
+            : found.map(browser => `${browser.name}: ${browser.path}`).join('\n')
+          setActionResults(prev => ({ ...prev, [field.name]: { ok: found.length > 0, text } }))
+        }
+      } catch {
+        setActionResults(prev => ({ ...prev, [field.name]: { ok: false, text: t('browserProbeUnavailable') } }))
+      } finally {
+        setActionState(prev => ({ ...prev, [field.name]: 'done' }))
+      }
+    })()
+  }, [t])
 
   useEffect(() => { injectSectionCss(); injectSettingsRowsCss() }, [])
 
@@ -287,6 +349,9 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               writable={writable}
               openSelect={openSelect}
               onOpenChange={setOpenSelect}
+              actionState={actionState}
+              actionResults={actionResults}
+              runAction={runAction}
             />
           </div>
         ))}

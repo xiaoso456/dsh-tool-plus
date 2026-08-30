@@ -28,6 +28,10 @@ export interface ByteRetentionConfig {
   tailBytes: number
 }
 
+/** Reader-backend preference for URL reads (`providers.fetch` parity). */
+export type FetchReaderPreference =
+  | 'auto' | 'native' | 'trafilatura' | 'lynx' | 'parallel' | 'jina' | 'browser'
+
 /** Line-based retention settings, mirroring the byte-based structure. */
 export interface LineRetentionConfig {
   mode: OutputRetentionMode
@@ -92,6 +96,8 @@ export interface RuntimeConfig {
   astEditEnabled: boolean
   fetchEnabled: boolean
   fetchMaxTimeoutSeconds: number
+  fetchReader: FetchReaderPreference
+  browserReaderEnabled: boolean
   imagesAutoResize: boolean
   imagesBlockImages: boolean
   imagesExcludeWebp: boolean
@@ -179,6 +185,8 @@ export interface Config {
   astEditEnabled?: boolean
   fetchEnabled?: boolean
   fetchMaxTimeoutSeconds?: number
+  fetchReader?: FetchReaderPreference
+  browserReaderEnabled?: boolean
   imagesAutoResize?: boolean
   imagesBlockImages?: boolean
   imagesExcludeWebp?: boolean
@@ -248,6 +256,8 @@ export const Config: z<Config> = z.object({
   // File tools — fetch（URL 抓取）与图片（拍板#22：read 图片路径已还原并入）
   fetchEnabled: z.boolean().default(fieldDefault('fetchEnabled', true)),
   fetchMaxTimeoutSeconds: z.number().default(fieldDefault('fetchMaxTimeoutSeconds', 0)),
+  fetchReader: z.union(['auto', 'native', 'trafilatura', 'lynx', 'parallel', 'jina', 'browser'] as const).default(fieldDefault('fetchReader', 'auto')),
+  browserReaderEnabled: z.boolean().default(fieldDefault('browserReaderEnabled', true)),
   imagesAutoResize: z.boolean().default(fieldDefault('imagesAutoResize', true)),
   imagesBlockImages: z.boolean().default(fieldDefault('imagesBlockImages', false)),
   imagesExcludeWebp: z.boolean().default(fieldDefault('imagesExcludeWebp', false)),
@@ -324,6 +334,8 @@ export function resolveConfig(config: Config): RuntimeConfig {
     astEditEnabled: config.astEditEnabled ?? fieldDefault('astEditEnabled', true),
     fetchEnabled: config.fetchEnabled ?? fieldDefault('fetchEnabled', true),
     fetchMaxTimeoutSeconds: config.fetchMaxTimeoutSeconds ?? fieldDefault('fetchMaxTimeoutSeconds', 0),
+    fetchReader: config.fetchReader ?? fieldDefault('fetchReader', 'auto'),
+    browserReaderEnabled: config.browserReaderEnabled ?? fieldDefault('browserReaderEnabled', true),
     imagesAutoResize: config.imagesAutoResize ?? fieldDefault('imagesAutoResize', true),
     imagesBlockImages: config.imagesBlockImages ?? fieldDefault('imagesBlockImages', false),
     imagesExcludeWebp: config.imagesExcludeWebp ?? fieldDefault('imagesExcludeWebp', false),

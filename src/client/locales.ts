@@ -36,6 +36,12 @@ export type BashPlusLocaleKey =
   | 'optReplace' | 'optPatch' | 'optHashline' | 'optApplyPatch'
   | 'fetchEnabled' | 'fetchEnabledHint'
   | 'fetchMaxTimeoutSeconds' | 'fetchMaxTimeoutSecondsHint'
+  | 'fetchReader' | 'fetchReaderHint'
+  | 'browserReaderEnabled' | 'browserReaderEnabledHint'
+  | 'browserProbe' | 'browserProbeHint' | 'browserProbeRunning'
+  | 'browserProbeNone' | 'browserProbeFailed' | 'browserProbeUnavailable'
+  | 'optReaderAuto' | 'optReaderNative' | 'optReaderTrafilatura' | 'optReaderLynx'
+  | 'optReaderParallel' | 'optReaderJina' | 'optReaderBrowser'
   | 'imagesAutoResize' | 'imagesAutoResizeHint'
   | 'imagesBlockImages' | 'imagesBlockImagesHint'
   | 'imagesExcludeWebp' | 'imagesExcludeWebpHint'
@@ -117,6 +123,23 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   fetchEnabledHint: 'read 处理 http(s) URL（网页转 Markdown 供模型阅读）时是否启用抓取。',
   fetchMaxTimeoutSeconds: '抓取超时（秒）',
   fetchMaxTimeoutSecondsHint: 'URL 抓取超时上限；0 表示使用默认的 30 秒。',
+  fetchReader: '网页转 Markdown 后端',
+  fetchReaderHint: '优先使用的网页正文提取后端；auto 按内置顺序依次尝试（含浏览器 JS 渲染）。设为具体后端时，该后端优先，其余按原顺序兜底。',
+  browserReaderEnabled: '浏览器 JS 渲染',
+  browserReaderEnabledHint: '启用本地无头浏览器渲染（SPA 页面需执行 JavaScript 才能出正文）。未安装可用浏览器时自动跳过，不影响其他后端。',
+  browserProbe: '探测浏览器',
+  browserProbeHint: '检测本机可用的浏览器（Edge / Chrome / Chromium），read 的浏览器渲染将使用第一个命中的。',
+  browserProbeRunning: '探测中…',
+  browserProbeNone: '未找到可用浏览器：URL 渲染将跳过浏览器后端。',
+  browserProbeFailed: '探测失败：',
+  browserProbeUnavailable: '探测不可用：当前部署未启用浏览器 RPC 通道。',
+  optReaderAuto: 'auto（自动）',
+  optReaderNative: 'native（内置转换）',
+  optReaderTrafilatura: 'trafilatura',
+  optReaderLynx: 'lynx',
+  optReaderParallel: 'Parallel Reader',
+  optReaderJina: 'Jina Reader',
+  optReaderBrowser: 'browser（浏览器渲染）',
   groupFetch: '抓取',
   groupImages: '图片',
   imagesAutoResize: '图片自动缩放',
@@ -273,6 +296,23 @@ export const en: Record<BashPlusLocaleKey, string> = {
   fetchEnabledHint: 'Whether fetching is enabled when read handles http(s) URLs.',
   fetchMaxTimeoutSeconds: 'Fetch timeout (s)',
   fetchMaxTimeoutSecondsHint: 'URL fetch timeout cap; 0 = default 30s.',
+  fetchReader: 'HTML-to-Markdown backend',
+  fetchReaderHint: 'Preferred reader backend for extracting page bodies; auto tries the built-in order (including browser JS rendering). A concrete backend goes first, the rest fall back in order.',
+  browserReaderEnabled: 'Browser JS rendering',
+  browserReaderEnabledHint: 'Render pages in a local headless browser (SPA pages need JavaScript to produce a body). Skipped automatically when no usable browser is installed.',
+  browserProbe: 'Probe browsers',
+  browserProbeHint: 'Detect usable browsers on this machine (Edge / Chrome / Chromium); read’s browser rendering uses the first hit.',
+  browserProbeRunning: 'Probing…',
+  browserProbeNone: 'No usable browser found: URL rendering will skip the browser backend.',
+  browserProbeFailed: 'Probe failed: ',
+  browserProbeUnavailable: 'Probing unavailable: this deployment does not enable the browser RPC channel.',
+  optReaderAuto: 'auto',
+  optReaderNative: 'native (built-in conversion)',
+  optReaderTrafilatura: 'trafilatura',
+  optReaderLynx: 'lynx',
+  optReaderParallel: 'Parallel Reader',
+  optReaderJina: 'Jina Reader',
+  optReaderBrowser: 'browser (JS rendering)',
   groupFetch: 'Fetching',
   groupImages: 'Images',
   imagesAutoResize: 'Auto-resize images',

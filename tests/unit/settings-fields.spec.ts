@@ -31,11 +31,22 @@ function schemaKeys(): string[] {
   return Object.keys(dict)
 }
 
+/**
+ * Fields that carry a schema key: `action` fields (e.g. the 探测浏览器 button)
+ * are UI-only — no settings value, no schema key, no default comparison.
+ */
+const CONFIG_FIELDS = TOOL_PLUS_FIELDS.filter(field => field.kind !== 'action')
+
 describe('fields vs settings schema', () => {
   it('field table covers exactly the schema keys (no missing, no extra)', () => {
     const schema = schemaKeys()
     expect(schema.length).toBeGreaterThan(0)
-    expect([...TOOL_PLUS_FIELD_NAMES].sort()).toEqual([...schema].sort())
+    const tableKeys = CONFIG_FIELDS.map(field => field.name)
+    expect([...tableKeys].sort()).toEqual([...schema].sort())
+    // Action-only fields have no schema key by design.
+    for (const field of TOOL_PLUS_FIELDS.filter(field => field.kind === 'action')) {
+      expect(schema).not.toContain(field.name)
+    }
   })
 
   it('every field has a group label and belongs to exactly one tool tab', () => {
@@ -70,20 +81,26 @@ describe('fields vs settings schema', () => {
       outputTruncateLineHeadLines: truncate.lines.headLines,
       outputTruncateLineTailLines: truncate.lines.tailLines,
     }
-    for (const field of TOOL_PLUS_FIELDS) {
+    for (const field of CONFIG_FIELDS) {
       expect(resolvedByField[field.name], field.name).toBe(field.default)
     }
   })
 
   it('schema parse defaults equal the field table defaults', () => {
     const parsed = Config({}) as Record<string, unknown>
-    for (const field of TOOL_PLUS_FIELDS) {
+    for (const field of CONFIG_FIELDS) {
       expect(parsed[field.name], field.name).toBe(field.default)
     }
   })
 
   it('every boolean/number/select field kind maps to a schema-compatible default type', () => {
     for (const field of TOOL_PLUS_FIELDS) {
+      if (field.kind === 'action') {
+        // Action fields carry a placeholder default (''), never a schema value.
+        expect(typeof field.default).toBe('string')
+        expect(field.default).toBe('')
+        continue
+      }
       if (field.kind === 'boolean') expect(typeof field.default).toBe('boolean')
       else if (field.kind === 'select') expect(typeof field.default).toBe('string')
       else expect(typeof field.default).toBe('number')

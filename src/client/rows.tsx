@@ -39,6 +39,14 @@ export interface ToggleControl {
   overridden: boolean
 }
 
+/** One rendered action control (button that calls a host RPC endpoint). */
+export interface ActionControl {
+  field: string
+  labelKey: BashPlusLocaleKey
+  hintKey: BashPlusLocaleKey
+  actionKey: string
+}
+
 /** Shared row control CSS, keyed by `data-plugin-css` and injected once. */
 export const SETTINGS_ROWS_CSS = `
 .tp-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
@@ -75,6 +83,19 @@ export const SETTINGS_ROWS_CSS = `
 .tp-switch input:focus-visible+.tp-switchTrack{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .tp-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:var(--dsw-alias-bg-layer-3);transition:transform .16s;pointer-events:none}
 .tp-switch input:checked~.tp-thumb{transform:translateX(16px)}
+.tp-actionField{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.tp-actionField:last-child{border-bottom:none}
+.tp-actionHead{display:flex;align-items:center;gap:12px}
+.tp-actionInfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tp-actionTitle{font-size:14px;font-weight:400;line-height:22px;color:var(--dsw-alias-label-primary)}
+.tp-actionDesc{font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.tp-actionButton{appearance:none;flex:none;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background .14s}
+.tp-actionButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.tp-actionButton:disabled{opacity:.55;cursor:default}
+.tp-actionButton:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.tp-actionResult{margin:0;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.tp-actionResult[data-state="ok"]{color:var(--dsw-alias-label-secondary)}
+.tp-actionResult[data-state="error"]{color:var(--dsw-alias-label-error)}
 @media (prefers-reduced-motion: reduce){
   .tp-switch,.tp-switchTrack,.tp-thumb,.tp-selectTrigger,.tp-selectChevron{transition:none}
 }
@@ -246,6 +267,48 @@ export function ToggleRow(props: {
         <span className="tp-switchTrack" />
         <span className="tp-thumb" />
       </span>
+    </div>
+  )
+}
+
+/**
+ * Action row: Title + desc stacked on left, a button on the right that calls
+ * the host RPC endpoint named by `control.actionKey` (via the Connection
+ * channel; the caller owns the RPC). The result line renders below, colored
+ * by outcome (`ok` / `error`).
+ */
+export function ActionRow(props: {
+  t: (key: BashPlusLocaleKey) => string
+  control: ActionControl
+  disabled: boolean
+  running: boolean
+  result: { ok: boolean; text: string } | null
+  onRun: (actionKey: string) => void
+}): ReactNode {
+  const { t, control, disabled, running, result, onRun } = props
+  return (
+    <div className="tp-actionField">
+      <div className="tp-actionHead">
+        <div className="tp-actionInfo">
+          <div className="tp-actionTitle">{t(control.labelKey)}</div>
+          <div className="tp-actionDesc">{t(control.hintKey)}</div>
+        </div>
+        <button
+          type="button"
+          className="tp-actionButton"
+          disabled={disabled || running}
+          onClick={() => onRun(control.actionKey)}
+        >
+          {running ? t('browserProbeRunning') : t(control.labelKey)}
+        </button>
+      </div>
+      {result !== null
+        ? (
+          <p className="tp-actionResult" role="status" data-state={result.ok ? 'ok' : 'error'}>
+            {result.text}
+          </p>
+        )
+        : null}
     </div>
   )
 }

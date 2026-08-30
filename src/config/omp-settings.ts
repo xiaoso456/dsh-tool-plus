@@ -40,6 +40,8 @@ export const OMP_KEY_TO_FIELD: Record<string, string | undefined> = {
   'astEdit.enabled': 'astEditEnabled',
   // fetch.* / tools.* / images.*（URL 抓取与图片读取路径；read_image 融合进 read 后 inspect_image.* 保持删除）
   'fetch.enabled': 'fetchEnabled',
+  'providers.fetch': 'fetchReader',
+  'browser.readerEnabled': 'browserReaderEnabled',
   'tools.maxTimeout': 'fetchMaxTimeoutSeconds',
   'images.autoResize': 'imagesAutoResize',
   'images.blockImages': 'imagesBlockImages',
@@ -109,6 +111,8 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   'memory.backend': 'off',
   // providers.*（fetch 抓取偏好；DSH 默认 auto）
   'providers.fetch': 'auto',
+  // browser.*（read 浏览器渲染开关；DSH 默认开启，无浏览器时自动降级）
+  'browser.readerEnabled': true,
   // searxng.*（endpoint 未配置 → undefined）
   'searxng.endpoint': undefined,
   // dev.*（report-tool-issue 兜底）
