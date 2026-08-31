@@ -16,10 +16,14 @@
  * Tab chrome mirrors the official Plugins settings section
  * (ui-settings-plugins): `role="tablist"` + tab/panel roles, aria wiring,
  * and arrow/Home/End keyboard roaming.
+ *
+ * The page is pinned to the host settings pane: the heading, intro and tablist
+ * stay put, the save bar sits at the bottom, and the tab panel is the only
+ * scroller — so the scrollbar spans just the band between them.
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
@@ -40,35 +44,63 @@ export type ToolPlusSectionProps =
   & PropsLocale<'tool-plus'>
   & InjectFace<ToolPlusSectionInjected>
 
-/** Page CSS, keyed by `data-plugin-css` and injected once. */
+/**
+ * Page CSS, keyed by `data-plugin-css` and injected once.
+ *
+ * Design language: official settings-section rhythm (18/600 heading, 13px
+ * tertiary intro, 760px content column) on the host's `--dsw-alias-*`
+ * tokens, so both themes adapt automatically. Tab chrome is the official
+ * underline tablist (like the Plugins section), upgraded with a single
+ * sliding brand-blue underline; group cards float above the modal surface
+ * (layer-3). No backdrop-filter anywhere — solid token colors only.
+ * All motion is transform/opacity only (GPU-composited): the underline
+ * FLIP is driven from JS, entrance stagger and panel fades are CSS
+ * keyframes, and the unsaved dot pulses opacity/scale. Everything shuts
+ * off under prefers-reduced-motion (CSS here, matchMedia for the
+ * JS-driven underline).
+ */
 const CSS = `
-.tps{display:flex;flex-direction:column;gap:16px;padding:20px 24px}
-.tps-heading{margin:0;font-size:18px;font-weight:600;line-height:26px;color:var(--dsw-alias-label-primary)}
-.tps-intro{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
-.tps-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3)}
-.tps-tab{appearance:none;border:none;background:none;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);padding:6px 14px;border-radius:8px;cursor:pointer;transition:background .14s,color .14s}
-.tps-tab:hover:not([data-active="true"]){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.tps-tab[data-active="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2)}
-.tps-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.tps-panel{display:flex;flex-direction:column;gap:12px}
-.tps-group{display:flex;flex-direction:column;gap:0;padding:4px 0}
-.tps-groupTitle{font-size:13px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary);margin:0 0 4px}
-.tps-empty{border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;padding:20px 16px;display:flex;flex-direction:column;gap:4px;background:var(--dsw-alias-bg-layer-3)}
+.tps-section{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding-top:2px}
+.tps-heading{margin:0;font-size:18px;font-weight:600;line-height:26px;color:var(--dsw-alias-label-primary);animation:tps-rise .38s cubic-bezier(.22,1,.36,1) both}
+.tps-intro{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary);max-width:64ch;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .05s both}
+.tps-tabs{position:relative;display:flex;align-items:flex-end;gap:22px;border-bottom:1px solid var(--dsw-alias-border-l2);margin-top:2px;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .1s both}
+.tps-tab{position:relative;appearance:none;border:none;background:none;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary);padding:7px 1px 9px;cursor:pointer;white-space:nowrap;transition:color .16s ease}
+.tps-tab:hover:not([data-active="true"]){color:var(--dsw-alias-label-primary)}
+.tps-tab[data-active="true"]{color:var(--dsw-alias-label-primary)}
+.tps-tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px;border-radius:2px}
+.tps-tabIndicator{position:absolute;bottom:-1px;left:0;height:2px;border-radius:2px 2px 0 0;background:var(--dsw-alias-state-business-primary);pointer-events:none;transform-origin:left center;will-change:transform}
+.tps-panel{display:flex;flex:1 1 auto;flex-direction:column;gap:14px;min-width:0;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;animation:tps-panel-in .24s cubic-bezier(.22,1,.36,1) both}
+.tps-panel::-webkit-scrollbar{width:10px}
+.tps-panel::-webkit-scrollbar-track{background:transparent}
+.tps-panel::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:999px;background-color:color-mix(in srgb, var(--dsw-alias-label-tertiary) 45%, transparent);background-clip:content-box}
+.tps-panel::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb, var(--dsw-alias-label-tertiary) 75%, transparent)}
+.tps-group{display:flex;flex-direction:column}
+.tps-groupTitle{font-size:13px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary);margin:0 0 6px;padding:0 2px}
+.tps-card{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3);padding:0 16px}
+.tps-empty{border:1px dashed var(--dsw-alias-border-l3);border-radius:12px;padding:24px 16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px}
 .tps-emptyTitle{margin:0;font-size:14px;font-weight:600;line-height:22px;color:var(--dsw-alias-label-primary)}
 .tps-emptyHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tps-readOnly{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tps-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 0 0;border-top:1px solid var(--dsw-alias-border-l2)}
+.tps-readOnly{margin:0;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.tps-footer{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 0;border-top:1px solid var(--dsw-alias-border-l2)}
 .tps-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-error)}
 .tps-applies{flex:1;min-width:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.tps-discard,.tps-save{appearance:none;border:1px solid transparent;border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer;transition:transform .1s ease}
+.tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
+.tps-unsavedDot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-business-primary);animation:tps-pulse 1.8s ease-in-out infinite}
+.tps-discard,.tps-save{appearance:none;border:1px solid transparent;border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer;transition:transform .1s ease,background .16s ease,border-color .16s ease,color .16s ease}
 .tps-discard:active:not(:disabled),.tps-save:active:not(:disabled){transform:scale(.97)}
 .tps-discard{border-color:var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-secondary)}
-.tps-discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}
+.tps-discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
 .tps-save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}
+.tps-save:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
 .tps-discard:disabled,.tps-save:disabled{opacity:.4;cursor:default}
-.tps-discard:focus-visible,.tps-save:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.tps-discard:focus-visible,.tps-save:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+@keyframes tps-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes tps-panel-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tps-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
 @media (prefers-reduced-motion: reduce){
+  .tps-heading,.tps-intro,.tps-tabs,.tps-panel,.tps-unsavedDot{animation:none}
   .tps-tab,.tps-discard,.tps-save{transition:none}
+  .tps-tabIndicator{will-change:auto}
 }
 `
 
@@ -91,6 +123,21 @@ const TOOL_TABS = TOOL_PLUS_TABS
 
 /** All fields the page edits (one shared form). */
 const ALL_FIELDS = TOOL_PLUS_FIELDS
+
+/** Floor for the pinned page height, so an unusually short pane never collapses the panel. */
+const MIN_PAGE_HEIGHT = 240
+
+/**
+ * Nearest ancestor that scrolls vertically — the host settings pane hosting
+ * this section. The pane is app chrome with no stable class, so it is found by
+ * walking up from the section root.
+ */
+function scrollPaneOf(element: HTMLElement): HTMLElement | null {
+  for (let node = element.parentElement; node !== null; node = node.parentElement) {
+    if (/(auto|scroll|overlay)/.test(getComputedStyle(node).overflowY)) return node
+  }
+  return null
+}
 
 /** Current effective value of a boolean/select control (staged or resolved). */
 function controlValue(form: ReturnType<typeof useToolForm>, field: string): number | boolean | string | undefined {
@@ -172,6 +219,7 @@ function ToolTabPanel(props: {
       {groups.map(group => (
         <section key={group.group} className="tps-group">
           <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS[group.group] ?? 'title')}</h4>
+          <div className="tps-card">
           {group.fields.map(field => {
             // Action fields are not part of the staged form: render the
             // button row directly (host RPC via the section-level runAction).
@@ -233,6 +281,7 @@ function ToolTabPanel(props: {
               />
             )
           })}
+          </div>
         </section>
       ))}
     </>
@@ -243,6 +292,7 @@ function ToolTabPanel(props: {
 export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   const { t, scope } = props
   const form = useToolForm(scope, ALL_FIELDS)
+  const sectionRef = useRef<HTMLDivElement | null>(null)
   const tabsId = useRef(`tps-${Math.random().toString(36).slice(2, 8)}`)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [activeId, setActiveId] = useState<string | undefined>()
@@ -281,17 +331,113 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
 
   useEffect(() => { injectSectionCss(); injectSettingsRowsCss() }, [])
 
-  if (!form.shell.available) return null
   const active = TOOL_TABS.find(row => row.id === activeId)?.id ?? TOOL_TABS[0]?.id
+
+  // Sliding active-tab underline: a single 2px indicator element FLIP-animated
+  // with transform only (translateX + scaleX), so tab switches stay on the
+  // compositor. Position is measured from the active tab's offset geometry; a
+  // ResizeObserver re-commits it instantly when labels resize (locale switch,
+  // font load) without animation.
+  const tabsRef = useRef<HTMLDivElement | null>(null)
+  const indicatorRef = useRef<HTMLSpanElement | null>(null)
+  const committedRect = useRef<{ left: number; width: number } | null>(null)
+
+  const commitIndicator = useCallback((animate: boolean) => {
+    const tabs = tabsRef.current
+    const indicator = indicatorRef.current
+    if (tabs === null || indicator === null || active === undefined) return
+    const tab = tabs.querySelector<HTMLElement>(`[data-tps-tab="${active}"]`)
+    if (tab === null) return
+    const left = tab.offsetLeft
+    const width = tab.offsetWidth
+    const previous = committedRect.current
+    committedRect.current = { left, width }
+    // Position unchanged → touch nothing. A FLIP may be mid-flight; blindly
+    // rewriting `transition: none` here (e.g. from a ResizeObserver ping that
+    // fires for already-committed geometry) would kill it on frame zero.
+    if (previous !== null && previous.left === left && previous.width === width) return
+    const reduce = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!animate || reduce || previous === null) {
+      indicator.style.transition = 'none'
+      indicator.style.width = `${width}px`
+      indicator.style.transform = `translateX(${left}px)`
+      return
+    }
+    indicator.style.transition = 'none'
+    indicator.style.width = `${width}px`
+    indicator.style.transform = `translateX(${previous.left}px) scaleX(${previous.width / width})`
+    // Force style flush so the inverted frame paints before we release it.
+    void indicator.offsetWidth
+    indicator.style.transition = 'transform .24s cubic-bezier(.22,1,.36,1)'
+    indicator.style.transform = `translateX(${left}px) scaleX(1)`
+  }, [active])
+
+  useLayoutEffect(() => { commitIndicator(true) }, [commitIndicator])
+
+  // Observe once at mount: the tab buttons are a static list, so re-creating
+  // the observer on every commitIndicator identity change would re-fire
+  // initial notifications mid-FLIP and snap the underline. The ref indirection
+  // keeps the callback on the latest commit closure (latest `active`).
+  const commitRef = useRef(commitIndicator)
+  commitRef.current = commitIndicator
+  useEffect(() => {
+    const tabs = tabsRef.current
+    if (tabs === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => commitRef.current(false))
+    observer.observe(tabs)
+    for (const tab of Array.from(tabs.querySelectorAll('[data-tps-tab]'))) observer.observe(tab)
+    return () => { observer.disconnect() }
+  }, [])
+
+  // Pinned page: the heading/intro/tablist block and the save bar stay put and
+  // the tab panel owns the scrollbar, so the scrollbar spans exactly the band
+  // under the tab underline down to the save divider. The section height is
+  // measured off the host pane's content box instead of written as
+  // `height: 100%` — a percentage there computes to `auto` whenever the pane
+  // sizes itself with `max-height` (as a settings dialog usually does).
+  useLayoutEffect(() => {
+    const root = sectionRef.current
+    if (root === null || typeof ResizeObserver === 'undefined') return
+    const pane = scrollPaneOf(root)
+    if (pane === null) return
+    let frame = 0
+    const measure = (): void => {
+      frame = 0
+      const style = getComputedStyle(pane)
+      const paddingTop = parseFloat(style.paddingTop) || 0
+      const contentHeight = pane.clientHeight - paddingTop - (parseFloat(style.paddingBottom) || 0)
+      // Section top relative to the pane's content box, scroll-position free.
+      const offset = root.getBoundingClientRect().top - pane.getBoundingClientRect().top
+        - (parseFloat(style.borderTopWidth) || 0) - paddingTop + pane.scrollTop
+      const next = `${Math.max(MIN_PAGE_HEIGHT, Math.round(contentHeight - offset))}px`
+      if (root.style.height !== next) root.style.height = next
+    }
+    const schedule = (): void => { if (frame === 0) frame = requestAnimationFrame(measure) }
+    measure()
+    const observer = new ResizeObserver(schedule)
+    observer.observe(pane)
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame)
+      observer.disconnect()
+      window.removeEventListener('resize', schedule)
+      root.style.height = ''
+    }
+  }, [form.shell.available])
+
+  if (!form.shell.available) return null
   const selectTab = (id: string): void => setActiveId(id)
   const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
   const writable = form.shell.writable
 
   return (
-    <div className="tps-section">
+    <div ref={sectionRef} className="tps-section">
       <h2 className="tps-heading">{t('pageTitle')}</h2>
       <p className="tps-intro">{t('pageDescription')}</p>
-      <div className="tps-tabs" role="tablist" aria-label={t('pageTitle')}>
+      <div ref={tabsRef} className="tps-tabs" role="tablist" aria-label={t('pageTitle')}>
+        <span ref={indicatorRef} className="tps-tabIndicator" aria-hidden="true" />
         {TOOL_TABS.map((row, index) => {
           const selected = row.id === active
           return (
@@ -305,6 +451,7 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               aria-selected={selected}
               aria-controls={`${tabsId.current}-panel-${row.id}`}
               data-active={selected ? 'true' : undefined}
+              data-tps-tab={row.id}
               tabIndex={selected ? 0 : -1}
               onClick={() => selectTab(row.id)}
               onKeyDown={(event) => {
@@ -358,6 +505,9 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
       <div className="tps-footer">
         {form.shell.failed ? <p className="tps-failed" role="status">{t('saveFailed')}</p> : null}
         {!form.shell.failed ? <span className="tps-applies">{t('appliesTo')}</span> : null}
+        {!form.shell.failed && form.shell.dirty
+          ? <span className="tps-unsaved" role="status"><span className="tps-unsavedDot" aria-hidden="true" />{t('unsaved')}</span>
+          : null}
         <button
           type="button"
           className="tps-discard"
