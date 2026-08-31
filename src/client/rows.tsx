@@ -59,7 +59,6 @@ export interface ActionControl {
 export const SETTINGS_ROWS_CSS = `
 .tp-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--dsw-alias-border-l1);transition:background .16s ease}
 .tp-row:last-child{border-bottom:none}
-.tp-rowClickable{cursor:pointer}
 .tp-rowText{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;padding-right:24px}
 .tp-rowTitle{font-size:14px;font-weight:400;line-height:22px;color:var(--dsw-alias-label-primary)}
 .tp-rowDesc{font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-tertiary)}
@@ -141,8 +140,10 @@ function hasOwn(obj: unknown, key: string): boolean {
 
 /**
  * Number row: same left-text / right-control anatomy as toggle and select
- * rows, with the input right-aligned at a fixed width. The label is wired to
- * the input (htmlFor) and clicking anywhere on the row focuses the input.
+ * rows, with the input right-aligned at a fixed width. The title is wired to
+ * the input (htmlFor), so clicking the title focuses the input; the
+ * description and the rest of the row are inert — each side manages its own
+ * interaction.
  */
 export function NumberRow(props: {
   t: (key: BashPlusLocaleKey) => string
@@ -154,14 +155,7 @@ export function NumberRow(props: {
   const { t, control, disabled, onEdit, onReset } = props
   const inputId = useId()
   return (
-    <div
-      className={'tp-row' + (disabled ? '' : ' tp-rowClickable')}
-      onClick={(event) => {
-        const target = event.target as HTMLElement
-        if (target.closest('input,button,select,textarea,a')) return
-        event.currentTarget.querySelector<HTMLInputElement>('.tp-input')?.focus()
-      }}
-    >
+    <div className="tp-row">
       <div className="tp-rowText">
         <label className="tp-rowTitle" htmlFor={inputId}>{t(control.labelKey)}</label>
         <div className={'tp-rowDesc' + (control.invalid ? ' tp-invalidText' : '')} role={control.invalid ? 'status' : undefined}>
@@ -211,14 +205,7 @@ export function SelectRow(props: {
   const close = (): void => onOpenChange(null)
 
   return (
-    <div
-      className={'tp-row' + (disabled ? '' : ' tp-rowClickable')}
-      onClick={(event) => {
-        const target = event.target as HTMLElement
-        if (target.closest('input,button,select,textarea,a')) return
-        event.currentTarget.querySelector<HTMLButtonElement>('.tp-selectTrigger')?.click()
-      }}
-    >
+    <div className="tp-row">
       <div className="tp-rowText">
         <div className="tp-rowTitle">{t(control.labelKey)}</div>
         <div className="tp-rowDesc">{t(control.hintKey)}</div>
@@ -275,15 +262,7 @@ export function ToggleRow(props: {
 }): ReactNode {
   const { t, control, disabled, onToggle, onReset } = props
   return (
-    <div
-      className={'tp-row' + (disabled ? '' : ' tp-rowClickable')}
-      onClick={(event) => {
-        const target = event.target as HTMLElement
-        if (target.closest('input,button,select,textarea,a')) return
-        // Disabled inputs ignore programmatic clicks, so this is a no-op then.
-        event.currentTarget.querySelector<HTMLInputElement>('.tp-switch input')?.click()
-      }}
-    >
+    <div className="tp-row">
       <div className="tp-rowText">
         <div className="tp-rowTitle">{t(control.labelKey)}</div>
         <div className="tp-rowDesc">{t(control.hintKey)}</div>
