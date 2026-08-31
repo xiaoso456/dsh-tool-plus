@@ -74,6 +74,7 @@ function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTi
     kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.timedOut ?? false, aborted: false, timeoutMs: timeoutMs ?? null, wallTimeMs,
     ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
     ...result.minimized !== undefined ? { minimized: result.minimized } : {},
+    ...result.rmSafeInjectionFailed === true ? { rmSafeInjectionFailed: true } : {},
     output: {
       text: result.output,
       truncated: result.truncated,
@@ -254,7 +255,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           id = jobs.start({ kind: 'bash', label: command, ...exec.agent !== undefined ? { owner: exec.agent } : {}, run: () => { managed = startManagedJob(); return managed.hooks } })
         } catch {
           const startedAt = performance.now()
-          const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile() })
+          const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile() })
           if (result.cancelled && exec.signal.aborted) throw abortError()
           if (result.workingDir !== undefined) state.cwd = result.workingDir
           return buildForeground(result, performance.now() - startedAt, timeoutMs)
@@ -272,7 +273,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         return window.value
       }
       const startedAt = performance.now()
-      const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile() })
+      const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile() })
       const wallTimeMs = performance.now() - startedAt
       if (result.cancelled && exec.signal.aborted) throw abortError()
       if (result.workingDir !== undefined) state.cwd = result.workingDir

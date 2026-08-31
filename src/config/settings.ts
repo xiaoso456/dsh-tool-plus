@@ -70,6 +70,7 @@ export interface RuntimeConfig {
   interceptorEnabled: boolean
   nonInteractiveEnv: boolean
   snapshotEnabled: boolean
+  rmSafe: boolean
   useShellCommandWrapper: boolean
   maxBackgroundJobs: number
   outputTruncate: OutputTruncateConfig
@@ -151,6 +152,8 @@ export interface Config {
   interceptorEnabled?: boolean
   nonInteractiveEnv?: boolean
   snapshotEnabled?: boolean
+  /** Redefine `rm` in the session shell to move into the system trash (default true). */
+  rmSafe?: boolean
   useShellCommandWrapper?: boolean
   maxBackgroundJobs?: number
   outputTruncateStrategy?: OutputTruncateStrategy
@@ -219,6 +222,7 @@ export const Config: z<Config> = z.object({
   interceptorEnabled: z.boolean().default(fieldDefault('interceptorEnabled', true)),
   nonInteractiveEnv: z.boolean().default(fieldDefault('nonInteractiveEnv', true)),
   snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)),
+  rmSafe: z.boolean().default(fieldDefault('rmSafe', true)),
   useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)),
   maxBackgroundJobs: z.number().default(fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS)),
   outputTruncateStrategy: z.union(['bytes', 'lines'] as const).default(fieldDefault('outputTruncateStrategy', 'bytes')),
@@ -295,6 +299,7 @@ export function resolveConfig(config: Config): RuntimeConfig {
     interceptorEnabled: config.interceptorEnabled ?? fieldDefault('interceptorEnabled', true),
     nonInteractiveEnv: config.nonInteractiveEnv ?? fieldDefault('nonInteractiveEnv', true),
     snapshotEnabled: config.snapshotEnabled ?? fieldDefault('snapshotEnabled', true),
+    rmSafe: config.rmSafe ?? fieldDefault('rmSafe', true),
     useShellCommandWrapper: config.useShellCommandWrapper ?? fieldDefault('useShellCommandWrapper', false),
     maxBackgroundJobs: config.maxBackgroundJobs ?? fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS),
     outputTruncate: {

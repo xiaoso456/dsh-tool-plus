@@ -77,7 +77,7 @@ export default defineConfig([
       // puppeteer-core stays external: it is a runtime dependency resolved
       // from the install tree (never bundled — bundling it would re-trigger
       // the beta.4 86MiB npm-pack cap).
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/, /^puppeteer-core$/],
+      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/, /^puppeteer-core$/, /^trash$/],
       alwaysBundle: [
         /^@oh-my-pi\/pi-utils/,
         /^@oh-my-pi\/pi-tui/,
@@ -104,6 +104,22 @@ export default defineConfig([
       // sharp stays external too — the Bun.Image shim resolves it at runtime
       // from the host DSH tree (never bundled, never installed by this package).
       neverBundle: [/^json5/, /^sharp$/],
+    },
+  },
+  {
+    // rmSafe CLI entry: the injected bash `rm()` function calls this with the
+    // original arguments. Standalone (no banner, no Bun shim) — it only needs
+    // node builtins plus the `trash` package, which stays external and is
+    // resolved from the install tree at runtime.
+    entry: { 'trash-cli': 'src/tools/bash/trash-cli-main.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    dts: false,
+    clean: true,
+    deps: {
+      neverBundle: [/^trash$/],
     },
   },
   {

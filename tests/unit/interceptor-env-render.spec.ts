@@ -156,6 +156,21 @@ describe('renderBashResult', () => {
     expect(renderBashResult(value)).toContain('(no output)')
   })
 
+  it('warns visibly when the rmSafe injection failed', () => {
+    const value: BashForegroundOutput = {
+      kind: 'foreground',
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      timeoutMs: null,
+      wallTimeMs: 10,
+      rmSafeInjectionFailed: true,
+      output: { text: 'ok\n', truncated: false },
+    }
+    const text = renderBashResult(value)
+    expect(text).toContain('[rmSafe injection failed: rm deletes permanently')
+  })
+
   it('reports truncation with OMP-form line accounting, the spill path, and a read-back hint', () => {
     const value: BashForegroundOutput = {
       kind: 'foreground',

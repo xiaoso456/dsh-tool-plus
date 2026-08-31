@@ -109,6 +109,7 @@
     "@oh-my-pi/pi-utils": "17.3.5",
     "json5": "^2.2.3",
     "puppeteer-core": "^25.3.0",
+    "trash": "^10.1.1",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

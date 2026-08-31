@@ -43,6 +43,8 @@ export interface Config {
   nonInteractiveEnv?: boolean
   /** Capture the user's rc file (aliases, functions, options) into the session shell. */
   snapshotEnabled?: boolean
+  /** Redefine `rm` in the session shell to move into the system trash; the plugin config layer decides the default (rmSafe: true). */
+  rmSafe?: boolean
   /** Wrap every command in `bash -c '…'` for a full bash environment. */
   useShellCommandWrapper?: boolean
 }
@@ -99,6 +101,8 @@ export interface BashForegroundOutput {
   workingDir?: string
   /** Present when the native minimizer rewrote the output. */
   minimized?: MinimizedOutputInfo
+  /** True when the rmSafe injection failed: `rm` deletes permanently. */
+  rmSafeInjectionFailed?: boolean
   output: CollectedOutput
 }
 

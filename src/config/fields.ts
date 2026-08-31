@@ -100,6 +100,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'interceptorEnabled', kind: 'boolean', default: true, labelKey: 'interceptorEnabled', hintKey: 'interceptorEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'nonInteractiveEnv', kind: 'boolean', default: true, labelKey: 'nonInteractiveEnv', hintKey: 'nonInteractiveEnvHint', group: 'behavior', tool: 'bash' },
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
+  { name: 'rmSafe', kind: 'boolean', default: true, labelKey: 'rmSafe', hintKey: 'rmSafeHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },
   // ---- Bash: timing & backgrounding -----------------------------------
   { name: 'autoBackgroundMs', kind: 'number', default: 60_000, labelKey: 'autoBackgroundMs', hintKey: 'autoBackgroundMsHint', group: 'timing', tool: 'bash' },

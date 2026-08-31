@@ -18,6 +18,7 @@ import { type MinimizerOptions, Shell, type ShellRunResult } from "@oh-my-pi/pi-
 import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
+import { ensureRmSafeScript, injectRmSafe, rmSafeCliPath, rmSafeScriptDir } from "./rm-safe.ts";
 import { OutputSink } from "./streaming-output.ts";
 import { resolveWindowsShell } from "./windows-shell.ts";
 import { ExponentialYield } from "./yield.ts";
@@ -109,6 +110,8 @@ export interface BashExecutorOptions {
 	useUserShell?: boolean;
 	/** Capture the user rc snapshot into the session shell (default true). */
 	snapshotEnabled?: boolean;
+	/** Redefine `rm` in the session shell to move into the system trash (default false). */
+	rmSafe?: boolean;
 	/** Apply non-interactive env hardening to the command environment (default true). */
 	nonInteractiveEnv?: boolean;
 	/** Enable intelligent output minimizer. Default true. */
@@ -159,6 +162,8 @@ export interface BashResult {
 	elidedLines?: number;
 	elidedBytes?: number;
 	workingDir?: string;
+	/** True when the rmSafe injection failed: `rm` stays the system command and deletes permanently. */
+	rmSafeInjectionFailed?: boolean;
 }
 
 const shellSessions = new Map<string, Shell>();
@@ -360,7 +365,27 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const shellConfig = options?.useUserShell === true ? resolveUserShellConfig(baseShellConfig) : baseShellConfig;
 	const { shell, args, env: shellEnv, prefix } = shellConfig;
 	const bashShell = isBashShell(shell);
-	const snapshotPath = bashShell && options?.snapshotEnabled !== false ? await getOrCreateSnapshot(shell, shellEnv) : null;
+	let snapshotPath = bashShell && options?.snapshotEnabled !== false ? await getOrCreateSnapshot(shell, shellEnv) : null;
+	// rmSafe: redefine `rm` to move into the system trash. The injection rides
+	// the snapshot file (sourced once at session creation), so it applies to
+	// every persistent/one-shot shell without per-command overhead. When
+	// rmSafe is off, the snapshot stays untouched and the system rm applies.
+	// Injection failure must NOT fail the command — it degrades to the system
+	// rm, but is surfaced as a warning (runtime log + result notice) because
+	// the user's expectation of trash-on-rm silently no longer holds.
+	let rmSafeInjectionFailed = false;
+	if (snapshotPath !== null && options?.rmSafe === true) {
+		const scriptPath = ensureRmSafeScript(rmSafeScriptDir(), process.execPath, rmSafeCliPath());
+		if (scriptPath === null || !injectRmSafe(snapshotPath, scriptPath)) {
+			rmSafeInjectionFailed = true;
+			runtimeLogger().warn("rmSafe: injection failed, rm will delete permanently", {
+				scriptPath: scriptPath ?? null,
+				snapshotPath,
+			});
+		}
+	}
+	// Carried on every result path so the renderer can surface the warning.
+	const injectionFailedMarker = rmSafeInjectionFailed ? { rmSafeInjectionFailed: true } : {};
 
 	const minimizerSettings = options?.minimizerSettings ?? DEFAULT_MINIMIZER_SETTINGS;
 	const minimizerEnabled = options?.minimizerEnabled ?? minimizerSettings.enabled;
@@ -407,6 +432,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		return {
 			exitCode: undefined,
 			cancelled: true,
+			...injectionFailedMarker,
 			...(await settle("Command cancelled")),
 		};
 	}
@@ -520,6 +546,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
+				...injectionFailedMarker,
 				...(winner.kind === "timeout" ? { timedOut: true } : {}),
 				...(await settle(
 					winner.kind === "timeout" && deadlineTimeoutMs !== undefined
@@ -546,6 +573,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 				exitCode: undefined,
 				cancelled: true,
 				timedOut: true,
+				...injectionFailedMarker,
 				...(await settle(annotation)),
 			};
 		}
@@ -559,6 +587,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			return {
 				exitCode: undefined,
 				cancelled: true,
+				...injectionFailedMarker,
 				...(await settle("Command cancelled")),
 			};
 		}
@@ -587,6 +616,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		return {
 			exitCode: winner.result.exitCode,
 			cancelled: false,
+			...injectionFailedMarker,
 			minimized: minimized && minimized.text !== minimized.originalText
 				? { filter: minimized.filter, inputBytes: minimized.inputBytes, outputBytes: minimized.outputBytes }
 				: undefined,

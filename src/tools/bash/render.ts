@@ -99,6 +99,9 @@ export function renderBashResult(value: BashForegroundOutput): string {
   const truncation = formatTruncationNotice(value.output)
   if (truncation !== undefined) notices.push(...truncation)
   else if (value.output.spillPath !== undefined) notices.push(`[full raw stream saved: ${value.output.spillPath}]`)
+  if (value.rmSafeInjectionFailed === true) {
+    notices.push('[rmSafe injection failed: rm deletes permanently — use `command rm` to bypass]')
+  }
 
   const markers: string[] = []
   if (value.timedOut) {
