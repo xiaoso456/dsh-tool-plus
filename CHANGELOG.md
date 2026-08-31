@@ -5,6 +5,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.0-beta.7] - 2026-08-31
+
+### Changed
+
+- 设置面板 Tool Plus 页视觉升级：工具切换标签改为下划线样式，切换时下划线平滑滑动；各工具的配置项改为分组卡片展示，层次更清晰
+- 设置项操作更顺手：整行点击即可切换开关、展开下拉、聚焦数字输入框
+- 保存与放弃修改按钮固定在面板底部，内容较长时无需滚到底即可操作
+
+### Fixed
+
+- 修复设置页标题、标签与选项挤在一起的问题（页面布局样式此前未生效）
+- 修复切换工具标签时下划线指示器无滑动动画的问题
+
+[对比 beta.6](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.0-beta.6...tool-plus-v0.1.0-beta.7)
+
 ## [0.1.0-beta.6] - 2026-08-30
 
 ### Added

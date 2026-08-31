@@ -8,8 +8,8 @@
 
 | 包 | 目录 | 版本线 | 当前 |
 |---|---|---|---|
-| `@xiaoso/dsh-tool-plus` | 仓库根 | 锁步 | 0.1.0-beta.1 |
-| `@xiaoso/dsh-tool-plus-presets` | `presets/` | 锁步 | 0.1.0-beta.1 |
+| `@xiaoso/dsh-tool-plus` | 仓库根 | 锁步 | 0.1.0-beta.7 |
+| `@xiaoso/dsh-tool-plus-presets` | `presets/` | 锁步 | 0.1.0-beta.7 |
 
 **版本号锁步**：两包始终同版（拍板 2026-08-27），发布迭代时两边的 package.json 一起 `pnpm version prerelease`，谁有变更发谁。
 
@@ -24,11 +24,15 @@ pnpm version prerelease            # 在包所在目录执行
 # 2. 四连验证
 pnpm typecheck && pnpm build && pnpm test
 
-# 3. 提交 + 打消歧标签（两包同仓，用前缀区分）
+# 3. 更新 CHANGELOG.md：按 Keep a Changelog 为本次版本新增一节
+#    （格式沿用历史版本：## [<ver>] - <日期> + Added/Changed/Fixed/Removed
+#    + 对比链接），随本版变更一起提交；不更新不得发版
+
+# 4. 提交 + 打消歧标签（两包同仓，用前缀区分）
 git commit -am "release: <pkg> v<ver>"
 git tag presets-v<ver>             # 或 tool-plus-v<ver>
 
-# 4. 推 git + 发 npm（谁有变更发谁）
+# 5. 推 git + 发 npm（谁有变更发谁）
 git push --tags
 (cd presets && npm publish)        # 预设包
 npm publish                        # 主包
