@@ -2,13 +2,17 @@
 
 简体中文 | [English](./README.en.md)
 
-DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 edit、原子 write、全文搜索、图像直读，一个插件全覆盖。基于 [Oh My Pi](https://github.com/can1357/oh-my-pi) 内核移植，安装后自动接管官方 bash / pwsh / 文件 / 搜索工具，另有可选的 `ast_grep` / `ast_edit` 结构化搜索与重写。
+[![npm version](https://img.shields.io/npm/v/@xiaoso/dsh-tool-plus?logo=npm)](https://www.npmjs.com/package/@xiaoso/dsh-tool-plus)
+[![License: MIT](https://img.shields.io/github/license/xiaoso456/dsh-tool-plus)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19%20%7C%20%3E%3D24-339933?logo=nodedotjs)](https://nodejs.org)
+[![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)]()
 
-> 当前为早期测试版（beta），行为与配置可能随时调整。
+DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 edit、原子 write、全文搜索、图像直读，一个插件全覆盖。基于 [Oh My Pi](https://github.com/can1357/oh-my-pi) 内核移植，安装后自动接管官方 bash / pwsh / 文件 / 搜索工具，另有可选的 `ast_grep` / `ast_edit` 结构化搜索与重写。
 
 ## 功能特性
 
 - **bash**：持久 shell，`cd`、`export` 跨调用保持状态；冗长日志（git/npm/cargo…）自动压缩；超长输出只保留头尾，完整内容落盘可回读；长命令自动转后台；可选拦截 `cat`、`grep`、`find`、`sed -i`，引导改用专用工具
+- **安全删除**：`rm` 默认把文件移入系统回收站而非永久删除，误删可恢复；需要真删时用 `command rm`
 - **read**：按行区间精准读取（支持 `:N-M`、`:raw`、多区间）；大代码文件默认返回结构摘要，细节按需展开；zip/tar 归档、SQLite、notebook、PDF 直接读；PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放；可抓取网页内容（含网页内图片）；SPA 站点（内容由 JS 动态渲染，如 excalidraw.com）自动改用本机浏览器渲染后抓取
 - **write**：原子写入，返回修改 diff；支持补丁式写入，可直接写 zip/tar 归档成员与 SQLite 数据
 - **edit**：replace 默认，另支持 patch / hashline / apply-patch 三种补丁格式；多段编辑、唯一性校验、空白差异模糊匹配
@@ -30,12 +34,12 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 ### 从 npm 安装（推荐）
 
 ```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus@beta
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
 ### 从 GitHub 安装
 
-跟踪最新开发版（本项目现阶段没有正式发布，一切安装均为测试构建）：
+跟踪最新开发版：
 
 ```sh
 dsh plugin --profile web add github:xiaoso456/dsh-tool-plus
@@ -52,7 +56,7 @@ dsh plugin --profile web add link:<本仓库路径>
 **方法一 · 使用 npx 脚本安装**
 
 ```sh
-npx @xiaoso/dsh-tool-plus-presets@beta
+npx @xiaoso/dsh-tool-plus-presets
 ```
 
 **方法二 · 使用大模型配置预设**（不依赖上面的包）——把下面这段发给一个能改你电脑上文件的 AI 会话：

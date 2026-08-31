@@ -168,7 +168,7 @@ describe('renderBashResult', () => {
       output: { text: 'ok\n', truncated: false },
     }
     const text = renderBashResult(value)
-    expect(text).toContain('[rmSafe injection failed: rm deletes permanently')
+    expect(text).toContain('[Safe rm injection failed: rm deletes permanently')
   })
 
   it('reports truncation with OMP-form line accounting, the spill path, and a read-back hint', () => {

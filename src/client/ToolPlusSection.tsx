@@ -26,11 +26,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import { IconCheckOutline16, IconWarningOutline16, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
-import { TOOL_PLUS_RPC_CHANNEL } from '../tools/shared/browser-rpc-channel.ts'
+import { TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
 import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
+import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the bound settings scope. */
@@ -301,6 +303,28 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   // per-field here at the section level so drafts and panel switches survive.
   const [actionState, setActionState] = useState<Record<string, 'idle' | 'running' | 'done'>>({})
   const [actionResults, setActionResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
+  // rmSafe 状态变更后的注入测试结果，以通用 Toast 弹出。
+  const [rmSafeToast, setRmSafeToast] = useState<{ text: string; ok: boolean } | null>(null)
+
+  // Save, then — only when the rmSafe switch actually changed and is now on —
+  // verify the injection (query = ensure + verify) and announce the result
+  // as a toast. Turning rmSafe off stays silent; unchanged saves stay silent.
+  const handleSave = useCallback(async () => {
+    const before = Boolean(scope.getSnapshot().value?.rmSafe ?? true)
+    await form.actions.save()
+    const after = Boolean(scope.getSnapshot().value?.rmSafe ?? true)
+    if (before === after || !after) return
+    try {
+      const rpc = createWebConnectionRpc()
+      const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, {})
+      if (!result.ok) return
+      const value = result.value as RmSafeStatusValue
+      if (value.status === 'disabled') return
+      setRmSafeToast({ text: rmSafeStatusText(t, value), ok: value.status === 'injected' })
+    } catch {
+      // RPC unavailable (non-web deployment): stay silent.
+    }
+  }, [scope, form, t])
 
   const runAction = useCallback((field: ToolPlusField) => {
     const actionKey = field.actionKey
@@ -520,11 +544,18 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
           type="button"
           className="tps-save"
           disabled={blocked}
-          onClick={() => void form.actions.save()}
+          onClick={() => void handleSave()}
         >
           {form.shell.saving ? t('saving') : t('save')}
         </button>
       </div>
+      {rmSafeToast !== null && (
+        <Toast
+          text={rmSafeToast.text}
+          icon={rmSafeToast.ok ? <IconCheckOutline16 /> : <IconWarningOutline16 />}
+          onDone={() => { setRmSafeToast(null) }}
+        />
+      )}
     </div>
   )
 }

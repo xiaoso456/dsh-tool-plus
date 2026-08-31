@@ -2,13 +2,17 @@
 
 [简体中文](./README.md) | English
 
-Essential tools enhancement for DeepSeek Harness: persistent bash, structured read, multi-mode edit, atomic write, full-text search, and direct image reading — one plugin covers it all. Ported from the [Oh My Pi](https://github.com/can1357/oh-my-pi) core; once installed it automatically takes over the official bash / pwsh / file / search tools, with optional `ast_grep` / `ast_edit` structural search and rewrite.
+[![npm version](https://img.shields.io/npm/v/@xiaoso/dsh-tool-plus?logo=npm)](https://www.npmjs.com/package/@xiaoso/dsh-tool-plus)
+[![License: MIT](https://img.shields.io/github/license/xiaoso456/dsh-tool-plus)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19%20%7C%20%3E%3D24-339933?logo=nodedotjs)](https://nodejs.org)
+[![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)]()
 
-> Currently in early beta — behavior and configuration may change at any time.
+Essential tools enhancement for DeepSeek Harness: persistent bash, structured read, multi-mode edit, atomic write, full-text search, and direct image reading — one plugin covers it all. Ported from the [Oh My Pi](https://github.com/can1357/oh-my-pi) core; once installed it automatically takes over the official bash / pwsh / file / search tools, with optional `ast_grep` / `ast_edit` structural search and rewrite.
 
 ## Features
 
 - **bash**: persistent shell; `cd` and `export` keep state across calls; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools
+- **Safe delete**: `rm` moves files to the system trash by default instead of deleting permanently, so accidental deletes are recoverable; use `command rm` for a real delete
 - **read**: precise line-range reading (supports `:N-M`, `:raw`, and multiple ranges); large code files return a structural summary by default, with details expanded on demand; zip/tar archives, SQLite, notebooks, and PDFs read directly; PNG / JPEG / WebP / GIF images read directly, oversized ones scaled down automatically; can fetch web content (including images embedded in the page); SPA sites (content rendered dynamically by JS, e.g. excalidraw.com) are automatically fetched via local browser rendering
 - **write**: atomic writes that return a diff of the changes; supports patch-style writing, and can write directly into zip/tar archive members and SQLite data
 - **edit**: `replace` by default, with patch / hashline / apply-patch formats also supported; multi-hunk edits, uniqueness validation, fuzzy matching tolerant of whitespace differences
@@ -30,12 +34,12 @@ Install **both** the plugin and the presets:
 ### Install from npm (recommended)
 
 ```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus@beta
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
 ### Install from GitHub
 
-Track the latest development build (the project has no formal release yet — every install is a test build):
+Track the latest development build:
 
 ```sh
 dsh plugin --profile web add github:xiaoso456/dsh-tool-plus
@@ -52,7 +56,7 @@ dsh plugin --profile web add link:<path to this repo>
 **Option 1 · Install with the npx script**
 
 ```sh
-npx @xiaoso/dsh-tool-plus-presets@beta
+npx @xiaoso/dsh-tool-plus-presets
 ```
 
 **Option 2 · Have an AI session configure the presets** (no dependency on the package above) — paste the following into an AI session that can edit files on your machine:

@@ -134,10 +134,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     registerModeSensitive()
   })
 
-  // Browser-detection RPC (`/tool-plus` channel, `browser/detect` endpoint)
+  // Tool-plus RPC (`/tool-plus` channel: `browser/detect` + `rmSafe/status`)
   // served to the settings panel; teardown on plugin dispose. Best-effort:
   // without a Connection service (CLI-only deployments) this is a no-op.
-  const disposeBrowserProbe = installBrowserProbeRpc(ctx)
+  const disposeBrowserProbe = installBrowserProbeRpc(ctx, { getRmSafe: () => cfg.rmSafe })
 
   ctx.systemPrompt.section({
     name: 'tool:bash',

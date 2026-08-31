@@ -28,7 +28,7 @@ export function rmSafeCliPath(): string {
 }
 
 /** 单引号转义（bash 单引号内 `'\''` 表示一个字面单引号）。 */
-function quote(s: string): string {
+export function quote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`
 }
 

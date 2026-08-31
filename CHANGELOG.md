@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.1] - 2026-08-31
+
+### Added
+
+- 安全删除（安全 rm）：`rm` 默认把文件移入系统回收站而非永久删除，误删可恢复；需要真删时用 `command rm`
+- 安全 rm 注入状态验证：在设置中开启安全 rm 并保存时，自动测试注入是否生效，并以提示框告知结果（成功或失败原因）
+
+### Changed
+
+- 正式版发布（移除 beta 标记）
+- 「rm 进回收站」更名为「安全 rm」
+- README 增加安全删除说明与项目徽标
+
+### Fixed
+
+- 修复设置行整行可点导致误触开关/下拉的问题
+
+[对比 beta.7](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.0-beta.7...tool-plus-v0.1.1)
+
 ## [0.1.0-beta.7] - 2026-08-31
 
 ### Changed

@@ -16,6 +16,9 @@ export const TOOL_PLUS_RPC_CHANNEL = '/tool-plus'
 /** Endpoint that probes the machine for usable browsers (probeBrowsers). */
 export const BROWSER_DETECT_ENDPOINT = 'browser/detect'
 
+/** Endpoint that reports the rmSafe injection status (query = ensure + verify). */
+export const RM_SAFE_STATUS_ENDPOINT = 'rmSafe/status'
+
 /** Payload of a browser/detect call (currently empty). */
 export interface BrowserDetectPayload {}
 
@@ -30,3 +33,9 @@ export interface BrowserDetectItem {
 export interface BrowserDetectValue {
   found: BrowserDetectItem[]
 }
+
+/** rmSafe/status result (mirrors RmSafeStatus from bash/rm-safe-status). */
+export type RmSafeStatusValue =
+  | { status: 'disabled' }
+  | { status: 'failed'; reason: 'snapshot-unavailable' | 'cli-missing' | 'script-write-failed' | 'snapshot-write-failed' | 'runtime-not-effective' }
+  | { status: 'injected'; runtime: 'function' | 'system' | 'unknown' }
