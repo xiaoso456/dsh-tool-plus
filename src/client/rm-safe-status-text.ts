@@ -10,7 +10,6 @@ export function rmSafeReasonKey(reason: Extract<RmSafeStatusValue, { status: 'fa
   switch (reason) {
     case 'snapshot-unavailable': return 'rmSafeReasonSnapshotUnavailable'
     case 'cli-missing': return 'rmSafeReasonCliMissing'
-    case 'script-write-failed': return 'rmSafeReasonScriptWriteFailed'
     case 'snapshot-write-failed': return 'rmSafeReasonSnapshotWriteFailed'
     case 'runtime-not-effective': return 'rmSafeReasonRuntimeNotEffective'
   }

@@ -21,7 +21,6 @@ export type RmSafeRuntime = 'function' | 'system' | 'unknown'
 export type RmSafeFailureReason =
   | 'snapshot-unavailable'
   | 'cli-missing'
-  | 'script-write-failed'
   | 'snapshot-write-failed'
   | 'runtime-not-effective'
 
@@ -37,10 +36,12 @@ export interface RmSafeStatusDeps {
   getOrCreateSnapshot: () => Promise<string | null>
   /** trash-cli 构建产物是否存在。 */
   cliExists: () => boolean
-  /** 确保 rm-safe.sh 存在（幂等）。null = 脚本写入失败。 */
-  ensureScript: () => string | null
-  /** 向快照追加注入（幂等）。false = 快照不可写。 */
-  inject: (snapshotPath: string, scriptPath: string) => boolean
+  /** node 可执行文件路径（注入内容的一部分）。 */
+  nodePath: () => string
+  /** trash-cli 路径（注入内容的一部分）。 */
+  cliPath: () => string
+  /** 向快照内联追加注入（幂等）。false = 快照不可写。 */
+  inject: (snapshotPath: string, nodePath: string, cliPath: string) => boolean
   /** 运行时探测：新会话里 `rm` 是否被重定义。 */
   probe: (snapshotPath: string) => Promise<RmSafeRuntime>
 }
@@ -124,9 +125,7 @@ export async function queryRmSafeStatus(deps: RmSafeStatusDeps): Promise<RmSafeS
   const snapshotPath = await deps.getOrCreateSnapshot()
   if (snapshotPath === null) return { status: 'failed', reason: 'snapshot-unavailable' }
   if (!deps.cliExists()) return { status: 'failed', reason: 'cli-missing' }
-  const scriptPath = deps.ensureScript()
-  if (scriptPath === null) return { status: 'failed', reason: 'script-write-failed' }
-  if (!deps.inject(snapshotPath, scriptPath)) return { status: 'failed', reason: 'snapshot-write-failed' }
+  if (!deps.inject(snapshotPath, deps.nodePath(), deps.cliPath())) return { status: 'failed', reason: 'snapshot-write-failed' }
   const runtime = await deps.probe(snapshotPath)
   if (runtime === 'system') return { status: 'failed', reason: 'runtime-not-effective' }
   return { status: 'injected', runtime }

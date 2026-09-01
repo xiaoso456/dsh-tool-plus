@@ -22,7 +22,7 @@ import { BROWSER_DETECT_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, TOOL_PLUS_RPC_CHANNEL
 import { probeBrowsers } from '../tools/shared/browser-detect.ts'
 import { getShellConfig } from '../tools/bash/bash-executor.ts'
 import { getOrCreateSnapshot } from '../tools/bash/shell-snapshot.ts'
-import { ensureRmSafeScript, injectRmSafe, rmSafeCliPath, rmSafeScriptDir } from '../tools/bash/rm-safe.ts'
+import { injectRmSafe, rmSafeCliPath } from '../tools/bash/rm-safe.ts'
 import { probeRmSafeRuntime, queryRmSafeStatus } from '../tools/bash/rm-safe-status.ts'
 
 /** Result shape of one Connection RPC call (official pattern in the gateway). */
@@ -67,8 +67,9 @@ export function installBrowserProbeRpc(ctx: Context, deps: ToolPlusRpcDeps): () 
             const status = await queryRmSafeStatus({
               getOrCreateSnapshot: () => getOrCreateSnapshot(shell, env),
               cliExists: () => fs.existsSync(rmSafeCliPath()),
-              ensureScript: () => ensureRmSafeScript(rmSafeScriptDir(), process.execPath, rmSafeCliPath()),
-              inject: (snapshotPath, scriptPath) => injectRmSafe(snapshotPath, scriptPath),
+              nodePath: () => process.execPath,
+              cliPath: () => rmSafeCliPath(),
+              inject: (snapshotPath, nodePath, cliPath) => injectRmSafe(snapshotPath, nodePath, cliPath),
               probe: (snapshotPath) => probeRmSafeRuntime(shell, snapshotPath),
             })
             return { ok: true, value: status }

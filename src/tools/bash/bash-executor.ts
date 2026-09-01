@@ -18,7 +18,7 @@ import { type MinimizerOptions, Shell, type ShellRunResult } from "@oh-my-pi/pi-
 import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
-import { ensureRmSafeScript, injectRmSafe, rmSafeCliPath, rmSafeScriptDir } from "./rm-safe.ts";
+import { injectRmSafe, rmSafeCliPath } from "./rm-safe.ts";
 import { OutputSink } from "./streaming-output.ts";
 import { resolveWindowsShell } from "./windows-shell.ts";
 import { ExponentialYield } from "./yield.ts";
@@ -375,11 +375,9 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	// the user's expectation of trash-on-rm silently no longer holds.
 	let rmSafeInjectionFailed = false;
 	if (snapshotPath !== null && options?.rmSafe === true) {
-		const scriptPath = ensureRmSafeScript(rmSafeScriptDir(), process.execPath, rmSafeCliPath());
-		if (scriptPath === null || !injectRmSafe(snapshotPath, scriptPath)) {
+		if (!injectRmSafe(snapshotPath, process.execPath, rmSafeCliPath())) {
 			rmSafeInjectionFailed = true;
 			runtimeLogger().warn("rmSafe: injection failed, rm will delete permanently", {
-				scriptPath: scriptPath ?? null,
 				snapshotPath,
 			});
 		}

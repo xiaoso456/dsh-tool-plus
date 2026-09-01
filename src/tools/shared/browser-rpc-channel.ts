@@ -37,5 +37,5 @@ export interface BrowserDetectValue {
 /** rmSafe/status result (mirrors RmSafeStatus from bash/rm-safe-status). */
 export type RmSafeStatusValue =
   | { status: 'disabled' }
-  | { status: 'failed'; reason: 'snapshot-unavailable' | 'cli-missing' | 'script-write-failed' | 'snapshot-write-failed' | 'runtime-not-effective' }
+  | { status: 'failed'; reason: 'snapshot-unavailable' | 'cli-missing' | 'snapshot-write-failed' | 'runtime-not-effective' }
   | { status: 'injected'; runtime: 'function' | 'system' | 'unknown' }

@@ -1,26 +1,24 @@
 /**
  * rmSafe: rm 重定义脚本的生成与快照注入。
  *
- * 生成一个 bash 函数定义脚本（rm → `node <trash-cli.mjs> "$@"`），
- * 通过快照文件（会话 shell 创建时 source 一次）注入：
+ * 生成 bash 函数定义（rm → `node <trash-cli.mjs> "$@"`），直接内联进
+ * 快照文件（会话 shell 创建时 source 一次）：
  * - POSIX：追加到用户环境快照末尾（幂等，带标记行）；
  * - Windows：getOrCreateSnapshot 生成"仅注入"快照文件后同样追加。
+ *
+ * 内联而非独立脚本文件：快照随进程重建（重启后重新生成），node/trash-cli
+ * 路径在进程内是常量，不存在"路径漂移"；独立脚本文件反而引入跨进程共享
+ * 缓存（不同安装路径的实例、测试进程互相覆盖，测试进程的 import.meta.url
+ * 指向 src 会把共享缓存重写成不存在的路径）。
  *
  * rmSafe 关闭时调用方不注入，快照保持原样，系统 rm 生效。
  * @module @xiaoso/dsh-tool-plus/bash/rm-safe
  */
 import * as fs from 'node:fs'
-import * as os from 'node:os'
-import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** 注入标记行：injectRmSafe 以此判断是否已注入（幂等）。 */
 export const RM_SAFE_MARKER = '# dsh-tool-plus rmSafe'
-
-/** rm-safe 脚本缓存目录（tmpdir 下，跨会话复用）。 */
-export function rmSafeScriptDir(): string {
-  return path.join(os.tmpdir(), 'dsh-bash-plus')
-}
 
 /** trash-cli 构建产物路径（lib/trash-cli.mjs，与主 bundle 同目录）。 */
 export function rmSafeCliPath(): string {
@@ -49,31 +47,10 @@ export function rmSafeScript(nodePath: string, cliPath: string): string {
 }
 
 /**
- * 确保 rm-safe 脚本存在（内容不变时幂等，不重写文件）。
- * 返回脚本路径；目录/写入失败时返回 null（不抛异常，调用方降级并告警）。
- */
-export function ensureRmSafeScript(dir: string, nodePath: string, cliPath: string): string | null {
-  const target = path.join(dir, 'rm-safe.sh')
-  const content = rmSafeScript(nodePath, cliPath)
-  try {
-    if (fs.readFileSync(target, 'utf8') === content) return target
-  } catch {
-    // 不存在或不可读 → 重写
-  }
-  try {
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(target, content, { mode: 0o600 })
-    return target
-  } catch {
-    return null
-  }
-}
-
-/**
- * 向快照文件追加 `source <rm-safe.sh>`（幂等：已有标记则跳过）。
+ * 向快照文件内联追加 rm 重定义（幂等：已有标记则跳过）。
  * 返回是否注入成功；快照文件不可读/不可写时返回 false（不抛异常）。
  */
-export function injectRmSafe(snapshotPath: string, scriptPath: string): boolean {
+export function injectRmSafe(snapshotPath: string, nodePath: string, cliPath: string): boolean {
   let content: string
   try {
     content = fs.readFileSync(snapshotPath, 'utf8')
@@ -82,7 +59,7 @@ export function injectRmSafe(snapshotPath: string, scriptPath: string): boolean 
   }
   if (content.includes(RM_SAFE_MARKER)) return true
   try {
-    fs.appendFileSync(snapshotPath, `\n${RM_SAFE_MARKER}\nsource ${quote(scriptPath)}\n`)
+    fs.appendFileSync(snapshotPath, `\n${rmSafeScript(nodePath, cliPath)}`)
     return true
   } catch {
     return false

@@ -73,7 +73,8 @@ describe('queryRmSafeStatus', () => {
     return {
       getOrCreateSnapshot: vi.fn(async () => '/tmp/snapshot.sh'),
       cliExists: vi.fn(() => true),
-      ensureScript: vi.fn(() => '/tmp/dsh-bash-plus/rm-safe.sh'),
+      nodePath: vi.fn(() => '/usr/bin/node'),
+      cliPath: vi.fn(() => '/tmp/trash-cli.mjs'),
       inject: vi.fn(() => true),
       probe: vi.fn(async () => 'function' as const),
       ...overrides,
@@ -89,13 +90,13 @@ describe('queryRmSafeStatus', () => {
   it('reports cli-missing when the trash-cli artifact is absent', async () => {
     const d = deps({ cliExists: vi.fn(() => false) })
     await expect(queryRmSafeStatus(d)).resolves.toEqual({ status: 'failed', reason: 'cli-missing' })
-    expect(d.ensureScript).not.toHaveBeenCalled()
+    expect(d.inject).not.toHaveBeenCalled()
   })
 
-  it('reports script-write-failed when the script cannot be ensured', async () => {
-    const d = deps({ ensureScript: vi.fn(() => null) })
-    await expect(queryRmSafeStatus(d)).resolves.toEqual({ status: 'failed', reason: 'script-write-failed' })
-    expect(d.inject).not.toHaveBeenCalled()
+  it('injects with the resolved node and cli paths', async () => {
+    const d = deps()
+    await queryRmSafeStatus(d)
+    expect(d.inject).toHaveBeenCalledWith('/tmp/snapshot.sh', '/usr/bin/node', '/tmp/trash-cli.mjs')
   })
 
   it('reports snapshot-write-failed when the injection cannot be appended', async () => {
