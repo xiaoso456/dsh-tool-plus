@@ -25,4 +25,7 @@ refs/
 .dsh-meow/
 
 # Docs stay local (archives/plans/audits, not committed)
-docs/
+docs/*
+# ...except README screenshots, which must ship with the repo
+!docs/screenshots/
+!docs/screenshots/*.png
