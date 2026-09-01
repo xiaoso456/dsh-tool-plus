@@ -6,19 +6,19 @@
 
 `@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。一个 git 仓库发两个 npm 包：
 
-| 包 | 目录 | 版本线 | 当前 |
-|---|---|---|---|
-| `@xiaoso/dsh-tool-plus` | 仓库根 | 锁步 | 0.1.0-beta.7 |
-| `@xiaoso/dsh-tool-plus-presets` | `presets/` | 锁步 | 0.1.0-beta.7 |
+| 包 | 目录 | 版本线 |
+|---|---|---|
+| `@xiaoso/dsh-tool-plus` | 仓库根 | 始终同版 |
+| `@xiaoso/dsh-tool-plus-presets` | `presets/` | 始终同版 |
 
-**版本号锁步**：两包始终同版（拍板 2026-08-27），发布迭代时两边的 package.json 一起 `pnpm version prerelease`，谁有变更发谁。
+**版本号同步**：两包始终同版（拍板 2026-08-27），发布迭代时两边的 package.json 一起 `pnpm version prerelease`，谁有变更发谁。
 
 两包 `publishConfig` 均已配 `tag: beta` / `access: public`——测试期一切发布只落 beta 标签。
 
 ## 发布与推送（每次迭代照此走）
 
 ```sh
-# 1. 两包版本锁步自增（都执行，保持一致）
+# 1. 两包版本同步自增（都执行，保持一致）
 pnpm version prerelease            # 在包所在目录执行
 
 # 2. 四连验证
@@ -33,9 +33,12 @@ git commit -am "release: <pkg> v<ver>"
 git tag presets-v<ver>             # 或 tool-plus-v<ver>
 
 # 5. 推 git + 发 npm（谁有变更发谁）
-git push --tags
+git push && git push --tags        # 先推分支，再推标签（--tags 只推标签不推分支）
 (cd presets && npm publish)        # 预设包
 npm publish                        # 主包
+
+# 6. 发 GitHub Release（手动，不用 workflow；notes 用 CHANGELOG 本节内容）
+gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
 转正流程：发无后缀版本 → `npm dist-tag add <pkg>@<版> latest` → README 删去 `@beta` 后缀与顶部测试声明。
