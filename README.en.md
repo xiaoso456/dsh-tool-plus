@@ -20,6 +20,10 @@ Essential tools enhancement for DeepSeek Harness: persistent bash, structured re
 - **ast_grep / ast_edit** (optional): syntax-tree based structural code search and rewrite, enabled in settings
 - **agent presets**: two companion templates — Standard enhanced and PTC (Code Mode) — installable in one command (see Installation)
 
+Settings panel (Bash tab):
+
+![Tool Plus settings panel (Bash)](docs/screenshots/settings-bash-en.png)
+
 ## Recommended Environment & Configuration
 
 - **Full-access mode**: the plugin is best used under `danger-full-access`, which avoids file writes being blocked by mistake in sandboxed modes.

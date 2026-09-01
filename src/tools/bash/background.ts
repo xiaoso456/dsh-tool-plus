@@ -83,6 +83,7 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       headBytes: config.outputSinkHeadBytes,
       useShellCommandWrapper: config.useShellCommandWrapper,
       snapshotEnabled: config.snapshotEnabled,
+      rmSafe: config.rmSafe,
       nonInteractiveEnv: config.nonInteractiveEnv,
       artifactPath: spillPath,
       onMinimizedSave: (originalText) => saveOriginalText(originalText),

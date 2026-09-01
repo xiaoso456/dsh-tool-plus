@@ -20,6 +20,10 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 - **ast_grep / ast_edit**（可选）：基于语法树的结构化代码搜索与重写，可在设置中开启
 - **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板，一条命令安装（见安装章节）
 
+设置面板（Bash 工具页）：
+
+![Tool Plus 设置面板（Bash）](docs/screenshots/settings-bash-zh.png)
+
 ## 推荐环境与配置
 
 - **完全权限模式**：建议在 `danger-full-access` 下使用本插件，可避免沙箱模式下文件写入被误拦。
