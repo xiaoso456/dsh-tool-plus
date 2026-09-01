@@ -93,8 +93,18 @@ export async function executeGrepTool(exec: any, cfg: RuntimeConfig, args: any, 
   if (args.path !== undefined && args.path !== null && args.path !== '') {
     params.path = String(args.path)
   }
-  if (typeof args.case === 'boolean') params.case = args.case
-  if (typeof args.gitignore === 'boolean') params.gitignore = args.gitignore
+  if (typeof args.case === 'boolean') {
+    params.case = args.case
+  } else {
+    // 未显式传参时使用配置默认值（grepCaseDefault，默认 true = 现状硬编码行为）
+    params.case = cfg.grepCaseDefault
+  }
+  if (typeof args.gitignore === 'boolean') {
+    params.gitignore = args.gitignore
+  } else {
+    // 同上：grepGitignoreDefault（默认 true = 现状硬编码行为）
+    params.gitignore = cfg.grepGitignoreDefault
+  }
   if (typeof args.skip === 'number') params.skip = args.skip
   const result = await tool.execute('grep', params as never, exec.signal)
   return toGrepToolResult(result)

@@ -166,14 +166,25 @@ describe('grouping sanity', () => {
   })
 
   it('no-config tabs carry zero fields', () => {
-    // grep 已挂配置（grepContextBefore/After，2026-08-25 配置统一）；
+    // grep 已挂配置（grepContextBefore/After + grepCaseDefault/grepGitignoreDefault，
+    // 2026-08-25 配置统一、搜索默认值开关上线后 4 项）；
+    // glob tab 随搜索默认值开关恢复（globGitignoreDefault/globHiddenDefault，此前
+    // 因无配置项被拍板#19 移除）；
     // astGrep/astEdit 已挂启用开关（astGrepEnabled/astEditEnabled，2026-08-25）。
-    // glob tab 已随拍板#19 移除（无任何配置项，不值得占一个空 tab）。
     // readImage tab 已随 read_image 工具删除（2026-08-28，融合后逃生门一并移除）。
-    // grep tab 现在有字段（2 个上下文配置）
+    // grep tab 现在有字段（4 个：上下文 2 + 默认值开关 2）
     const grepTab = TOOL_PLUS_TABS.find(t => t.id === 'grep')
     expect(grepTab).toBeDefined()
-    expect(grepTab!.fields).toHaveLength(2)
+    expect(grepTab!.fields).toEqual([
+      'grepContextBefore',
+      'grepContextAfter',
+      'grepCaseDefault',
+      'grepGitignoreDefault',
+    ])
+    // glob tab 已恢复（2 个默认值开关）
+    const globTab = TOOL_PLUS_TABS.find(t => t.id === 'glob')
+    expect(globTab).toBeDefined()
+    expect(globTab!.fields).toEqual(['globGitignoreDefault', 'globHiddenDefault'])
     // astGrep/astEdit tab 各有 1 个启用开关
     const astGrepTab = TOOL_PLUS_TABS.find(t => t.id === 'astGrep')
     expect(astGrepTab).toBeDefined()

@@ -88,8 +88,10 @@ export async function executeGlobTool(exec: any, cfg: RuntimeConfig, args: any, 
   const tool = new GlobTool(session)
   const result = await tool.execute('glob', {
     path: args.path !== undefined ? String(args.path) : undefined,
-    hidden: args.hidden,
-    gitignore: args.gitignore,
+    // 未显式传参时使用配置默认值（globHiddenDefault/globGitignoreDefault，
+    // 默认 true = 现状硬编码行为）
+    hidden: typeof args.hidden === 'boolean' ? args.hidden : cfg.globHiddenDefault,
+    gitignore: typeof args.gitignore === 'boolean' ? args.gitignore : cfg.globGitignoreDefault,
     limit: args.limit,
   }, exec.signal)
   return toGlobToolResult(result, args)

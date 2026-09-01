@@ -70,7 +70,7 @@ export interface ToolPlusTab {
 /** Identifiers of every tool tab. */
 export type ToolPlusToolId =
   | 'bash' | 'read' | 'writeEdit'
-  | 'grep' | 'astGrep' | 'astEdit'
+  | 'grep' | 'glob' | 'astGrep' | 'astEdit'
 
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
@@ -85,6 +85,7 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
   editMode: 'groupEditMode',
   guard: 'groupGuard',
   grep: 'groupGrep',
+  searchDefaults: 'groupSearchDefaults',
   ast: 'groupAst',
 }
 
@@ -183,6 +184,13 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // ---- Grep（grep.* 键） ----------------------------------------------
   { name: 'grepContextBefore', kind: 'number', default: 1, labelKey: 'grepContextBefore', hintKey: 'grepContextBeforeHint', group: 'grep', tool: 'grep' },
   { name: 'grepContextAfter', kind: 'number', default: 3, labelKey: 'grepContextAfter', hintKey: 'grepContextAfterHint', group: 'grep', tool: 'grep' },
+  // ---- 搜索默认值开关（grep/glob 未显式传参时的默认；默认=现状硬编码 true，
+  //      不配零行为变化；显式传参始终优先） --------------------------------
+  { name: 'grepCaseDefault', kind: 'boolean', default: true, labelKey: 'grepCaseDefault', hintKey: 'grepCaseDefaultHint', group: 'searchDefaults', tool: 'grep' },
+  { name: 'grepGitignoreDefault', kind: 'boolean', default: true, labelKey: 'grepGitignoreDefault', hintKey: 'grepGitignoreDefaultHint', group: 'searchDefaults', tool: 'grep' },
+  // ---- Glob（glob tab 随搜索默认值开关恢复；此前因无配置项被拍板#19 移除）--
+  { name: 'globGitignoreDefault', kind: 'boolean', default: true, labelKey: 'globGitignoreDefault', hintKey: 'globGitignoreDefaultHint', group: 'searchDefaults', tool: 'glob' },
+  { name: 'globHiddenDefault', kind: 'boolean', default: true, labelKey: 'globHiddenDefault', hintKey: 'globHiddenDefaultHint', group: 'searchDefaults', tool: 'glob' },
   // ---- AST 工具启用开关（OMP settings-schema "Available Tools" 组） ----
   // astGrep.enabled 默认 false（OMP 原版：ast_grep 默认禁用，需手动开启）；
   // astEdit.enabled 默认 true。glob/grep 不设开关，默认开启（用户拍板 2026-08-25）。
@@ -196,6 +204,7 @@ export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
   { id: 'read', labelKey: 'tabRead', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'read').map(f => f.name) },
   { id: 'writeEdit', labelKey: 'tabWriteEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'writeEdit').map(f => f.name) },
   { id: 'grep', labelKey: 'tabGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'grep').map(f => f.name) },
+  { id: 'glob', labelKey: 'tabGlob', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'glob').map(f => f.name) },
   { id: 'astGrep', labelKey: 'tabAstGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astGrep').map(f => f.name) },
   { id: 'astEdit', labelKey: 'tabAstEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astEdit').map(f => f.name) },
 ]

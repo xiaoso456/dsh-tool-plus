@@ -93,6 +93,10 @@ export interface RuntimeConfig {
   readConcurrentSafe: boolean
   grepContextBefore: number
   grepContextAfter: number
+  grepCaseDefault: boolean
+  grepGitignoreDefault: boolean
+  globGitignoreDefault: boolean
+  globHiddenDefault: boolean
   astGrepEnabled: boolean
   astEditEnabled: boolean
   fetchEnabled: boolean
@@ -184,6 +188,10 @@ export interface Config {
   readConcurrentSafe?: boolean
   grepContextBefore?: number
   grepContextAfter?: number
+  grepCaseDefault?: boolean
+  grepGitignoreDefault?: boolean
+  globGitignoreDefault?: boolean
+  globHiddenDefault?: boolean
   astGrepEnabled?: boolean
   astEditEnabled?: boolean
   fetchEnabled?: boolean
@@ -254,6 +262,11 @@ export const Config: z<Config> = z.object({
   readConcurrentSafe: z.boolean().default(fieldDefault('readConcurrentSafe', true)),
   grepContextBefore: z.number().default(fieldDefault('grepContextBefore', 1)),
   grepContextAfter: z.number().default(fieldDefault('grepContextAfter', 3)),
+  // 搜索默认值开关（grep/glob 未显式传参时的默认；默认=上游硬编码 true）
+  grepCaseDefault: z.boolean().default(fieldDefault('grepCaseDefault', true)),
+  grepGitignoreDefault: z.boolean().default(fieldDefault('grepGitignoreDefault', true)),
+  globGitignoreDefault: z.boolean().default(fieldDefault('globGitignoreDefault', true)),
+  globHiddenDefault: z.boolean().default(fieldDefault('globHiddenDefault', true)),
   // AST 工具启用开关（OMP settings-schema.ts:3831/3842；astGrep 默认 false）
   astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)),
   astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)),
@@ -335,6 +348,10 @@ export function resolveConfig(config: Config): RuntimeConfig {
     readConcurrentSafe: config.readConcurrentSafe ?? fieldDefault('readConcurrentSafe', true),
     grepContextBefore: config.grepContextBefore ?? fieldDefault('grepContextBefore', 1),
     grepContextAfter: config.grepContextAfter ?? fieldDefault('grepContextAfter', 3),
+    grepCaseDefault: config.grepCaseDefault ?? fieldDefault('grepCaseDefault', true),
+    grepGitignoreDefault: config.grepGitignoreDefault ?? fieldDefault('grepGitignoreDefault', true),
+    globGitignoreDefault: config.globGitignoreDefault ?? fieldDefault('globGitignoreDefault', true),
+    globHiddenDefault: config.globHiddenDefault ?? fieldDefault('globHiddenDefault', true),
     astGrepEnabled: config.astGrepEnabled ?? fieldDefault('astGrepEnabled', false),
     astEditEnabled: config.astEditEnabled ?? fieldDefault('astEditEnabled', true),
     fetchEnabled: config.fetchEnabled ?? fieldDefault('fetchEnabled', true),

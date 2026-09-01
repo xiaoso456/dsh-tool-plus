@@ -9,9 +9,9 @@
 export type BashPlusLocaleKey =
   | 'title' | 'description'
   | 'nav' | 'pageTitle' | 'pageDescription'
-  | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
+  | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
   | 'groupTiming' | 'groupOutput' | 'groupTruncation' | 'groupBehavior'
-  | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupFetch' | 'groupAst'
+  | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupSearchDefaults' | 'groupFetch' | 'groupAst'
   | 'noConfigTitle' | 'noConfigHint'
   | 'readSummarizeEnabled' | 'readSummarizeEnabledHint'
   | 'readSummarizeProse' | 'readSummarizeProseHint'
@@ -31,6 +31,10 @@ export type BashPlusLocaleKey =
   | 'editEnforceSeenLines' | 'editEnforceSeenLinesHint'
   | 'grepContextBefore' | 'grepContextBeforeHint'
   | 'grepContextAfter' | 'grepContextAfterHint'
+  | 'grepCaseDefault' | 'grepCaseDefaultHint'
+  | 'grepGitignoreDefault' | 'grepGitignoreDefaultHint'
+  | 'globGitignoreDefault' | 'globGitignoreDefaultHint'
+  | 'globHiddenDefault' | 'globHiddenDefaultHint'
   | 'astGrepEnabled' | 'astGrepEnabledHint'
   | 'astEditEnabled' | 'astEditEnabledHint'
   | 'optReplace' | 'optPatch' | 'optHashline' | 'optApplyPatch'
@@ -91,6 +95,7 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
   tabGrep: 'Grep',
+  tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
@@ -177,11 +182,20 @@ readRenderMarkdown: '渲染 Markdown',
   grepContextBeforeHint: '每个匹配前展示的上下文行数。',
   grepContextAfter: '匹配后上下文行数',
   grepContextAfterHint: '每个匹配后展示的上下文行数。',
+  grepCaseDefault: '大小写敏感（默认）',
+  grepCaseDefaultHint: '开启（默认）时按大小写严格匹配；关闭后忽略大小写。调用时显式传 case 参数会覆盖此默认。',
+  grepGitignoreDefault: '跳过被忽略的文件（默认）',
+  grepGitignoreDefaultHint: '开启（默认）时，.gitignore 里列出的文件/目录会自动跳过，不出现在搜索结果里；关闭后它们也会被搜到。调用时显式传 gitignore 参数会覆盖此默认。',
+  globGitignoreDefault: '跳过被忽略的文件（默认）',
+  globGitignoreDefaultHint: '开启（默认）时，.gitignore 里列出的文件/目录会自动跳过，不会出现在结果里；关闭后它们也会被列出。调用时显式传 gitignore 参数会覆盖此默认。',
+  globHiddenDefault: '包含隐藏文件（默认）',
+  globHiddenDefaultHint: '开启（默认）时以 . 开头的文件/目录（如 .env、.git）也会出现在结果里；关闭后自动跳过。调用时显式传 hidden 参数会覆盖此默认。',
   astGrepEnabled: '启用 ast_grep',
   astGrepEnabledHint: '启用 ast_grep 工具做结构化 AST 搜索（默认关闭）。',
   astEditEnabled: '启用 ast_edit',
   astEditEnabledHint: '启用 ast_edit 工具做结构化 AST 重写（默认开启）。',
   groupGrep: '匹配上下文',
+  groupSearchDefaults: '搜索默认值',
   groupAst: 'AST 工具',
   optReplace: 'replace（字面量替换）',
   optPatch: 'patch（unified diff）',
@@ -268,11 +282,12 @@ export const en: Record<BashPlusLocaleKey, string> = {
   description: 'Persistent shell tool: timeouts, backgrounding, interception, and environment.',
   nav: 'Tool Plus',
   pageTitle: 'Tool Plus tool configuration',
-  pageDescription: 'Switch by tool to adjust its global settings; values apply to new calls.',
+  pageDescription: 'Switch by tool to adjust its global settings; values apply …',
   tabBash: 'Bash',
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
   tabGrep: 'Grep',
+  tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
@@ -360,11 +375,20 @@ export const en: Record<BashPlusLocaleKey, string> = {
   grepContextBeforeHint: 'Context lines shown before each match.',
   grepContextAfter: 'Context lines after match',
   grepContextAfterHint: 'Context lines shown after each match.',
+  grepCaseDefault: 'Case-sensitive (default)',
+  grepCaseDefaultHint: 'When on (default), matches strictly by case; when off, case is ignored. An explicit case argument on the call overrides this default.',
+  grepGitignoreDefault: 'Skip ignored files (default)',
+  grepGitignoreDefaultHint: 'When on (default), files and directories listed in .gitignore are skipped and never appear in results; when off, they are searched too. An explicit gitignore argument on the call overrides this default.',
+  globGitignoreDefault: 'Skip ignored files (default)',
+  globGitignoreDefaultHint: 'When on (default), files and directories listed in .gitignore are skipped and never appear in results; when off, they are listed too. An explicit gitignore argument on the call overrides this default.',
+  globHiddenDefault: 'Include hidden files (default)',
+  globHiddenDefaultHint: 'When on (default), dot-files and dot-directories (e.g. .env, .git) appear in results; when off, they are skipped. An explicit hidden argument on the call overrides this default.',
   astGrepEnabled: 'Enable ast_grep',
   astGrepEnabledHint: 'Enable the ast_grep tool for structural AST search (off by default).',
   astEditEnabled: 'Enable ast_edit',
   astEditEnabledHint: 'Enable the ast_edit tool for structural AST rewrites (on by default).',
   groupGrep: 'Match context',
+  groupSearchDefaults: 'Search defaults',
   groupAst: 'AST tools',
   optReplace: 'replace (literal)',
   optPatch: 'patch (unified diff)',
