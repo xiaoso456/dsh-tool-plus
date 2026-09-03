@@ -41,6 +41,17 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
+### 版本选择
+
+插件版本与 dsh 版本一一对应，按你的 dsh 版本选择安装：
+
+| 插件版本（dist-tag） | 对应 dsh 版本 | 安装命令 |
+| --- | --- | --- |
+| 0.1.2-rc.1（`next`） | dsh v0.1.2-rc.1（`next`） | `dsh plugin --profile web add @xiaoso/dsh-tool-plus@next` |
+| 0.1.2（`latest`） | dsh v0.1.1-rc.2 | `dsh plugin --profile web add @xiaoso/dsh-tool-plus` |
+
+插件与 dsh 的 `next` 版本号保持一致（当前均为 0.1.2-rc.1）；不带 tag 安装的是 `latest` 稳定版。
+
 ### 从 GitHub 安装
 
 跟踪最新开发版：
@@ -106,7 +117,7 @@ npx @xiaoso/dsh-tool-plus-presets
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 或 ≥ 24
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.1.1-rc.2（pre-release，接口可能变动）
+- 版本对应：`next`（0.1.2-rc.1）适用于 dsh v0.1.2-rc.1；`latest`（0.1.2）适用于 dsh v0.1.1-rc.2（pre-release，接口可能变动，详见安装章节「版本选择」）
 
 ## 注意事项
 

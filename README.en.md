@@ -41,6 +41,17 @@ Install **both** the plugin and the presets:
 dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
+### Choosing a version
+
+The plugin version maps one-to-one to the dsh version — pick the install command that matches your dsh:
+
+| Plugin version (dist-tag) | Matching dsh version | Install command |
+| --- | --- | --- |
+| 0.1.2-rc.1 (`next`) | dsh v0.1.2-rc.1 (`next`) | `dsh plugin --profile web add @xiaoso/dsh-tool-plus@next` |
+| 0.1.2 (`latest`) | dsh v0.1.1-rc.2 | `dsh plugin --profile web add @xiaoso/dsh-tool-plus` |
+
+The plugin's `next` version number stays in lockstep with dsh's `next` (currently both 0.1.2-rc.1); installing without a tag gets the `latest` stable release.
+
 ### Install from GitHub
 
 Track the latest development build:
@@ -110,7 +121,7 @@ Works out of the box, no configuration needed. Common tweaks: background thresho
 - **dsh CLI**: installed globally, `npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 or ≥ 24
 - **Git Bash** (recommended): serves as the bash execution environment on Windows
-- Targets DeepSeek Harness `dsh` v0.1.1-rc.2 (pre-release; interfaces may change)
+- Version mapping: `next` (0.1.2-rc.1) targets dsh v0.1.2-rc.1; `latest` (0.1.2) targets dsh v0.1.1-rc.2 (pre-release; interfaces may change — see “Choosing a version” under Installation)
 
 ## Notes
 

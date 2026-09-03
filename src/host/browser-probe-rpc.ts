@@ -93,7 +93,7 @@ export function installBrowserProbeRpc(ctx: Context, deps: ToolPlusRpcDeps): () 
           },
         }
       }
-      disposer = connectionCtx.connection.rpc.handle(TOOL_PLUS_RPC_CHANNEL, handler, { authority: 'loopback' })
+      disposer = connectionCtx.connection.rpc.handle(TOOL_PLUS_RPC_CHANNEL, handler)
     } catch {
       // Channel already registered or `connection` unavailable — the probe is
       // out of service, which is a degraded-but-valid deployment state.

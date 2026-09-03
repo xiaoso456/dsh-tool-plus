@@ -9,7 +9,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
@@ -65,7 +65,7 @@ describeShell('minimal-style two-tool preset', () => {
       // The bash tool executes.
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: CallId('minimal-call-1'),
+        callId: ToolCallId('minimal-call-1'),
         name: 'bash',
         arguments: { command: 'echo minimal-works', description: 'echo' },
         agent,

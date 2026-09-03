@@ -11,7 +11,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+// Type-only: pulls the `ctx.settings` Context merge (SettingsProvider surface).
+import type {} from '@deepseek-ai/dsh-settings'
 import type { MinimizerConfig } from '../tools/bash/types.ts'
 import { TOOL_PLUS_FIELDS, toolPlusField, type ToolPlusFieldValue } from './fields.ts'
 
@@ -114,7 +115,7 @@ export interface RuntimeConfig {
 }
 
 /** Settings namespace of this plugin, served to the web Plugins page. */
-export const BASH_PLUS_SETTINGS_NS = settingsNamespace('tool-plus')
+export const BASH_PLUS_SETTINGS_NS = 'tool-plus'
 
 /** OMP-parity defaults for the completion-message truncation policy. */
 export const DEFAULT_OUTPUT_TRUNCATE: OutputTruncateConfig = {
@@ -385,18 +386,20 @@ export function installBashPlusSettings(
   entry: Config,
   onSource: (current: () => RuntimeConfig) => void,
 ): void {
-  // installSettingsSection 只在注册时调 setSource；scope 变化时只调 onChange。
+  // ctx.settings.installSection 只在注册时调 setSource；scope 变化时只调 onChange。
   // 保存 setSource 的 thunk，onChange 时重新求值，否则 cfg 永不随设置更新
   // （用户改 editMode 等字段后 read/edit 行为不变）。
   let currentSource: (() => Config) | undefined
-  installSettingsSection(ctx, BASH_PLUS_SETTINGS_NS, Config, entry, {
-    setSource: (current) => {
-      currentSource = current
-      onSource(() => resolveConfig(current() as Config))
-    },
-    onChange: () => {
-      const source = currentSource
-      if (source) onSource(() => resolveConfig(source() as Config))
-    },
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, BASH_PLUS_SETTINGS_NS, Config, entry, {
+      setSource: (current) => {
+        currentSource = current
+        onSource(() => resolveConfig(current()))
+      },
+      onChange: () => {
+        const source = currentSource
+        if (source) onSource(() => resolveConfig(source()))
+      },
+    })
   })
 }

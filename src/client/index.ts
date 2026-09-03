@@ -6,8 +6,8 @@
  * reads and writes, and registers the card's locale dictionaries.
  *
  * Only officially exported APIs are used (`dsh-client-ui-slots` slot
- * registry, `dsh-client-locale` dictionary registration, `dsh-client-runtime`
- * scope contract, `dsh-client-ui-settings` scope binder, and the published
+ * registry, `dsh-client-locale` dictionary registration, `dsh-client-ui-settings`
+ * scope contract and binder, and the published
  * `dsh-client-ui-settings-plugins` slot-type declaration); the card itself is
  * this package's own, not a copy of any non-exported card internals.
  *
@@ -21,7 +21,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls the `ctx.locale` Context merge (dictionary registration).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: pulls the SlotRegistry service merge (ctx.slots).
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { BashPlusCard, type BashPlusCardFace, type BashPlusSettings } from './BashPlusCard.tsx'
 import { ToolPlusSection, type ToolPlusSectionInjected } from './ToolPlusSection.tsx'
 import type { ToolSettingsValue } from './forms.ts'

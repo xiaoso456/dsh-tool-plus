@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { CardShell } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { ToolPlusField } from '../config/fields.ts'
 import { hasOwn, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'

@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { CardShell } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import { TOOL_PLUS_FIELDS, toolPlusFieldsOf, toolPlusField, type ToolPlusField } from '../config/fields.ts'
 import {

@@ -1,6 +1,6 @@
 {
   "name": "@xiaoso/dsh-tool-plus-presets",
-  "version": "0.1.2",
+  "version": "0.1.2-rc.1",
   "description": "Agent-preset installer for dsh-tool-plus: installs the standard / PTC enhanced preset templates into a DeepSeek Harness home.",
   "license": "MIT",
   "keywords": [
@@ -25,7 +25,7 @@
   "type": "module",
   "publishConfig": {
     "access": "public",
-    "tag": "beta"
+    "tag": "next"
   },
   "bin": {
     "dsh-tool-plus-presets": "./install-presets.mjs"
