@@ -25,7 +25,7 @@
   "type": "module",
   "publishConfig": {
     "access": "public",
-    "tag": "next"
+    "tag": "latest"
   },
   "bin": {
     "dsh-tool-plus-presets": "./install-presets.mjs"

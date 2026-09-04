@@ -1,6 +1,6 @@
 # Changelog
 
-本文件记录 `@xiaoso/dsh-tool-plus` 与 `@xiaoso/dsh-tool-plus-presets` 的版本更新（双包锁步同版）。
+本文件记录 `@xiaoso/dsh-tool-plus` 与 `@xiaoso/dsh-tool-plus-presets` 的版本更新（两个包的版本号始终保持一致）。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
@@ -12,8 +12,8 @@
 - dsh 依赖升级到 0.1.2-rc.1 并全部改为精确锁定版本（不再使用 `^`）：dsh-* 0.1.2-rc.1、cordis 4.0.2、schemastery 3.18.2
 - 移除已随 dsh 0.1.2-rc.1 删除的 dsh-client-runtime 依赖，客户端类型迁移到 dsh-client-ui-settings / dsh-client-ui-renderer
 - 适配 dsh 0.1.2-rc.1 API 变更：设置注册改用 `ctx.settings.installSection`、连接 RPC 处理器改为两参签名、`CallId` 更名 `ToolCallId`
-- 版本号与 dsh 的 `next` 版本对齐（0.1.2-rc.1），发布 dist-tag 由 beta 改为 next
-- README 增加插件与 dsh 的版本对应关系及按 dsh 版本选择安装的说明
+- 版本号与 dsh 对齐（0.1.2-rc.1），npm `latest` 标签指向该版本，`dsh plugin add` 默认安装与 dsh 匹配
+- README 适用版本说明更新
 
 [对比 0.1.2](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.2...tool-plus-v0.1.2-rc.1)
 

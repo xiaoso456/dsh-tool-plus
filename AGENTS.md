@@ -13,7 +13,7 @@
 
 **版本号同步**：两包始终同版（拍板 2026-08-27），发布迭代时两边的 package.json 一起 `pnpm version prerelease`，谁有变更发谁。
 
-两包 `publishConfig` 均已配 `tag: beta` / `access: public`——测试期一切发布只落 beta 标签。
+两包 `publishConfig` 均已配 `tag: latest` / `access: public`——发布直接落在 latest 标签，`dsh plugin add`（不带 tag）默认安装与 dsh 当前版本匹配（官方 dsh CLI 同样将 latest 指向 rc 版本）。
 
 ## 发布与推送（每次迭代照此走）
 
@@ -34,14 +34,14 @@ git tag presets-v<ver>             # 或 tool-plus-v<ver>
 
 # 5. 推 git + 发 npm（谁有变更发谁）
 git push && git push --tags        # 先推分支，再推标签（--tags 只推标签不推分支）
-(cd presets && npm publish)        # 预设包
-npm publish                        # 主包
+npm publish ./presets              # 预设包（显式路径，防 npm 把 "presets" 当包名）
+npm publish                        # 主包（发布直接落 latest，无需额外参数）
 
 # 6. 发 GitHub Release（手动，不用 workflow；notes 用 CHANGELOG 本节内容）
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
-转正流程：发无后缀版本 → `npm dist-tag add <pkg>@<版> latest` → README 删去 `@beta` 后缀与顶部测试声明。
+版本对齐：插件版本号与 dsh 同版号，发布直接落在 `latest` 标签，默认安装（不带 tag）即与 dsh 匹配。README 只描述当前对应关系，不保留历史 dsh 版本号。
 
 ## 改动守则
 

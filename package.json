@@ -30,7 +30,7 @@
   "type": "module",
   "publishConfig": {
     "access": "public",
-    "tag": "next"
+    "tag": "latest"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
