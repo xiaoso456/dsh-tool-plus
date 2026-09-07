@@ -116,6 +116,7 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       timeoutMs: timeoutMs ?? null,
       wallTimeMs,
       ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
+      ...result.minimized !== undefined ? { minimized: result.minimized } : {},
       output: {
         text,
         truncated: result.truncated,

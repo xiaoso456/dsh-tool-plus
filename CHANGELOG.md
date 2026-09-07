@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.3] - 2026-09-07
+
+### Fixed
+
+- 修复 minimizer 压缩后模型看不到原文提示的问题：后台任务路径（autoBackground 主力路径）组装完成结果时漏传 `minimized` 字段，导致 `[output minimized...]` 提示整条缺失、压缩前原文虽已落盘但模型无法得知路径；现与前台 `buildForeground` 对齐补上该字段
+- 前台 fallback 路径的 `executeBash` 补传 `onMinimizedSave`，压缩发生时同样把原文写入 spill 文件并通过提示暴露路径，两条路径行为一致
+- 新增 `background-minimized-notice.spec.ts` 回归测试，锁定 completion 结果携带 `minimized` 与 `originalSpillPath`
+
+[对比 0.1.2-rc.1](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.2-rc.1...tool-plus-v0.1.3)
+
 ## [0.1.2-rc.1] - 2026-09-03
 
 ### Changed
