@@ -6,6 +6,7 @@
  * @module tests
  */
 
+import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
@@ -201,9 +202,11 @@ describe('cd workdir wiring (S-16)', () => {
 
   it('routes a leading bare `cd <path> &&` through workdir and strips it from the command', async () => {
     h = await harness({ autoBackgroundMs: 0 })
-    await call(h.ctx, { command: 'cd x && ls', description: 'cd prefix' }, h.agent)
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cd-wiring-')).replace(/\\/g, '/')
+    await call(h.ctx, { command: `cd '${dir}' && ls`, description: 'cd prefix' }, h.agent)
     expect(recorded[0]!.command).toBe('ls')
-    expect(recorded[0]!.options?.cwd).toBe(path.resolve(process.cwd(), 'x'))
+    // The authored forward-slash tempdir form is returned as-is by `resolveToCwd`.
+    expect(recorded[0]!.options?.cwd).toBe(dir)
   })
 
   it('expands ~ in a leading cd target', async () => {
@@ -217,11 +220,13 @@ describe('cd workdir wiring (S-16)', () => {
   it('expands ~/… in a leading cd target', async () => {
     h = await harness({ autoBackgroundMs: 0 })
     recorded.length = 0
-    await call(h.ctx, { command: 'cd ~/proj && make', description: 'cd home sub' }, h.agent)
+    // `~/..` keeps the `~/…` prefix shape while targeting a directory that
+    // exists on every platform (the stat check would fail on a fabricated one).
+    // expandTilde's upstream concat yields home + '/..'; `resolveToCwd` returns
+    // the absolute input as authored (no `..` folding).
+    await call(h.ctx, { command: 'cd ~/.. && make', description: 'cd home sub' }, h.agent)
     expect(recorded[0]!.command).toBe('make')
-    // expandTilde yields home + '/proj' (upstream concat semantics); the tool
-    // resolves it against the session cwd, normalizing separators.
-    expect(recorded[0]!.options?.cwd).toBe(path.resolve(os.homedir() + '/proj'))
+    expect(recorded[0]!.options?.cwd).toBe(os.homedir() + '/..')
   })
 
   it('expands ~ in an explicit workdir argument', async () => {
@@ -254,5 +259,70 @@ describe('cd workdir wiring (S-16)', () => {
     await call(h.ctx, { command: 'cd $(pwd) && ls', description: 'subshell' }, h.agent)
     expect(recorded[0]!.command).toBe('cd $(pwd) && ls')
     expect(recorded[0]!.options?.cwd).toBe(process.cwd())
+  })
+})
+
+describe('cd workdir MSYS path forms (S-16b)', () => {
+  let h: Harness
+  beforeEach(async () => {
+    recorded.length = 0
+  })
+  afterEach(async () => {
+    if (h) await h.dispose()
+  })
+
+  it('converts an MSYS /d/… leading cd target to the native drive path', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    await call(h.ctx, { command: 'cd /d/code && pwd', description: 'msys cd' }, h.agent)
+    expect(recorded[0]!.command).toBe('pwd')
+    expect(recorded[0]!.options?.cwd).toBe(process.platform === 'win32' ? 'D:\\code' : '/d/code')
+  })
+
+  it('converts an MSYS path in an explicit workdir argument', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    await call(h.ctx, { command: 'pwd', description: 'msys workdir', workdir: '/d/code' }, h.agent)
+    expect(recorded[0]!.options?.cwd).toBe(process.platform === 'win32' ? 'D:\\code' : '/d/code')
+  })
+
+  it('keeps the drive-letter + forward-slash form working through the same resolver', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    // `resolveToCwd` returns absolute inputs in their authored form (only MSYS
+    // aliases get converted); Node's fs accepts the forward-slash drive form.
+    await call(h.ctx, { command: 'cd D:/code && pwd', description: 'drive slash' }, h.agent)
+    expect(recorded[0]!.options?.cwd).toBe('D:/code')
+  })
+
+  it('peels a stray leading colon from the cd target (upstream expandPath semantics)', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    await call(h.ctx, { command: 'cd :D:/code && pwd', description: 'colon prefix' }, h.agent)
+    expect(recorded[0]!.options?.cwd).toBe('D:/code')
+  })
+
+  it('treats a bare / as the workspace-root alias (session cwd)', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    await call(h.ctx, { command: 'cd / && pwd', description: 'root alias' }, h.agent)
+    expect(recorded[0]!.options?.cwd).toBe(process.cwd())
+  })
+
+  it('fails loud on a nonexistent workdir instead of a shell-side cryptic cwd error', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    const result = await call(
+      h.ctx,
+      { command: 'cd /d/code/no-such-dir-xyz && pwd', description: 'missing dir' },
+      h.agent,
+    )
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('Working directory does not exist')
+  })
+
+  it('fails loud when the workdir target is a file, not a directory', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    const result = await call(
+      h.ctx,
+      { command: 'pwd', description: 'file workdir', workdir: 'package.json' },
+      h.agent,
+    )
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('Working directory is not a directory')
   })
 })

@@ -58,6 +58,40 @@ const LONG_OPTIONS: Record<string, { field: keyof Omit<ParsedRmArgs, 'paths' | '
 /** --interactive=WHEN 的合法取值（GNU rm 语义）。 */
 const INTERACTIVE_WHEN = new Set(['once', 'always', 'never'])
 
+// MSYS drive-alias normalization, verbatim from `../omp/tools/path-utils.ts`
+// (read/write/grep/glob resolve paths through it; the CLI keeps a local copy
+// to stay dependency-free — it runs as a spawned per-rm process).
+function isAsciiDriveLetter(value: string): boolean {
+  if (value.length !== 1) return false
+  const code = value.charCodeAt(0)
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+}
+
+function windowsDriveAliasPath(filePath: string): string | undefined {
+  if (!filePath.startsWith('/')) return undefined
+  const parts = filePath.split('/')
+  if (parts[0] !== '') return undefined
+
+  let drive: string | undefined
+  let tailStart = 2
+  if (parts.length >= 2 && isAsciiDriveLetter(parts[1] ?? '')) {
+    drive = parts[1]!.toUpperCase()
+  } else if (parts.length >= 3 && (parts[1] ?? '').toLowerCase() === 'mnt' && isAsciiDriveLetter(parts[2] ?? '')) {
+    drive = parts[2]!.toUpperCase()
+    tailStart = 3
+  }
+  if (!drive) return undefined
+
+  const tail = parts.slice(tailStart).filter(Boolean).join('\\')
+  return tail ? `${drive}:\\${tail}` : `${drive}:\\`
+}
+
+/** MSYS 驱动器别名（`/d/…`、`/mnt/d/…`）转原生 Windows 路径；非 win32 原样返回。 */
+function normalizeWindowsDriveAliasPath(filePath: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return filePath
+  return windowsDriveAliasPath(filePath) ?? filePath
+}
+
 /**
  * 解析 rm 风格参数（coreutils rm 语义）：
  * - 短选项支持组合（`-rf`），`-r`/`-R`/`--recursive` 等价，`-i`/`-I` 等价；
@@ -217,12 +251,19 @@ export async function runTrashCli(argv: string[], deps: TrashCliDeps): Promise<v
   }
 
   const { recursive, force, verbose, dir, preserveRoot, paths } = parsed
-  const items: Array<{ path: string; isDir: boolean }> = []
+  // Bash redefines `rm` with the authored argv verbatim, so MSYS drive aliases
+  // (`/d/code/foo`) reach the CLI unchanged. Node's fs resolves a leading
+  // `/d/…` as `<current-drive>:\d\…` — silently targeting the wrong
+  // directory. Convert every entry to the native form for fs/trash while
+  // keeping the authored spelling in messages (Git-bash rm prints what the
+  // user typed).
+  const items: Array<{ authored: string; path: string; isDir: boolean }> = []
   let failed = false
 
-  for (const p of paths) {
+  for (const authored of paths) {
+    const p = normalizeWindowsDriveAliasPath(authored)
     if (isDotOrDotDot(p)) {
-      deps.stderr(`rm: refusing to remove '.' or '..' directory: skipping '${p}'`)
+      deps.stderr(`rm: refusing to remove '.' or '..' directory: skipping '${authored}'`)
       failed = true
       continue
     }
@@ -235,17 +276,17 @@ export async function runTrashCli(argv: string[], deps: TrashCliDeps): Promise<v
     const st = await deps.lstat(p)
     if (st === null) {
       if (!force) {
-        deps.stderr(`rm: cannot remove '${p}': No such file or directory`)
+        deps.stderr(`rm: cannot remove '${authored}': No such file or directory`)
         failed = true
       }
       continue
     }
     if (st.isDirectory && !recursive && !dir) {
-      deps.stderr(`rm: cannot remove '${p}': Is a directory`)
+      deps.stderr(`rm: cannot remove '${authored}': Is a directory`)
       failed = true
       continue
     }
-    items.push({ path: p, isDir: st.isDirectory })
+    items.push({ authored, path: p, isDir: st.isDirectory })
   }
 
   if (items.length > 0) {
@@ -254,14 +295,14 @@ export async function runTrashCli(argv: string[], deps: TrashCliDeps): Promise<v
     } catch (err) {
       // GNU rm -f 只静默"不存在"，删除失败（权限等）仍报错（cycle.sh 用
       // `rm -rf` 期望输出 cannot remove）。
-      deps.stderr(`rm: cannot remove '${items[0].path}': ${errorMessage(err)}`)
+      deps.stderr(`rm: cannot remove '${items[0].authored}': ${errorMessage(err)}`)
       failed = true
     }
   }
 
   if (verbose && !failed) {
-    for (const { path: p, isDir } of items) {
-      deps.stdout(isDir ? `removed directory '${normalizeTrailingSlash(p)}'` : `removed '${p}'`)
+    for (const { authored, isDir } of items) {
+      deps.stdout(isDir ? `removed directory '${normalizeTrailingSlash(authored)}'` : `removed '${authored}'`)
     }
   }
 

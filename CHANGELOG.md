@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-09-08
+
+### Fixed
+
+- 修复 bash 工具无法识别 Git Bash 风格路径的问题：以 `cd /d/code/... && …` 开头的命令或给 `workdir` 传 `/d/...` 路径时，Windows 下会被错误解析为 `D:\d\...`（把 `/d` 当成盘根下的子目录），导致切换到错误目录或报出晦涩的 "Failed to set cwd"；现在按 Git Bash 语义正确解析为 `D:\code\...`，并兼容 `/mnt/d/...` 写法与输入中误带的 `:` 前缀
+- 工作目录不存在或指向文件时，现在直接报出清晰错误（`Working directory does not exist: ...` / `Working directory is not a directory: ...`），不再依赖 shell 侧的晦涩报错
+- 修复安全 rm 误删隐患：在 bash 里执行 `rm /d/...`（Git Bash 风格路径）时，删除目标会被错误解析到 `<当前盘>:\d\...` 目录，若该目录恰好存在同名文件会被静默移入回收站；现在先转换为原生路径再删除，`-v` 输出与错误信息保留输入时的原样写法
+
+[对比 0.1.3](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.3...tool-plus-v0.1.4)
+
 ## [0.1.3] - 2026-09-07
 
 ### Fixed

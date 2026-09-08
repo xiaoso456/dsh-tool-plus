@@ -6,6 +6,7 @@
 /**
  * The Oh My Pi tool suite for deepseek-harness: bash + read + write + edit + grep + glob.
  */
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
@@ -20,8 +21,9 @@ import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './tools/b
 import { closeSessionShells, executeBash } from './tools/bash/bash-executor.ts'
 import { allocateSpillFile, saveOriginalText, sweepStaleSpillFiles } from './tools/bash/adapter/spill.ts'
 import { startBashJob, type ManagedBashJob } from './tools/bash/background.ts'
-import { expandTilde, extractCdWorkdir } from './tools/bash/cd-workdir.ts'
+import { extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { setRuntimeLogger } from './tools/bash/logger.ts'
+import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
@@ -190,7 +192,20 @@ export function apply(ctx: Context, config: Config = {}): void {
         const cd = extractCdWorkdir(command)
         if (cd !== null) { workdir = cd.workdir; command = cd.command }
       }
-      const commandCwd = workdir === undefined ? state.cwd : path.resolve(state.cwd, expandTilde(workdir))
+      // Upstream bash.ts resolves an explicit cwd through `resolveToCwd`
+      // (path-utils): MSYS drive aliases (`/d/…`), stray `:` prefixes, and `~`
+      // all normalize before `path.resolve`, and a stat check fails loud with a
+      // clear message instead of the shell's cryptic "Failed to set cwd".
+      const commandCwd = workdir === undefined ? state.cwd : resolveToCwd(workdir, state.cwd)
+      if (workdir !== undefined) {
+        let cwdStat: fs.Stats
+        try {
+          cwdStat = await fs.promises.stat(commandCwd)
+        } catch {
+          throw new Error(`Working directory does not exist: ${commandCwd}`)
+        }
+        if (!cwdStat.isDirectory()) throw new Error(`Working directory is not a directory: ${commandCwd}`)
+      }
       if (cfg.interceptorEnabled) {
         const availableTools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))].filter(tool => ctx.tools.get(tool, exec.agent) !== undefined)
         const interception = checkBashInterception(command, availableTools)
