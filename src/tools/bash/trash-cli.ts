@@ -13,6 +13,7 @@
  * 便于单测注入 fake trash。
  * @module @xiaoso/dsh-tool-plus/bash/trash-cli
  */
+import * as fs from 'node:fs'
 
 /** 解析后的 rm 参数。 */
 export interface ParsedRmArgs {
@@ -184,6 +185,8 @@ export interface TrashCliDeps {
   stdout: (s: string) => void
   stderr: (s: string) => void
   exit: (code: number) => void
+  /** rename 探测（默认实现 fs.rename 到同目录临时名再改回）。返回 errno 码或 null（可移动）。 */
+  probeRename?: (from: string, to: string) => Promise<string | null>
 }
 
 /** 规范化 verbose 输出的目录尾部斜杠（`a///` → `a/`，对齐 rm）。 */
@@ -218,6 +221,49 @@ async function isRootPath(p: string, deps: TrashCliDeps): Promise<boolean> {
   if (st === null) return false
   const root = await deps.stat('/')
   return root !== null && st.dev === root.dev && st.ino === root.ino
+}
+
+/** 探测目标名后缀（rename 探测临时名）。 */
+const PROBE_SUFFIX = '.dsh-trash-probe'
+
+/** 从 unknown 错误里取 errno 码（边界解析）。 */
+function errnoCode(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null) return undefined
+  const code = (err as Record<string, unknown>).code
+  return typeof code === 'string' ? code : undefined
+}
+
+/** rename 探测：移到同目录临时名再改回；不改内容，返回 errno 码或 null（可移动）。 */
+async function defaultProbeRename(from: string, to: string): Promise<string | null> {
+  try {
+    await fs.promises.rename(from, to)
+  } catch (err) {
+    return errnoCode(err) ?? 'UNKNOWN'
+  }
+  try {
+    await fs.promises.rename(to, from)
+    return null
+  } catch {
+    // 改名成功但改回失败（极罕见）：文件停在探测名下，按“无法移动”报告。
+    return 'PROBE_STUCK'
+  }
+}
+
+/**
+ * rename 探测结果 → 可读原因（null = 无结论）。
+ *
+ * trash 的 windows-trash.exe 失败时把原因吞成 0x8000FFFF、stderr 为空，
+ * 所以这里靠 rename 探测拿文件系统的真实回答；不同 errno 必须分开报，
+ * 权限不足不是“被占用”。
+ */
+export function describeProbeCode(code: string | null): string | null {
+  if (code === null) return null
+  if (code === 'ENOENT' || code === 'ENOTDIR') return 'no longer exists (removed by another process?)'
+  if (code === 'EBUSY' || code === 'ENOTEMPTY' || code === 'PROBE_STUCK') {
+    return 'file is locked or cannot be moved by this process (close programs using it and retry)'
+  }
+  if (code === 'EPERM' || code === 'EACCES') return 'permission denied (read-only file or restricted directory)'
+  return null
 }
 
 /**
@@ -293,10 +339,22 @@ export async function runTrashCli(argv: string[], deps: TrashCliDeps): Promise<v
     try {
       await deps.trash(items.map((item) => item.path))
     } catch (err) {
-      // GNU rm -f 只静默"不存在"，删除失败（权限等）仍报错（cycle.sh 用
-      // `rm -rf` 期望输出 cannot remove）。
-      deps.stderr(`rm: cannot remove '${items[0].authored}': ${errorMessage(err)}`)
-      failed = true
+      // trash 的 windows-trash.exe 失败时 stderr 为空（实测退出码 0x8000FFFF），
+      // 消息里只有命令行。win32 上用 rename 探测拿文件系统的真实回答，
+      // 逐项区分“已被删掉（trash 部分成功）/被占用/权限不足”，其他平台维持原样。
+      if (process.platform !== 'win32') {
+        deps.stderr(`rm: cannot remove '${items[0].authored}': ${errorMessage(err)}`)
+        failed = true
+      } else {
+        const probe = deps.probeRename ?? defaultProbeRename
+        for (const item of items) {
+          const code = await probe(item.path, `${item.path}${PROBE_SUFFIX}`)
+          // trash 可能已把前几项移进回收站（exe 逐项处理、任一项失败即非零退出）。
+          if (code === 'ENOENT' || code === 'ENOTDIR') continue
+          deps.stderr(`rm: cannot remove '${item.authored}': ${describeProbeCode(code) ?? errorMessage(err)}`)
+          failed = true
+        }
+      }
     }
   }
 

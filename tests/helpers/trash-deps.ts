@@ -43,6 +43,9 @@ export function makeDeps(overrides: Partial<TrashCliDeps> = {}): TrashDepsHarnes
     exit: (c) => {
       code = c
     },
+    // 探测默认不碰真实环境（返回 null = 无结论）：既有用例因此保持原语义
+    // （报错回落到 trash 自身的错误消息）。需要诊断结论的用例显式覆盖。
+    probeRename: async () => null,
     ...overrides,
   }
   return { deps, trashCalls, out, err, code: () => code }
