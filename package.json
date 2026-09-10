@@ -1,7 +1,7 @@
 {
   "name": "@xiaoso/dsh-tool-plus",
   "description": "Oh My Pi bash runtime ported as a deepseek-harness tool plugin: persistent shell session, output minimizer, managed background jobs, command interception",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "license": "MIT",
   "keywords": [
     "deepseek-harness",
@@ -80,19 +80,19 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-attachment": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-fs": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-jobs": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-sandbox": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-session": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-settings": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-shell": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-shell-env": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-system-prompt": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.1.2-rc.1"
+    "@deepseek-ai/dsh-agent": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-fs": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-jobs": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-sandbox": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-settings": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-shell": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-shell-env": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.1"
   },
   "optionalPeerDependencies": {
     "sharp": ">=0.33"

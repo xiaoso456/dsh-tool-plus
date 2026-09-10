@@ -106,7 +106,7 @@ npx @xiaoso/dsh-tool-plus-presets
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 或 ≥ 24
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.1.2-rc.1（pre-release，接口可能变动）
+- 适用于 DeepSeek Harness `dsh` v0.1.5-rc.1（pre-release，接口可能变动）
 
 ## 注意事项
 

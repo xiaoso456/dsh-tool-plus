@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.6] - 2026-09-10
+
+### Changed
+
+- dsh 依赖升级到 0.1.5-rc.1（22 个 `@deepseek-ai/dsh-*` 包全部精确锁定），并新增 dsh-brand / dsh-invariants 直接依赖以规避 pnpm 对同版本 peer 依赖的预发布版本解析问题；peerDependencies 同步对齐到 0.1.5-rc.1，传递依赖 dsh-attachment / dsh-fs / dsh-sandbox 随之升至 0.1.5-rc.1
+- 预设与官方 0.1.5-rc.1 对齐：persona 改为 prefix/suffix 结构（`You are a coding agent powered by the {{model}} model.` + `Your working directory is {{cwd}}.`），新增 command-goal 工具行与 present 工具（`@deepseek-ai/dsh-tool-present`），tool-subagent 开启模型选择设置
+- PTC 预设：tool-workflow 默认禁用，tool-presentation 输出模式改为 `ptc`
+
+[对比 0.1.5](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.5...tool-plus-v0.1.6)
+
 ## [0.1.5] - 2026-09-09
 
 ### Fixed
