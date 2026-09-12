@@ -73,9 +73,11 @@ declare global {
     const file: (path: string) => BunFile
     const write: (path: string, data: string | Uint8Array | Blob | ArrayBuffer) => Promise<void>
     const env: NodeJS.ProcessEnv
+    /** PATH/PATHEXT lookup; `options.PATH`/`cwd` per Bun, `null` when absent. */
+    const which: (command: string, options?: { PATH?: string; cwd?: string }) => string | null
     const sleep: (ms: number) => Promise<void>
     const hash: {
-      (input: string | ArrayBuffer | Uint8Array): number
+      (input: string | ArrayBuffer | Uint8Array, seed?: number | bigint): number
       xxHash64(input: string | ArrayBuffer | Uint8Array, seed?: bigint): bigint
     }
     const randomUUIDv7: () => string

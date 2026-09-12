@@ -25,6 +25,9 @@ import { gzipSync } from 'node:zlib'
 // json5 is kept external (neverBundle) so Node's ESM CJS default-interop
 // applies; rolldown's default-interop for inlined CJS yields undefined.
 import JSON5 from 'json5'
+// `Bun.which` delegates to the plugin's single PATH/PATHEXT resolver; which.ts
+// only imports node:fs / node:path, so this adds no cycle.
+import { findOnPath } from '../bash/which.ts'
 
 // ---------------------------------------------------------------------------
 // Buffer / Uint8Array Bun extensions (runtime patch; types in bun-compat.d.ts)
@@ -374,17 +377,35 @@ function xxHash64Core(bytes: Uint8Array, seed: bigint | undefined): bigint {
   h ^= h >> 32n
   return h & MASK64
 }
-function bunHash(data: string | ArrayBufferView | ArrayBuffer): number {
+/**
+ * `Bun.hash(input, seed?)` — FNV-1a 32-bit stand-in, seeded form included.
+ *
+ * The seed is load-bearing: pi-utils folds `command` → `cwd` → `PATH` into one
+ * cache key by re-seeding at each step (@oh-my-pi/pi-utils src/which.ts:207-209),
+ * so a shim that drops the seed collapses every command sharing a PATH onto a
+ * single `$which` cache slot (`$which("b")` returning `a`'s path). FNV steps are
+ * bijections mod 2^32, so distinct seeds stay distinct for equal input — exactly
+ * what a cache key needs. Single-argument values are unchanged (no seed → FNV
+ * offset basis).
+ */
+function bunHash(data: string | ArrayBufferView | ArrayBuffer, seed?: number | bigint): number {
   let bytes: Uint8Array
   if (typeof data === 'string') bytes = new TextEncoder().encode(data)
   else if (data instanceof ArrayBuffer) bytes = new Uint8Array(data)
   else bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-  let h = 0x811c9dc5
+  let h = seedToBasis(seed)
   for (const b of bytes) {
     h ^= b
     h = Math.imul(h, 0x01000193) >>> 0
   }
   return h >>> 0
+}
+
+/** Seed → FNV-1a offset basis (non-finite numbers fall back to the default). */
+function seedToBasis(seed: number | bigint | undefined): number {
+  if (seed === undefined) return 0x811c9dc5
+  if (typeof seed === 'bigint') return Number(BigInt.asUintN(32, seed)) >>> 0
+  return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 0x811c9dc5
 }
 
 // ---------------------------------------------------------------------------
@@ -823,12 +844,34 @@ export function bunStripANSI(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Bun.which — delegate to the single PATH/PATHEXT resolver
+// ---------------------------------------------------------------------------
+// pi-utils' `$which` resolves through `Bun.which` off darwin
+// (@oh-my-pi/pi-utils src/which.ts:201,238), so on Node the shim must provide
+// it or every `$which` call throws. Delegating to `findOnPath` keeps exactly one
+// PATH walk in the plugin (src/tools/bash/which.ts) instead of a second copy.
+//
+// Bun semantics adapted here: `options.PATH` overrides process.env.PATH,
+// `options.cwd` anchors commands that carry a path separator (bare names stay
+// PATH-only), and a miss is `null` (Bun) rather than `undefined` (findOnPath).
+function bunWhich(command: string, options?: { PATH?: string; cwd?: string }): string | null {
+  const cwd = options?.cwd
+  const target =
+    cwd !== undefined && !path.isAbsolute(command) && (command.includes('/') || command.includes('\\'))
+      ? path.resolve(cwd, command)
+      : command
+  const env = options?.PATH !== undefined ? { ...process.env, PATH: options.PATH } : process.env
+  return findOnPath(target, env) ?? null
+}
+
+// ---------------------------------------------------------------------------
 // Global installation
 // ---------------------------------------------------------------------------
 export interface BunShimSurface {
   file(path: string): BunFileShim
   write(path: string, data: string | Uint8Array | Blob | ArrayBuffer): Promise<void>
   env: NodeJS.ProcessEnv
+  which(command: string, options?: { PATH?: string; cwd?: string }): string | null
   sleep(ms: number): Promise<void>
   randomUUIDv7(): string
   stringWidth(s: string): number
@@ -845,7 +888,7 @@ export interface BunShimSurface {
   native: undefined
   BunFile: typeof BunFileShim
   version: string
-  hash: ((input: string | ArrayBuffer | Uint8Array) => number) & {
+  hash: ((input: string | ArrayBuffer | Uint8Array, seed?: number | bigint) => number) & {
     xxHash64(data: string | ArrayBuffer | Uint8Array, seed?: bigint): bigint
   }
 }
@@ -858,6 +901,7 @@ export function installBunShim(): void {
     file: (p: string) => new BunFileShim(p),
     write: bunWrite,
     env: process.env,
+    which: bunWhich,
     sleep: bunSleep,
     hash: bunHash,
     randomUUIDv7: bunRandomUUIDv7,

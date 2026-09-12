@@ -1,14 +1,14 @@
 /**
- * Minimal PATH (+ PATHEXT on Windows) executable lookup, standing in for
- * `Bun.which` / pi-utils `$which` on the Node runtime.
+ * Minimal PATH (+ PATHEXT on Windows) executable lookup — the plugin's single
+ * implementation of `Bun.which` semantics on the Node runtime.
  *
- * Why this exists: pi-utils' `$which` calls `Bun.which` at module top level
- * (node_modules @oh-my-pi/pi-utils src/which.ts:196), which the bun-shim does
- * not provide — so DSH code that must resolve executables the way OMP does
- * (procmgr `resolveWindowsShell` for shell discovery, `REJECT_PROMPT_COMMAND`
- * in non-interactive-env) uses this scanner instead. Single implementation —
- * any new caller resolves executables through here, never hand-rolls a PATH
- * walk.
+ * Two callers, one scanner: DSH code that must resolve executables the way OMP
+ * does (procmgr `resolveWindowsShell` for shell discovery, `REJECT_PROMPT_COMMAND`
+ * in non-interactive-env) calls `findOnPath` directly, and the bun-shim installs
+ * `Bun.which` on top of it — which is also how upstream pi-utils' `$which` lands
+ * here (@oh-my-pi/pi-utils src/which.ts:201 calls `Bun.which` on non-darwin).
+ * Single implementation — any new caller resolves executables through here,
+ * never hand-rolls a PATH walk.
  * @module @xiaoso/dsh-tool-plus/bash/which
  */
 
