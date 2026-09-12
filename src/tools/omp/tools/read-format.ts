@@ -59,7 +59,7 @@ function recordFullHashlineContext(
 ): HashlineHeaderContext | undefined {
 	if (!absolutePath || !path.isAbsolute(absolutePath)) return undefined;
 	const normalized = normalizeToLF(fullText);
-	const tag = getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalized);
+	const tag = getFileSnapshotStore(session).recordSnapshot(canonicalSnapshotKey(absolutePath), normalized);
 	return {
 		header: formatReadHashlineHeader(displayPath, tag),
 		tag,
@@ -199,7 +199,11 @@ function recordInMemorySeenLines(
 	seenLines: readonly number[] | undefined,
 ): void {
 	if (!absolutePath || !path.isAbsolute(absolutePath) || !seenLines || seenLines.length === 0) return;
-	getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalizeToLF(fullText), seenLines);
+	// Native `EditStore.recordSnapshot` takes a mutable array (index.d.ts:130);
+	// copy the readonly span list rather than widening the helper's signature.
+	getFileSnapshotStore(session).recordSnapshot(canonicalSnapshotKey(absolutePath), normalizeToLF(fullText), [
+		...seenLines,
+	]);
 }
 
 function lineNumbersFromEntries(entries: readonly LineEntry[]): number[] {

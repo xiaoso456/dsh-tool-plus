@@ -9,8 +9,33 @@
  *
  * This is intentionally decoupled from the diff producer: anything that
  * emits the `<sign><lineNum>|<content>` shape works.
+ *
+ * Migration note: the native engine has no equivalent export — its rendered
+ * `EditFileOutcome.text` already carries a compact preview, so DSH's
+ * `executeHashlineSingle` passes that text through untouched. This module is
+ * kept because `EditFileOutcome.diff` (and the diff/apply-patch engines) use
+ * the very same `<sign><lineNum>|<content>` shape, so the helper still has
+ * consumers. The algorithm is a **verbatim port** of the vendored
+ * `src/tools/hashline/engine/diff-preview.ts` (itself a verbatim port of the
+ * pre-18.0 TS engine), with the two option/result types inlined from that
+ * engine's `types.ts:147-160` so this file has no dependency on the deleted
+ * engine directory.
  */
-import type { CompactDiffOptions, CompactDiffPreview } from "./types";
+
+/** Result of {@link buildCompactDiffPreview}. */
+export interface CompactDiffPreview {
+	preview: string;
+	addedLines: number;
+	removedLines: number;
+}
+
+/** Optional knobs for {@link buildCompactDiffPreview}. */
+export interface CompactDiffOptions {
+	/** Added lines kept on each side of a long added-run elision (default 2). */
+	maxAddedRunContext?: number;
+	/** Back-compat alias for {@link maxAddedRunContext}. */
+	maxUnchangedRun?: number;
+}
 
 const DEFAULT_ADDED_RUN_CONTEXT_LINES = 2;
 

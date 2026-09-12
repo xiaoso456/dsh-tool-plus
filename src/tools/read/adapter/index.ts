@@ -122,7 +122,7 @@ export async function executeReadTool(exec: any, cfg: RuntimeConfig, args: any, 
   const session = createToolSession(exec, cfg, ctx)
   const tool = new ReadTool(session)
   const result = await tool.execute('read', { path: String(args.path ?? '') }, exec.signal)
-  // 引擎可能惰性新建了 ConflictHistory / fileSnapshotStore 等状态，写回共享
+  // 引擎可能惰性新建了 ConflictHistory / EditStore 等状态，写回共享
   // 存储供下次调用恢复（T11-2 / A-4：快照库随会话跨调用保持）。
   persistOmpSessionState(exec?.agent?.session, session)
   return toReadToolResult(result, args)

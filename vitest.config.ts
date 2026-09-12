@@ -19,7 +19,7 @@ export default defineConfig({
       // copies); map them onto vitest so the originals run unmodified.
       'bun:test': SHIM('tests/bun-test-shim.ts'),
       'node:fs/promises': SHIM('src/tools/shared/fs-promises-shim.ts'),
-      '@oh-my-pi/hashline': SHIM('src/tools/hashline/engine/index.ts'),
+      '@oh-my-pi/hashline': SHIM('src/tools/hashline/native/index.ts'),
     },
   },
   plugins: [

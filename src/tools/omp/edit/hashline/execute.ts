@@ -1,38 +1,44 @@
 /**
- * Coding-agent runner that drives the hashline {@link Patcher} on behalf of
- * the `edit` tool. Converts an `{input}` tool-call payload into a
- * fully-applied patch, wraps the result in the agent's
- * {@link AgentToolResult} shape, and attaches `outputMeta` for the renderer.
+ * Coding-agent runner that drives the native hashline engine on behalf of the
+ * `edit` tool. Converts an `{input}` tool-call payload into a fully-applied
+ * patch, wraps the result in the agent's {@link AgentToolResult} shape, and
+ * attaches `outputMeta` for the renderer.
  *
- * Multi-section patches are preflighted up front via {@link Patcher.prepare}
- * so a partial batch never lands.
+ * Before the native migration this file drove the vendored TS engine
+ * (`Patch`/`Patcher`/`HashlineFilesystem`/`BlockResolver`/clipboard) and
+ * hand-assembled the model-facing text from per-section fields. Upstream 18.x
+ * moved all of that into Rust (`crates/pi-edit`), so the host side is now:
+ *
+ * 1. build the `EditPolicy` (`native/policy.ts`) and the writer
+ *    (`native/writer.ts`),
+ * 2. hand `EditSession.apply` the payload,
+ * 3. shape the returned {@link EditApplyOutcome} into DSH's
+ *    `EditToolDetails`.
+ *
+ * What the native engine now owns (and this file therefore no longer
+ * implements — each was verified byte-for-byte against the old DSH output):
+ * the parsed/aggregated model-facing text including the compact numbered
+ * preview and `PUT N*:` block-resolution lines, mismatch / unseen-anchor /
+ * missing-file diagnostics, the byte-identical no-op hint **and** its
+ * 3-strike escalation (the old `noop-loop-guard.ts`), tag validation with
+ * in-session recovery, `N*` block resolution, the `CUT`/`PUT` clipboard
+ * registers, and the multi-section merge for sections naming one file.
  */
-import {
-	type BlockResolution,
-	buildCompactDiffPreview,
-	type Clipboard,
-	commitClipboard,
-	forkClipboard,
-	MismatchError as HashlineMismatchError,
-	Patch,
-	Patcher,
-	type PatchSectionResult,
-	type PreparedSection,
-	startClipboardBatch,
-} from "@oh-my-pi/hashline";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
-import type { ToolSession } from "../../../omp/tools/index.ts";
 import { outputMeta } from "../../../edit/adapter/tools/output-meta";
-import { ToolError } from "../../../omp/tools/tool-errors.ts";
-import { generateDiffString } from "../diff";
-import { getEditClipboard } from "../edit-clipboard";
-import { getFileSnapshotStore } from "../../../omp/edit/file-snapshot-store.ts";
-import type { EditToolDetails, EditToolPerFileResult } from "../details";
+import {
+	EditSession,
+	getEditStore,
+	MismatchError,
+	type EditApplyOutcome,
+	type EditFileOutcome,
+} from "../../../hashline/native/index.ts";
+import { buildHashlineEditPolicy } from "../../../hashline/native/policy.ts";
+import { createHashlineWriter } from "../../../hashline/native/writer.ts";
+import type { ToolSession } from "../../../omp/tools/index.ts";
+import type { WritethroughCallback } from "../../../omp/tools/writethrough.ts";
+import type { EditToolDetails, EditToolPerFileResult, Operation } from "../details";
 import { pruneOversizedEditSnapshots } from "../snapshot-details";
-import { nativeBlockResolver } from "./block-resolver";
-import { HashlineFilesystem } from "./filesystem";
-import { hashPatchInput, NOOP_HARD_LIMIT, recordNoopEdit, resetNoopEdit } from "./noop-loop-guard";
 import { type HashlineParams, hashlineEditParamsSchema } from "./params";
 
 export interface ExecuteHashlineSingleOptions {
@@ -42,251 +48,172 @@ export interface ExecuteHashlineSingleOptions {
 	writethrough: WritethroughCallback;
 }
 
-function noChangeDiagnostic(path: string): string {
-	// The patch parsed and applied cleanly but produced no change — the
-	// `+TEXT` body rows matched the file content at the targeted lines
-	// byte-for-byte. The model usually misreads this as "wrong anchor, try
-	// again with a bigger payload" and starts duplicating content; the
-	// message below names the cause directly so the next turn can re-read
-	// instead of expanding the patch.
-	return (
-		`Edits to ${path} parsed and applied cleanly, but produced no change: ` +
-		`your body row(s) are byte-identical to the file at the targeted lines. ` +
-		`The bug is somewhere else — re-read the file before issuing another edit. ` +
-		`Do NOT widen the payload or add lines; verify the anchor first.`
-	);
+/**
+ * Native reports `create` | `update` | `delete` (`EditFileOutcome.op`,
+ * `@oh-my-pi/pi-natives` index.d.ts:1270); DSH's `Operation` is the same
+ * union, and a move arrives as `update` with `moveTo` set — matching the op
+ * the old TS engine reported for a section with `MV`. An unknown value is a
+ * native contract change, not something to coerce silently.
+ *
+ * A no-op is deliberately **not** remapped: the old engine had a fourth
+ * `"noop"` section op, native reports `update` with zero bytes written and the
+ * soft hint in `text`. `"noop"` lived only in the deleted
+ * `engine/patcher.ts:99-100` and has no consumer, so the native shape is the
+ * oracle (Lead ruling; keeps T4's fixture spec and the auditor's differential
+ * valid).
+ */
+function toOperation(op: string): Operation {
+	if (op === "create" || op === "update" || op === "delete") return op;
+	throw new Error(`Unexpected native edit op: ${op}`);
 }
 
 /**
- * Escalated diagnostic surfaced once the same payload has no-op'd
- * {@link NOOP_HARD_LIMIT} times in a row on the same canonical path. Thrown as
- * a {@link ToolError} so the agent loop sees a tool *failure* — empirically
- * far more effective at breaking a no-op edit loop than the soft hint alone
- * (issue #2081 saw 182 byte-identical no-op results in 205 calls before the
- * user aborted).
+ * DSH per-file detail for one landed file.
+ *
+ * `path` is the absolute path (`EditToolDetails.path` contract: "Required by
+ * ACP diff metadata consumers"), and for a move it is the destination while
+ * `sourcePath` carries the authored source path so the renderer can show
+ * `source → dest`. The raw `oldText`/`newText` snapshots go through the DSH
+ * pruner — native has its own `snapshotsPruned` flag, but the DSH budget
+ * (#3786/#3787, 32 KiB) is the one that bounds the session JSONL, and pruning
+ * an already-pruned entry is a no-op.
  */
-function noChangeLoopDiagnostic(path: string, count: number): string {
-	return (
-		`STOP. Edits to ${path} have been a byte-identical no-op ${count} times in a row — ` +
-		`the patch body matches the file at the targeted lines and the soft hint did not break the cycle. ` +
-		`Cease re-issuing this payload. Either the intended change is already on disk (move on), ` +
-		`or your anchor is wrong (re-read the file with \`read\` to observe the current line numbers and ` +
-		`tag, then author a different edit). This exact payload will keep being rejected until it changes.`
-	);
+function toPerFileResult(file: EditFileOutcome): EditToolPerFileResult {
+	return pruneOversizedEditSnapshots({
+		path: file.moveTo ?? file.path,
+		diff: file.diff,
+		firstChangedLine: file.firstChangedLine,
+		op: toOperation(file.op),
+		move: file.moveTo,
+		sourcePath: file.moveTo ? file.displayPath : undefined,
+		oldText: file.oldText,
+		newText: file.newText,
+	});
 }
 
-function assertUniqueCanonicalPaths(prepared: readonly PreparedSection[]): void {
-	const seen = new Map<string, string>();
-	for (const entry of prepared) {
-		const previous = seen.get(entry.canonicalPath);
-		if (previous !== undefined) {
-			throw new Error(
-				`Multiple hashline sections resolve to the same file (${previous} and ${entry.section.path}). Merge their ops under one header before applying.`,
-			);
-		}
-		seen.set(entry.canonicalPath, entry.section.path);
-	}
-}
+/**
+ * Wrap a successful apply.
+ *
+ * The text is native's own `outcome.text`: for one file it is the section
+ * header plus the compact numbered preview (and `PUT N*: → resolved …` lines
+ * for block edits), for several files it is those per-file texts joined by a
+ * blank line — byte-identical to what the old `renderSection` /
+ * `executeHashlineSingle` assembly produced. The single-file branch also
+ * carries the aggregate metadata fields (`op` / `move` / `path` / snapshots)
+ * that the multi-file branch deliberately leaves to `perFileResults`.
+ *
+ * `text` (and with it `files[].warnings`, which native already rendered into
+ * `text` as a parse+apply union in unspecified order) passes through
+ * verbatim: no reordering, filtering, deduping or elision — the soft no-op
+ * hint in particular is what DSH's tool-result copy depends on.
+ */
+function renderOutcome(
+	outcome: EditApplyOutcome,
+): AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema> {
+	const files = outcome.files;
+	const content: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>["content"] = [
+		{ type: "text", text: outcome.text },
+	];
 
-interface RenderedSection {
-	toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>;
-	perFileResult: EditToolPerFileResult;
-}
-
-const BLOCK_OP_LABELS: Record<BlockResolution["op"], string> = {
-	replace: "PUT N*:",
-	insert_after: "PUT >N*:",
-	cut: "CUT N*",
-	paste_after: "PUT >N*",
-};
-
-function formatBlockResolution(resolution: BlockResolution): string {
-	const op = BLOCK_OP_LABELS[resolution.op].replace("N", String(resolution.anchorLine));
-	const lines = resolution.end - resolution.start + 1;
-	const span =
-		resolution.start === resolution.end ? `line ${resolution.start}` : `lines ${resolution.start}-${resolution.end}`;
-	const suffix =
-		resolution.op === "insert_after"
-			? `; body lands after line ${resolution.end}`
-			: resolution.op === "paste_after"
-				? `; clipboard lands after line ${resolution.end}`
-				: "";
-	return `${op} → resolved ${span} (${lines} line${lines === 1 ? "" : "s"})${suffix}`;
-}
-
-function renderSection(
-	result: PatchSectionResult,
-	sourcePath: string,
-): RenderedSection {
-	if (result.op === "delete") {
-		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema> = {
-			content: [{ type: "text", text: `Deleted ${result.path}` }],
+	if (files.length === 1) {
+		const file = files[0];
+		return {
+			content,
 			details: pruneOversizedEditSnapshots({
-				diff: "",
-				op: "delete",
-				path: result.path,
-				oldText: result.before,
+				diff: file.diff,
+				firstChangedLine: file.firstChangedLine,
+				op: toOperation(file.op),
+				move: file.moveTo,
+				path: file.moveTo ?? file.path,
+				sourcePath: file.moveTo ? file.displayPath : undefined,
+				oldText: file.oldText,
+				newText: file.newText,
 				meta: outputMeta().get(),
 			}),
 		};
-		return {
-			toolResult,
-			perFileResult: pruneOversizedEditSnapshots({
-				path: result.path,
-				diff: "",
-				op: "delete",
-				oldText: result.before,
-			}),
-		};
 	}
 
-	if (result.op === "noop") {
-		const toolResult: AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema> = {
-			content: [{ type: "text", text: noChangeDiagnostic(result.path) }],
-			details: { diff: "", op: "update", meta: outputMeta().get() },
-		};
-		return {
-			toolResult,
-			perFileResult: { path: result.path, diff: "", op: "update" },
-		};
-	}
-
-	const diff = generateDiffString(result.before, result.after, undefined, { path: result.path });
-	const preview = buildCompactDiffPreview(diff.diff);
-	const meta = outputMeta().get();
-
-	const warningsBlock = result.warnings.length > 0 ? `\n\nWarnings:\n${result.warnings.join("\n")}` : "";
-	const previewBlock = preview.preview ? `\n${preview.preview}` : "";
-	const blockBlock =
-		result.blockResolutions && result.blockResolutions.length > 0
-			? `\n${result.blockResolutions.map(formatBlockResolution).join("\n")}`
-			: "";
-	const moveBlock = result.moveDest ? `\nMoved to ${result.moveDest}` : "";
-	const firstChangedLine = result.firstChangedLine ?? diff.firstChangedLine;
 	return {
-		toolResult: {
-			content: [
-				{
-					type: "text",
-					text: `${result.header}${blockBlock}${moveBlock}${previewBlock}${warningsBlock}`,
-				},
-			],
-			details: pruneOversizedEditSnapshots({
-				diff: diff.diff,
-				firstChangedLine,
-				op: result.op,
-				move: result.moveDest,
-				path: result.moveDest ?? result.path,
-				sourcePath: result.moveDest ? sourcePath : undefined,
-				oldText: result.before,
-				newText: result.after,
-				meta,
-			}),
-		},
-		perFileResult: pruneOversizedEditSnapshots({
-			path: result.moveDest ?? result.path,
-			diff: diff.diff,
-			firstChangedLine,
-			op: result.op,
-			move: result.moveDest,
-			sourcePath: result.moveDest ? sourcePath : undefined,
-			oldText: result.before,
-			newText: result.after,
+		content,
+		details: pruneOversizedEditSnapshots({
+			diff: files
+				.map(file => file.diff)
+				.filter(Boolean)
+				.join("\n"),
+			perFileResults: files.map(toPerFileResult),
 		}),
 	};
+}
+
+/**
+ * Re-attach the "which sections already landed" breadcrumb to a rejection.
+ *
+ * The engine applies one file at a time and aborts on the first writer throw
+ * (`EditSession.apply` hands each landed change to the host callback), and on
+ * failure it reports only the callback's own message with an empty `files`
+ * list. A multi-section payload that fails on section #2 therefore leaves
+ * section #1 on disk with nothing in the response saying so — the model would
+ * re-issue the whole patch and double-apply it. The old TS engine wrapped the
+ * same failure with `Sections already written: …` (`engine/patcher.ts:287-296`
+ * at v17.3.5) from its prepared batch; the writer's
+ * {@link HashlineWriter.landedPaths} supplies the identical list, in write
+ * order and in authored display form.
+ *
+ * Appended only when something really landed: a single-file rejection (or a
+ * rejection before the first write, e.g. a bad tag) keeps native's text
+ * byte-identical.
+ */
+function withLandedSections(message: string, landedPaths: readonly string[]): string {
+	if (landedPaths.length === 0) return message;
+	return `${message} Sections already written: ${landedPaths.join(", ")}.`;
 }
 
 export async function executeHashlineSingle(
 	options: ExecuteHashlineSingleOptions,
 ): Promise<AgentToolResult<EditToolDetails, typeof hashlineEditParamsSchema>> {
-	const patch = Patch.parse(options.input, { cwd: options.session.cwd });
-	if (patch.sections.length === 0) {
-		throw new Error("No hashline sections found in input.");
-	}
+	const session = options.session;
+	const editSession = new EditSession(getEditStore(session), buildHashlineEditPolicy(session));
+	try {
+		// DSH never streams tool arguments — `edit` hands over the parsed
+		// `{ input }` payload — so the no-delta path is always taken
+		// (upstream `edit/index.ts:474-478`). Consequently the session is built
+		// without an `onPreview` pump: nothing in `src/tools/edit`,
+		// `src/tools/omp/edit`, `read.ts` or `write.ts` consumes preview batches
+		// (T1/Lead audit), and per `EditSession` the callback is optional. The
+		// three lifecycle calls that *do* matter for apply semantics are kept
+		// verbatim: `setArgsJson` → `finish` → `apply` → `close` in `finally`.
+		editSession.setArgsJson(JSON.stringify({ input: options.input } satisfies HashlineParams));
+		editSession.finish();
 
-	const fs = new HashlineFilesystem({
-		session: options.session,
-		writethrough: options.writethrough,
-		signal: options.signal,
-	});
-	const snapshots = getFileSnapshotStore(options.session);
-	const enforceSeenLines = options.session.settings.get("edit.enforceSeenLines");
-	const patcher = new Patcher({ fs, snapshots, blockResolver: nativeBlockResolver, enforceSeenLines });
+		const writer = createHashlineWriter({
+			session,
+			writethrough: options.writethrough,
+			signal: options.signal,
+		});
+		const outcome = await editSession.apply({ lspFlush: false }, writer);
 
-	// Named registers persist across edit calls; the anonymous register is
-	// batch-local. Each batch starts without anonymous state and publishes
-	// named registers only after writes land.
-	const sessionClipboard = getEditClipboard(options.session);
-	const clipboard = startClipboardBatch(sessionClipboard);
-
-	// Single-section fast path: prepare, commit, render.
-	const inputHash = hashPatchInput(options.input);
-	if (patch.sections.length === 1) {
-		const prepared = await patcher.prepare(patch.sections[0], clipboard);
-		const sectionResult = await patcher.commit(prepared);
-		commitClipboard(clipboard, sessionClipboard);
-		if (sectionResult.op === "noop") {
-			const { count, escalate } = recordNoopEdit(options.session, sectionResult.canonicalPath, inputHash);
-			if (escalate) {
-				throw new ToolError(noChangeLoopDiagnostic(sectionResult.path, count));
-			}
-			return renderSection(sectionResult, prepared.section.path).toolResult;
+		if (outcome.isError) {
+			// `apply` "never rejects for engine failures: those come back as
+			// isError outcomes carrying the model-facing message"
+			// (`EditSession.apply`, pi-natives index.d.ts:113-119). That covers
+			// tag/anchor mismatches, unseen anchor lines, missing files, the
+			// escalated no-op message, *and* a writer refusal (a guard throwing
+			// inside the callback is converted to `isError` with the writer's own
+			// message, verified against the native engine). DSH's edit tool is
+			// throw-based and its per-file detail shape carries
+			// `displayErrorText` sourced from `MismatchError.displayMessage`, so
+			// re-raise the native text as that class — the model still sees the
+			// teaching message verbatim, plus the landed-sections breadcrumb when
+			// part of a multi-section payload is already on disk.
+			throw new MismatchError(withLandedSections(outcome.text, writer.landedPaths));
 		}
-		resetNoopEdit(options.session, sectionResult.canonicalPath);
-		return renderSection(sectionResult, prepared.section.path).toolResult;
-	}
 
-	// Multi-section: prepare every section up front so we fail fast before
-	// any write hits the filesystem. One batch-local register spans the batch,
-	// so `CUT` in one section feeds a register-backed `PUT` in a later one.
-	const prepared: PreparedSection[] = [];
-	// Register state after each section's prepare. Commits are non-atomic: a
-	// mid-batch write failure leaves earlier sections on disk, so the session
-	// register must reflect exactly the landed prefix — content a landed CUT
-	// deleted would otherwise be lost.
-	const sectionStates: Clipboard[] = [];
-	for (const section of patch.sections) {
-		prepared.push(await patcher.prepare(section, clipboard));
-		sectionStates.push(forkClipboard(clipboard));
+		return renderOutcome(outcome);
+	} finally {
+		// The session holds only this call's stream buffer; the store (and with
+		// it the no-op counter and clipboard) stays on the session.
+		editSession.close();
 	}
-	assertUniqueCanonicalPaths(prepared);
-	for (const entry of prepared) {
-		if (entry.isNoop) {
-			const { count, escalate } = recordNoopEdit(options.session, entry.canonicalPath, inputHash);
-			throw escalate
-				? new ToolError(noChangeLoopDiagnostic(entry.section.path, count))
-				: new ToolError(noChangeDiagnostic(entry.section.path));
-		}
-	}
-	// Then commit each one. A no-op apply mid-batch is treated as a hard
-	// failure — the model authored anchors that match the current file content.
-	const rendered: RenderedSection[] = [];
-	for (let i = 0; i < prepared.length; i++) {
-		const sectionResult = await patcher.commit(prepared[i]);
-		commitClipboard(sectionStates[i], sessionClipboard);
-		if (sectionResult.op === "noop") {
-			const { count, escalate } = recordNoopEdit(options.session, sectionResult.canonicalPath, inputHash);
-			throw escalate
-				? new ToolError(noChangeLoopDiagnostic(sectionResult.path, count))
-				: new ToolError(noChangeDiagnostic(sectionResult.path));
-		}
-		resetNoopEdit(options.session, sectionResult.canonicalPath);
-		rendered.push(renderSection(sectionResult, prepared[i].section.path));
-	}
-	return {
-		content: [
-			{
-				type: "text",
-				text: rendered
-					.map(r => r.toolResult.content.map(part => (part.type === "text" ? part.text : "")).join("\n"))
-					.join("\n\n"),
-			},
-		],
-		details: pruneOversizedEditSnapshots({
-			diff: rendered.map(r => r.toolResult.details?.diff ?? "").join("\n"),
-			perFileResults: rendered.map(r => r.perFileResult),
-		}),
-	};
 }
 
-export { HashlineMismatchError, type HashlineParams, hashlineEditParamsSchema };
+export { MismatchError as HashlineMismatchError, type HashlineParams, hashlineEditParamsSchema };

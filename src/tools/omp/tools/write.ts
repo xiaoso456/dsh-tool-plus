@@ -304,7 +304,7 @@ function stripWriteContent(session: ToolSession, content: string): { text: strin
 function maybeWriteSnapshotHeader(session: ToolSession, absolutePath: string, content: string): string | undefined {
 	if (!resolveFileDisplayMode(session).hashLines) return undefined;
 	const normalized = normalizeToLF(content);
-	const tag = getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalized);
+	const tag = getFileSnapshotStore(session).recordSnapshot(canonicalSnapshotKey(absolutePath), normalized);
 	return formatHashlineHeader(formatPathRelativeToCwd(absolutePath, session.cwd), tag);
 }
 
@@ -750,7 +750,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 		await writethroughNoop(absolutePath, newContent, signal);
 		invalidateFsScanAfterWrite(absolutePath);
-		this.session.fileSnapshotStore?.invalidate(absolutePath);
+		this.session.editStore?.invalidate(absolutePath);
 		const history = this.session.conflictHistory;
 		history?.invalidate(entry.id);
 		if (history) {
@@ -928,7 +928,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 			await writethroughNoop(absolutePath, text, signal);
 			invalidateFsScanAfterWrite(absolutePath);
-			this.session.fileSnapshotStore?.invalidate(absolutePath);
+			this.session.editStore?.invalidate(absolutePath);
 			for (const entry of resolvedEntries) history.invalidate(entry.id);
 			for (const entry of staleEntries) history.invalidate(entry.id);
 			const header = maybeWriteSnapshotHeader(this.session, absolutePath, text);

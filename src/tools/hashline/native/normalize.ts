@@ -1,7 +1,16 @@
 /**
  * Minimal text-shape normalization: line-ending detection / round-trip and
- * BOM stripping. The patcher uses these to canonicalize text to LF before
+ * BOM stripping. The edit engines use these to canonicalize text to LF before
  * applying edits and to restore the original shape on write-back.
+ *
+ * Migration note: this is a **verbatim port** of the vendored
+ * `src/tools/hashline/engine/normalize.ts` (itself a verbatim port of the
+ * pre-18.0 TS engine). The Rust engine has no equivalent exports — it
+ * normalizes internally and never hands these primitives back to the host —
+ * but DSH's own edit paths (`omp/edit/normalize.ts`, which re-exports this
+ * module through the `@oh-my-pi/hashline` alias, plus `read`/`write`/`grep`
+ * snapshot recording) still need them. Kept here so the single hashline seam
+ * keeps its old export surface after the engine directory was deleted.
  */
 
 export type LineEnding = "\r\n" | "\n";

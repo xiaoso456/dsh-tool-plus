@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "paths": {
       "bun:sqlite": ["./src/tools/shared/bun-sqlite-shim.ts"],
-      "@oh-my-pi/hashline": ["./src/tools/hashline/engine/index.ts"]
+      "@oh-my-pi/hashline": ["./src/tools/hashline/native/index.ts"]
     },
     "lib": ["esnext", "dom"],
     "types": ["node"],

@@ -44,7 +44,9 @@ import { resolveSandboxPolicy } from '../../shared/sandbox-policy.ts'
 import patchMd from './prompts/tools/patch.md' with { type: 'text' }
 import applyPatchMd from './prompts/tools/apply-patch.md' with { type: 'text' }
 import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
-import hashlinePromptMd from '../../hashline/engine/prompt.md' with { type: 'text' }
+// hashline 的描述与上游 Rust 引擎同源：native `editDescription('hashline')` 与
+// 原 `hashline/engine/prompt.md` 逐字节相同（CRLF 归一后），因此不再 vendored md。
+import { editDescription } from '../../hashline/native/index.ts'
 
 /**
  * S-14c：patch.md 是 OMP JSON patch 入口的 verbatim 提示词，其 <parameters>
@@ -68,12 +70,12 @@ function rewritePatchParametersForSchema(description: string): string {
     ].join('\n'),
   )
 }
-/** OMP 原版按模式渲染的 edit 描述（prompts/tools/*.md verbatim + hashline 引擎 prompt.md）。 */
+/** OMP 原版按模式渲染的 edit 描述（prompts/tools/*.md verbatim + native hashline 描述）。 */
 export const EDIT_MODE_DESCRIPTIONS = {
   replace: renderOmpPrompt(sanitizeReplacePrompt(replaceMd), {}),
   patch: rewritePatchParametersForSchema(renderOmpPrompt(sanitizePatchPrompt(patchMd), {})),
   apply_patch: renderOmpPrompt(sanitizeApplyPatchPrompt(applyPatchMd), {}),
-  hashline: renderOmpPrompt(sanitizeHashlinePrompt(hashlinePromptMd), {}),
+  hashline: renderOmpPrompt(sanitizeHashlinePrompt(editDescription('hashline')), {}),
 } as const
 
 /** Build the OMP ToolSession facade over a DSH exec context. */

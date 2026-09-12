@@ -1,8 +1,9 @@
 /**
  * OMP 引擎 session 级状态（跨工具调用保持）。
  *
- * OMP 的 read/write/edit 引擎把冲突注册表（ConflictHistory）、hashline 快照
- * 等挂在 ToolSession 对象上，同一 agent 会话内跨工具调用共享。DSH 适配层
+ * OMP 的 read/write/edit 引擎把冲突注册表（ConflictHistory）、native 编辑存储
+ * （EditStore：hashline 快照 / 寄存器 / no-op 守卫）等挂在 ToolSession 对象上，
+ * 同一 agent 会话内跨工具调用共享。DSH 适配层
  * 每次 execute 都新建 ToolSession，导致这些状态丢失（T11-2：read 注册的
  * 冲突 id 在 write 时找不到）。本模块按 DSH Session 对象
  * （exec.agent.session）持久化这些状态：WeakMap 键控，session 销毁自动
@@ -22,10 +23,11 @@ export interface OmpSessionState {
   /** 冲突注册表（read 注册 / write 消费）。 */
   conflictHistory?: unknown
   /**
-   * hashline 快照存储（read 锚点 / edit seen-lines 校验 / 锚点漂移恢复；
-   * A-4 桥接，与 conflictHistory 对称：attach/persist round-trip）。
+   * native 编辑存储 `EditStore`（read 锚点 / edit seen-lines 校验 / 锚点漂移恢复 /
+   * CUT-PUT 寄存器 / no-op 循环守卫；A-4 桥接，与 conflictHistory 对称：
+   * attach/persist round-trip）。
    */
-  fileSnapshotStore?: unknown
+  editStore?: unknown
 }
 
 const states = new WeakMap<object, OmpSessionState>()
@@ -45,27 +47,27 @@ export function getOmpSessionState(sessionKey: object): OmpSessionState {
  * 无 sessionKey（无会话上下文）时跳过——状态不跨调用保持。
  */
 export function attachOmpSessionState(
-  session: { conflictHistory?: unknown; fileSnapshotStore?: unknown },
+  session: { conflictHistory?: unknown; editStore?: unknown },
   sessionKey: object | undefined,
 ): void {
   if (!sessionKey) return
   const state = getOmpSessionState(sessionKey)
   if (state.conflictHistory) session.conflictHistory = state.conflictHistory
-  if (state.fileSnapshotStore) session.fileSnapshotStore = state.fileSnapshotStore
+  if (state.editStore) session.editStore = state.editStore
 }
 
 /**
  * 把 ToolSession 上引擎新建/更新的状态写回共享存储（execute 结束后调用）。
- * OMP 引擎会惰性新建 ConflictHistory / fileSnapshotStore 并赋到 session
+ * OMP 引擎会惰性新建 ConflictHistory / EditStore 并赋到 session
  * 对象上（如 read.ts 经 getFileSnapshotStore 挂快照库），必须回写才能被
  * 下一次调用恢复。
  */
 export function persistOmpSessionState(
   sessionKey: object | undefined,
-  session: { conflictHistory?: unknown; fileSnapshotStore?: unknown },
+  session: { conflictHistory?: unknown; editStore?: unknown },
 ): void {
   if (!sessionKey) return
   const state = getOmpSessionState(sessionKey)
   if (session.conflictHistory) state.conflictHistory = session.conflictHistory
-  if (session.fileSnapshotStore) state.fileSnapshotStore = session.fileSnapshotStore
+  if (session.editStore) state.editStore = session.editStore
 }

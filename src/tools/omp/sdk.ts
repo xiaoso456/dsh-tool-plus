@@ -4,7 +4,7 @@
  *
  * Shared superset: read/write/grep/glob adapter copies declared the members
  * their engine touches; this shared copy keeps the union (read's
- * conflict-history, grep/glob's `getSessionSpawns`, edit's `noopLoopGuard`).
+ * conflict-history, grep/glob's `getSessionSpawns`, the native edit store).
  * DSH provides a session adapter implementing this interface.
  */
 import type { Settings } from './config/settings.ts'
@@ -47,10 +47,13 @@ export interface ToolSession {
    * a model-facing metadata text when absent.
    */
   imageBridge?: () => import('../shared/image-bridge.ts').ImageBridge | undefined
-  /** Clipboard state carried on the session (hashline clipboard). */
-  editClipboard?: Record<string, unknown>
-  /** Hashline snapshot store (created lazily by the engine). */
-  fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
+  /**
+   * Native edit store (created lazily by the engine): the hashline snapshot
+   * ring, the `CUT`/`PUT` clipboard registers and the no-op loop guard. Shared
+   * by read / search / write / edit through `file-snapshot-store.ts`, and
+   * round-tripped across tool calls by `shared/session-state.ts`.
+   */
+  editStore?: import('../hashline/native/index.ts').EditStore
   /** Plan-mode state (DSH plan is a hint layer — never enabled). */
   getPlanModeState?: () => { enabled: boolean; planFilePath: string } | undefined
   /** Plan reference path (DSH: none). */
@@ -63,8 +66,6 @@ export interface ToolSession {
   getSessionId?: () => string | null
   /** Session spawn policy (DSH: none — engines fall back to `"*"`). */
   getSessionSpawns?: () => string | boolean | null | undefined
-  /** Hashline no-op loop guard state (edit engine; created lazily). */
-  noopLoopGuard?: import('./edit/hashline/noop-loop-guard.ts').NoopLoopGuard
   /** Fetch implementation for URL reads (DSH: global fetch). */
   fetch?: typeof globalThis.fetch
   /** Tool-choice queue (resolution devices; DSH: none). */

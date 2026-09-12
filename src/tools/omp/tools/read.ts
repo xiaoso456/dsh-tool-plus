@@ -1309,7 +1309,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						// full file and any anchor validates while the file is unchanged.
 						const isWholeFile = offset === undefined && limit === undefined && !wasTruncated;
 						const tag = isWholeFile
-							? getFileSnapshotStore(this.session).record(
+							? getFileSnapshotStore(this.session).recordSnapshot(
 									canonicalSnapshotKey(absolutePath),
 									normalizeToLF(`${collectedLines.join("\n")}${hasTrailingNewline ? "\n" : ""}`),
 								)

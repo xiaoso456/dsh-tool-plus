@@ -3,8 +3,8 @@
  * engine consumes.
  *
  * ast_edit reuses the read engine's tool-scope resolver (`resolveToolSearchScope`
- * from `src/tools/read/adapter/omp/path-utils.ts`) and the hashline snapshot
- * store (`getFileSnapshotStore` from `src/tools/edit/adapter/omp/`), so this
+ * from `src/tools/read/adapter/omp/path-utils.ts`) and the native edit store
+ * (`getFileSnapshotStore` from `src/tools/omp/edit/file-snapshot-store.ts`), so this
  * session facade only declares the members those engines actually touch. DSH
  * supplies the session adapter (`src/tools/ast-edit/adapter/index.ts`); the
  * resolve/apply queue, local:// router, skills, and snapshot store are DSH-side
@@ -39,8 +39,8 @@ export interface ToolSession {
   getActiveModelString?: () => string | undefined
   /** Active model object (optional in DSH). */
   getActiveModel?: () => Model | undefined
-  /** Hashline snapshot store (created lazily by the engine). */
-  fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
+  /** Native edit store (created lazily by the engine; hashline snapshots). */
+  editStore?: import('../../hashline/native/index.ts').EditStore
   /** Local protocol options (DSH has no local:// sandbox — optional). */
   localProtocolOptions?: import('../../omp/internal-urls/index.ts').LocalProtocolOptions
   /** Pre-loaded skills (DSH: none). */

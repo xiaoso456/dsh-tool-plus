@@ -337,7 +337,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 					const absolutePath = path.resolve(this.session.cwd, relativePath);
 					try {
 						const fullText = normalizeToLF(await Bun.file(absolutePath).text());
-						const tag = snapshotStore.record(canonicalSnapshotKey(absolutePath), fullText);
+						const tag = snapshotStore.recordSnapshot(canonicalSnapshotKey(absolutePath), fullText);
 						hashContexts.set(relativePath, { tag });
 					} catch {
 						// Best-effort: if a file disappears between ast-edit and rendering, emit plain line output.
@@ -454,7 +454,7 @@ export class AstEditTool implements AgentTool<typeof astEditSchema, AstEditToolD
 								const appliedAbsolutePath = path.resolve(this.session.cwd, relativePath);
 								try {
 									const fullText = normalizeToLF(await Bun.file(appliedAbsolutePath).text());
-									const freshTag = snapshotStore.record(canonicalSnapshotKey(appliedAbsolutePath), fullText);
+									const freshTag = snapshotStore.recordSnapshot(canonicalSnapshotKey(appliedAbsolutePath), fullText);
 									freshTagLines.push(formatHashlineHeader(relativePath, freshTag));
 								} catch {
 									// File disappeared between apply and re-read; skip its tag.

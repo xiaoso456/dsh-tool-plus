@@ -4,9 +4,9 @@
  *
  * ast_grep is a read-only AST search tool. It reuses the read engine's tool
  * scope resolver (`resolveToolSearchScope` from
- * `src/tools/read/adapter/omp/path-utils.ts`), the hashline snapshot store
+ * `src/tools/read/adapter/omp/path-utils.ts`), the native edit store
  * (`recordFileSnapshot`/`recordSeenLinesFromBody` from
- * `src/tools/edit/adapter/omp/file-snapshot-store.ts`), and the display-mode
+ * `src/tools/omp/edit/file-snapshot-store.ts`), and the display-mode
  * resolver (`resolveFileDisplayMode`), so this session facade declares exactly
  * those members. DSH supplies the session adapter
  * (`src/tools/ast-grep/adapter/index.ts`); the local:// router, skills, and
@@ -34,8 +34,8 @@ export interface ToolSession {
   getActiveModelString?: () => string | undefined
   /** Active model object (optional in DSH). */
   getActiveModel?: () => Model | undefined
-  /** Hashline snapshot store (created lazily by the engine). */
-  fileSnapshotStore?: import('@oh-my-pi/hashline').InMemorySnapshotStore
+  /** Native edit store (created lazily by the engine; hashline snapshots). */
+  editStore?: import('../../hashline/native/index.ts').EditStore
   /** Local protocol options (DSH has no local:// sandbox — optional). */
   localProtocolOptions?: import('../../omp/internal-urls/index.ts').LocalProtocolOptions
   /** Pre-loaded skills (DSH: none). */

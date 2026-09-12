@@ -7,9 +7,15 @@ Scope of ported upstream code:
 
 - from **oh-my-pi** (MIT, notice below): the tool suite sources under
   `src/tools/` (bash runtime, read, write, edit, grep, glob, plus the OMP
-  `omp/` engine sources they wrap), and the hashline patch engine fused
-  in-repo at `src/tools/hashline/engine/` (upstream `packages/hashline`,
-  with small Node-runtime adaptations).
+  `omp/` engine sources they wrap), and the thin hashline adapter at
+  `src/tools/hashline/native/` (`diff-preview.ts` is a verbatim port of the
+  former upstream TypeScript engine). The hashline engine itself is no longer
+  vendored: since oh-my-pi 18.x it lives in Rust (`crates/pi-edit`) and reaches
+  this plugin through the `@oh-my-pi/pi-natives` dependency, which ships
+  upstream's compiled binary.
+- upstream hashline **test fixtures** vendored for regression testing under
+  `src/tools/hashline/test/fixtures/` (copied from
+  `crates/pi-edit/tests/fixtures/hashline/`), MIT, same notice below.
 
 ---
 

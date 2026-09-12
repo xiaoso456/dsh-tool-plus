@@ -64,7 +64,7 @@ export async function executeWriteTool(exec: any, cfg: RuntimeConfig, args: any)
     { path: String(args.path ?? ''), content: String(args.content ?? '') },
     exec.signal,
   )
-  // 引擎可能惰性新建了 ConflictHistory / fileSnapshotStore 等状态，写回共享
+  // 引擎可能惰性新建了 ConflictHistory / EditStore 等状态，写回共享
   // 存储供下次调用恢复（T11-2 / A-4：快照库随会话跨调用保持，write.ts 会
   // 对其 invalidate）。
   persistOmpSessionState(exec?.agent?.session, session)

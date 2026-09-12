@@ -20,9 +20,9 @@
  *     against refs.
  */
 
-import { MismatchError as HashlineMismatchError } from "@oh-my-pi/hashline";
 import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { isEnoent, isEnotdir } from "@oh-my-pi/pi-utils";
+import { MismatchError as HashlineMismatchError } from "../../hashline/native/index.ts";
 import type { ToolSession } from "../tools/index.ts";
 import { findUniqueWorkspaceSuffix, isInternalUrlPath } from "../tools/path-utils.ts";
 import { resolvePlanPath } from "../../edit/adapter/tools/plan-mode-guard.ts";
@@ -121,6 +121,14 @@ export async function executeApplyPatchPerFile(
 			if (text) contentTexts.push(text);
 		} catch (err) {
 			const errorText = err instanceof Error ? err.message : String(err);
+			// Native (Rust) hashline no longer throws a dedicated mismatch class:
+			// `EditSession.apply` reports every rejection as `isError: true` plus the
+			// model-facing text, and `executeHashlineSingle` re-raises that text as
+			// `MismatchError` (see `hashline/native/index.ts`). `message` and
+			// `displayMessage` are therefore the same string; the branch is kept so a
+			// multi-file aggregation still prefers the display form the renderer
+			// documents (`details.ts`), exactly as it did for the old engine's
+			// structured `MismatchError`.
 			const displayErrorText = err instanceof HashlineMismatchError ? err.displayMessage : undefined;
 			perFileResults.push({ path, diff: "", isError: true, errorText, displayErrorText });
 			contentTexts.push(`Error editing ${path}: ${errorText}`);

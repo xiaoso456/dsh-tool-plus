@@ -29,6 +29,8 @@ import {
   sanitizeHashlinePrompt,
   type OmpPromptVars,
 } from '../../src/tools/shared/omp-prompt.ts'
+// hashline 引擎已改为引用 native（上游 Rust 实现），描述不再有仓库内 md 源。
+import { editDescription } from '../../src/tools/hashline/native/index.ts'
 
 /** read.md 原文（与 adapter 相同的 verbatim md）。 */
 const readMd = readFileSync(
@@ -96,7 +98,6 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
     patch: 'src/tools/edit/adapter/prompts/tools/patch.md',
     'apply-patch': 'src/tools/edit/adapter/prompts/tools/apply-patch.md',
     replace: 'src/tools/edit/adapter/prompts/tools/replace.md',
-    hashline: 'src/tools/hashline/engine/prompt.md',
   }
 
   it('sanitize 精确匹配串仍存在于对应 md（上游 drift 静默失配报警）', () => {
@@ -111,7 +112,7 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
   })
 
   it('全 md 渲染后无 {{ 残留，且应剔除的 OMP 提法不出现', () => {
-    const cases: Array<{ md: string; sanitize: (t: string) => string; vars?: OmpPromptVars; forbidden: string[] }> = [
+    const cases: Array<{ md?: string; text?: string; sanitize: (t: string) => string; vars?: OmpPromptVars; forbidden: string[] }> = [
       { md: MD.read, sanitize: sanitizeReadPrompt, forbidden: ['{{', 'decoded inline', 'not browser'] },
       { md: MD.grep, sanitize: sanitizeGrepPrompt, forbidden: ['{{', 'files/internal URLs', 'scout'] },
       { md: MD.glob, sanitize: sanitizeGlobPrompt, forbidden: ['{{', 'memory://'] },
@@ -121,11 +122,13 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
       { md: MD.patch, sanitize: sanitizePatchPrompt, forbidden: ['{{'] },
       { md: MD['apply-patch'], sanitize: sanitizeApplyPatchPrompt, forbidden: ['{{'] },
       { md: MD.replace, sanitize: sanitizeReplacePrompt, forbidden: ['{{'] },
-      { md: MD.hashline, sanitize: sanitizeHashlinePrompt, forbidden: ['{{'] },
+      // hashline：源文本直接取 native `editDescription('hashline')`（与旧 md 逐字节相同，CRLF 归一后）。
+      { text: editDescription('hashline'), sanitize: sanitizeHashlinePrompt, forbidden: ['{{'] },
     ]
-    for (const { md, sanitize, vars, forbidden } of cases) {
-      const out = renderOmpPrompt(sanitize(load(md)), vars ?? {})
-      for (const f of forbidden) expect(out, `${md} 残留 "${f}"`).not.toContain(f)
+    for (const { md, text, sanitize, vars, forbidden } of cases) {
+      const label = md ?? '<native editDescription(hashline)>'
+      const out = renderOmpPrompt(sanitize(text ?? load(md ?? '')), vars ?? {})
+      for (const f of forbidden) expect(out, `${label} 残留 "${f}"`).not.toContain(f)
     }
   })
 

@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { notebookToEditableText } from "@oh-my-pi/pi-natives";
 import { isEnoent } from "@oh-my-pi/pi-utils";
 
 export type NotebookCellType = "code" | "markdown" | "raw";
@@ -26,17 +27,12 @@ const CELL_MARKER_RE = /^# %% \[(code|markdown|raw)\](?: cell:(\d+))?$/;
  * cell markers gain one extra `%` on render and lose it on parse, so a
  * notebook that *contains* the literal text `# %% [markdown] cell:3` survives
  * the editable-text round trip instead of being split into extra cells.
+ *
+ * Only the *unescape* half lives here. Rendering is the engine's own codec
+ * (`readEditableNotebookText` → `pi-natives`), so its escape half went with
+ * the TS renderer that used to duplicate it.
  */
-const ESCAPABLE_MARKER_RE = /^# %%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
 const ESCAPED_MARKER_RE = /^# %%%+ \[(?:code|markdown|raw)\](?: cell:\d+)?$/;
-
-function escapeMarkerLikeSourceLines(source: string): string {
-	if (!source.includes("# %%")) return source;
-	return source
-		.split("\n")
-		.map(line => (ESCAPABLE_MARKER_RE.test(line) ? line.replace("# %", "# %%") : line))
-		.join("\n");
-}
 
 function unescapeMarkerLikeLine(line: string): string {
 	return ESCAPED_MARKER_RE.test(line) ? line.replace("# %%", "# %") : line;
@@ -52,12 +48,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCellType(value: unknown): value is NotebookCellType {
 	return value === "code" || value === "markdown" || value === "raw";
-}
-
-function sourceToText(source: string | string[] | undefined): string {
-	if (source === undefined) return "";
-	if (typeof source === "string") return source;
-	return source.join("");
 }
 
 export function splitNotebookSource(content: string): string[] {
@@ -109,23 +99,21 @@ function validateNotebook(value: unknown, displayPath: string): NotebookDocument
 
 export async function readNotebookDocument(absolutePath: string, displayPath: string): Promise<NotebookDocument> {
 	try {
-		return validateNotebook(await Bun.file(absolutePath).json(), displayPath);
+		// Strip a leading UTF-8 BOM before parsing, matching the native engine
+		// (`crates/pi-edit/src/notebook.rs::notebook_to_editable_text` drops
+		// `\u{feff}` first). This is an alignment with the 18.x Rust engine, not a
+		// regression fix: v17.3.5's upstream `edit/notebook.ts` was byte-identical
+		// to the code below (`Bun.file(...).json()` with no BOM handling), so the
+		// old TS engine could not read a BOM-prefixed notebook either. Without
+		// this, `JSON.parse` rejects U+FEFF and the read leg throws
+		// `Invalid JSON in notebook` for a file the engine edits happily.
+		const text = (await Bun.file(absolutePath).text()).replace(/^\uFEFF/, "");
+		return validateNotebook(JSON.parse(text), displayPath);
 	} catch (error) {
 		if (isEnoent(error)) throw new Error(`File not found: ${displayPath}`);
 		if (error instanceof SyntaxError) throw new Error(`Invalid JSON in notebook: ${displayPath}`);
 		throw error;
 	}
-}
-
-export function notebookToEditableText(notebook: NotebookDocument): string {
-	return notebook.cells
-		.map((cell, index) => {
-			const source = escapeMarkerLikeSourceLines(sourceToText(cell.source));
-			return source.length > 0
-				? `# %% [${cell.cell_type}] cell:${index}\n${source}`
-				: `# %% [${cell.cell_type}] cell:${index}`;
-		})
-		.join("\n");
 }
 
 interface ParsedVirtualCell {
@@ -218,8 +206,43 @@ export function applyNotebookEditableText(
 	return nextNotebook;
 }
 
+/**
+ * Decode a notebook for display and for hashline anchoring.
+ *
+ * The decode is the **engine's own codec** — `pi-natives`
+ * `notebookToEditableText`, the same call upstream's read tool makes
+ * (`refs/oh-my-pi/packages/coding-agent/src/tools/read.ts:1599`) — not a
+ * second TS implementation. That matters beyond tidiness: `read` mints the
+ * hashline tag over this projection and the edit engine validates the live
+ * file by projecting it the same way (`crates/pi-edit/src/files.rs:138-142`),
+ * so once both sides run the same code their agreement is structural. A
+ * hand-maintained copy can only *resemble* the engine, and the first
+ * divergence (BOM handling, cell escaping, cell join) silently turns every
+ * edit into "file changed between read and edit".
+ *
+ * Error text is identical to the previous TS decoder, verified over the whole
+ * corpus including BOM and every failure shape: the Rust `NotebookError`
+ * `Display` strings are verbatim ports. Only ENOENT is ours, because the read
+ * has to happen here to keep the `File not found: <display>` message the
+ * `read` tool and the patch/replace modes rely on.
+ *
+ * What stays in this file is the **encode** half (`readNotebookDocument` +
+ * `applyNotebookEditableText` + `serializeEditedNotebookText`), which
+ * `native/writer.ts` no longer uses — the engine serializes notebooks itself
+ * for the hashline path. It survives only because the native surface exposes
+ * no encoder and DSH's own patch/replace/write paths still need one; deleting
+ * it means migrating those modes onto the Rust engine (the same move this
+ * migration made for hashline), which is the remaining half of the work.
+ */
 export async function readEditableNotebookText(absolutePath: string, displayPath: string): Promise<string> {
-	return notebookToEditableText(await readNotebookDocument(absolutePath, displayPath));
+	let json: string;
+	try {
+		json = await Bun.file(absolutePath).text();
+	} catch (error) {
+		if (isEnoent(error)) throw new Error(`File not found: ${displayPath}`);
+		throw error;
+	}
+	return notebookToEditableText(json, displayPath);
 }
 
 export async function serializeEditedNotebookText(

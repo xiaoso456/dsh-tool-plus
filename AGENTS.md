@@ -45,6 +45,8 @@ gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 
 ## 改动守则
 
-- `refs/oh-my-pi/` 是干净的上游对照克隆，只读不动；`src/tools/hashline/engine/` 与 `_raw_omp/` 的逐字文件审计以 refs 为基准
+- `refs/oh-my-pi/` 是干净的上游对照克隆，只读不动；当前 HEAD 已升至 `v18.1.17`（旧基线 `v17.3.5` tag 保留可回溯）。**hashline 不再 vendored**：上游 18.x 删除 TS `packages/hashline`、把编辑引擎重写为 Rust `crates/pi-edit`（经 `@oh-my-pi/pi-natives` 暴露），我们只保留薄适配层 `src/tools/hashline/native/`（`diff-preview.ts` 为旧 TS 逐字移植）；`_raw_omp/` 等其余移植件的逐字审计基准是 `v17.3.5` tag，其余工具按 refs 当前 HEAD 对照
+- **引擎拥有序列化，宿主只落字节**：`EditWriteRequest.content` 已是最终字节序列（notebook 的 nbformat JSON 由 Rust `files.rs::persist` 生成），`native/writer.ts` 必须逐字落盘；**不要**在写盘腿上再调 `serializeEditFileText`（那是旧 TS 引擎的契约，会把引擎的 JSON 当可编辑文本再解析，导致每次 `.ipynb` 编辑报 `Invalid notebook editable representation`）
+- **notebook 只留一套解码器**：解码走引擎自身——`omp/edit/notebook.ts::readEditableNotebookText` 委托 `pi-natives` 的 `notebookToEditableText`（上游 `tools/read.ts` 同款调用）。read 用它铸 hashline tag、引擎用它校验活文件，两边**同一份代码**，一致性是结构性的而非手工维护的；**不要**再写第二套渲染器（曾经的 TS 渲染器已删）。编码半（`readNotebookDocument` / `applyNotebookEditableText` / `serializeEditedNotebookText`）仍留在 TS，因为 native 未导出编码器、而 DSH 自有的 patch/replace/write 三条路径还需要它——把这三条也迁到 Rust 引擎后即可整体删除
 - pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删
 - 改动源码后必须跑完第 2 步验证链再交付
