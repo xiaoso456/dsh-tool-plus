@@ -71,7 +71,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsdown -c tsdown.config.ts && node scripts/copy-assets.mjs",
+    "build": "tsdown -c tsdown.config.ts && tsc -p tsconfig.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "presets:install": "node presets/install-presets.mjs",
