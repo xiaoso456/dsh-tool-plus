@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7-beta.1] - 2026-09-12
+
+> beta 预发布：供试用与验证，**不推 `latest`**（`npm dist-tag` 为 `beta`）。
+
+### Fixed
+
+- 发布物补上 TypeScript 声明文件。`build` 原本先跑 `tsc`（`emitDeclarationOnly` → `lib/types`）再跑 `tsdown`，而 `tsdown.config.ts` 的 outDir 是 `lib` 且 `clean: true`（用于清陈旧 chunk），会整体清空 `lib/` —— 声明文件在打包前就被删掉，而 `types` / `exports[*].types` 仍指向 `lib/types/**`。0.1.7-beta.0 及更早的发布物一个 `.d.ts` 都没带，TS 使用者报 `TS7016: Could not find a declaration file`。现顺序改为 `tsdown && tsc && copy-assets`，并加 `tests/unit/packaging-artifacts.spec.ts` 守住「每条被广告的声明路径都必须存在、声明图内的相对引用必须可解析」
+- 修复 hashline 模式下 `write` 的前缀清理判断：`stripWriteContentWithPotentialLooseHeader` 用**数组身份**比较（`cleaned !== lines`）判断是否剥掉了前缀，而 `stripHashlinePrefixes` 走 pi-natives、跨边界必然返回新数组 —— 判断恒真。后果有二：① `stripped` 恒为 true，每次写盘都报 `auto-stripped hashline display prefixes`（哪怕什么都没剥，误导模型以为内容被改过）；② 提前 return 让「松散 header 兜底」成为死代码，畸形/legacy 头（`[h#1]`、`[a.ts#]`、6 位或非 hex tag）会被**原样写进文件**（连 `[path#tag]` 头行和 `1:` 行号前缀一起），而上游会清理成裸内容。现恢复上游实现（两处文本比较，与上游逐字一致），新增 `tests/unit/write-hashline-prefix-strip.spec.ts`（6 用例，真实链路；未修前 1/6 通过）
+
+[对比 0.1.7-beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.7-beta.0...tool-plus-v0.1.7-beta.1)
+
 ## [0.1.7-beta.0] - 2026-09-12
 
 > beta 预发布：供试用与验证，**不推 `latest`**（`npm dist-tag` 为 `beta`）。
