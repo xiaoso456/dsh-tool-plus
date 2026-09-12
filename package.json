@@ -1,7 +1,7 @@
 {
   "name": "@xiaoso/dsh-tool-plus",
   "description": "Oh My Pi bash runtime ported as a deepseek-harness tool plugin: persistent shell session, output minimizer, managed background jobs, command interception",
-  "version": "0.1.6",
+  "version": "0.1.7-beta.0",
   "license": "MIT",
   "keywords": [
     "deepseek-harness",
@@ -98,6 +98,8 @@
     "sharp": ">=0.33"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-brand": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-invariants": "0.1.5-rc.1",
     "@deepseek-ai/schemastery": "3.18.2",
     "@oh-my-pi/omptype": "18.1.17",
     "@oh-my-pi/pi-agent-core": "18.1.17",
@@ -109,9 +111,7 @@
     "json5": "^2.2.3",
     "puppeteer-core": "^25.3.0",
     "trash": "^10.1.1",
-    "yaml": "^2.9.0",
-    "@deepseek-ai/dsh-brand": "0.1.5-rc.1",
-    "@deepseek-ai/dsh-invariants": "0.1.5-rc.1"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7-beta.0] - 2026-09-12
+
+> beta 预发布：供试用与验证，**不推 `latest`**（`npm dist-tag` 为 `beta`）。
+
+### Added
+
+- hashline 回归测试四件套：`native-writer`（写盘回调三分支 + 守卫 + 错误路径）、`native-partial-write`（部分落盘诊断）、`notebook-hashline`（`.ipynb` 读→编辑→二次编辑）、`native-adapter-surface`（适配层 30/30 运行时导出全覆盖 + 上游夹具语料 226 次调用，101 条不可达逐条登记）
+
+### Changed
+
+- **hashline 引擎不再 vendored**：上游 18.x 删除 TS `packages/hashline`、把编辑引擎重写为 Rust `crates/pi-edit`。我们删除旧 TS 引擎（21 文件 / 7245 行），改由 `src/tools/hashline/native/` 薄适配层驱动 `@oh-my-pi/pi-natives` 的 Rust 引擎（`EditStore` / `EditSession` / `EditPolicy` / 写盘回调）；`@oh-my-pi/hashline` alias 重指到适配层；12 个测试文件迁移到 native harness，并把上游 226 例夹具纳入回归
+- `@oh-my-pi/*` 依赖锁步升级 17.3.5 → 18.1.17（pi-natives 兼容补丁同步更新，补丁与 postinstall 两条轨道都保留）；`THIRD_PARTY_NOTICES.md` 同步（hashline 不再 vendored，新增夹具来源声明）
+- notebook 解码改用引擎自身 codec（`pi-natives` 的 `notebookToEditableText`）：read 铸的 tag 与引擎校验活文件跑**同一份代码**，一致性由结构保证，删除第二套 TS 渲染器。**良构 notebook 逐字节等价；畸形 notebook 的行为改为与引擎一致**（此前两边会分歧，分歧即"标签永远校验不过"），已知收窄见下
+- presets：plan-mode 提示词与官方对齐
+
+### Fixed
+
+- 修复 hashline 编辑 `.ipynb` **必然失败**：引擎已把 notebook 序列化为 nbformat JSON 再交给宿主，写盘腿却又序列化一次，把 JSON 当可编辑文本解析 → 每次编辑报 `Invalid notebook editable representation`；现在逐字落引擎给的最终字节（对齐上游宿主）
+- 修复带 UTF-8 BOM 的 `.ipynb` 在 read 侧报 `Invalid JSON in notebook`（引擎本可正常编辑该文件）
+- 恢复多文件补丁部分落盘时的诊断：写盘通道拒绝第 2 个文件时，错误里重新带上 `Sections already written: a.ts.`，模型不再可能把整条补丁重发而重复应用
+- 修复 `Bun.which` 缺失导致的 `TypeError: Bun.which is not a function`（pi-utils `$which` 每次调用必抛，找不到命令时本应返回 `null`）；同时修 `Bun.hash` 忽略 `seed` 导致的缓存键塌缩
+
+### 已知收窄（畸形 notebook，均为"向引擎对齐"的副作用）
+
+- `source` 含非字符串元素时，引擎侧投影会静默丢弃这些元素（旧 TS 渲染器会拼成 `"a5"`、`[["a"]]` 会保留 `a`）——这类畸形 cell 在 read 中显示为空，但仍可正常编辑
+- 含孤立代理项（lone surrogate）的 notebook JSON：旧渲染器可读，新解码器（serde_json）拒绝并报 `Invalid JSON in notebook`
+- 编码半（`readNotebookDocument` / `serializeEditedNotebookText`，服务 patch/replace/write 三条 DSH 自有路径）仍走 V8 `JSON.parse`，严格度与解码腿不同；该半随后续模式迁到 Rust 引擎一并删除
+
+[对比 0.1.6](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.6...tool-plus-v0.1.7-beta.0)
+
 ## [0.1.6] - 2026-09-10
 
 ### Changed
