@@ -392,9 +392,20 @@ describe("hashline format v4", () => {
 
 				stream.push(json.slice(split));
 				const result = await stream.apply();
-				// The first delivered batch is the one where the body arrived:
-				// generation 1 had nothing to show instead of previewing a delete.
-				expect(stream.previews[0]?.generation).toBe(2);
+				// The held-back hunk must never reach the pump as a deletion: every
+				// delivered batch previews the replacement, none previews a removal.
+				//
+				// Deliberately NOT asserted: the *generation number* of the first
+				// delivered batch. Whether the pump wakes while the argument buffer is
+				// still partial is a wall-clock race — under a loaded parallel run it
+				// loses often enough to flake, and when it loses, generation 1 simply
+				// previews the completed body. Same observable content, different
+				// stamp, so the stamp was never the invariant this case is about.
+				expect(stream.previews.length).toBeGreaterThan(0);
+				for (const batch of stream.previews) {
+					expect(batch.files.map(file => file.path)).toEqual([REL]);
+					expect(batch.files[0]?.op).toBe("update");
+				}
 				expectSuccess(result);
 				expect(applied(result)).toBe("a\nREPLACED\nc");
 				expectFile(ws, REL, "a\nREPLACED\nc");
