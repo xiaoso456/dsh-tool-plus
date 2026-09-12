@@ -261,9 +261,10 @@ export interface WriteToolDetails {
  * line-number prefixes (for example legacy or malformed hashline echoes).
  */
 function stripWriteContentWithPotentialLooseHeader(lines: string[]): { text: string; stripped: boolean } {
-	const cleaned = stripHashlinePrefixes(lines);
-	if (cleaned !== lines) {
-		return { text: cleaned.join("\n"), stripped: true };
+	const originalText = lines.join("\n");
+	const cleanedText = stripHashlinePrefixes(lines).join("\n");
+	if (cleanedText !== originalText) {
+		return { text: cleanedText, stripped: true };
 	}
 
 	const headerIndex = lines.findIndex(line => line.trim().length > 0);
@@ -272,11 +273,12 @@ function stripWriteContentWithPotentialLooseHeader(lines: string[]): { text: str
 	}
 
 	const linesWithoutHeader = lines.slice(0, headerIndex).concat(lines.slice(headerIndex + 1));
-	const cleanedWithoutHeader = stripHashlinePrefixes(linesWithoutHeader);
-	if (cleanedWithoutHeader === linesWithoutHeader) {
-		return { text: lines.join("\n"), stripped: false };
+	const textWithoutHeader = linesWithoutHeader.join("\n");
+	const cleanedWithoutHeader = stripHashlinePrefixes(linesWithoutHeader).join("\n");
+	if (cleanedWithoutHeader === textWithoutHeader) {
+		return { text: originalText, stripped: false };
 	}
-	return { text: cleanedWithoutHeader.join("\n"), stripped: true };
+	return { text: cleanedWithoutHeader, stripped: true };
 }
 
 /**
