@@ -5,6 +5,37 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.7] - 2026-09-13
+
+> 正式版，发布在 `latest`。**与 `0.1.7-beta.1` 逐字节同码**——只多了版本号与本节说明，没有为新版本再动一行代码。
+> 自 `0.1.6` 起的完整清单见下方两个 beta 节，要点如下。
+
+### Changed
+
+- **hashline 引擎不再 vendored**：上游 18.x 删掉 TS `packages/hashline`、重写为 Rust `crates/pi-edit`。我们删除旧 TS 引擎（21 文件 / 7245 行），改由 `src/tools/hashline/native/` 薄适配层驱动 `@oh-my-pi/pi-natives` 18.1.17 的 Rust 引擎；`@oh-my-pi/*` 全家族锁步 17.3.5 → 18.1.17（pi-natives 兼容补丁与 postinstall 自愈两条轨道都保留）
+- notebook 解码统一走引擎自身 codec（`notebookToEditableText`）：read 铸的 tag 与引擎校验活文件跑**同一份代码**，删除第二套 TS 渲染器
+- presets：plan-mode 提示词与官方对齐
+
+### Fixed
+
+- 发布物补上 TypeScript 声明文件（`build` 顺序改为 `tsdown && tsc && copy-assets`；此前 `tsdown` 的 `clean` 会在打包前清掉 `lib/types`，TS 使用者报 `TS7016`）
+- hashline 模式下 `write` 的前缀清理判断对齐上游（数组身份比较 → 文本比较）：此前每次写盘都误报 `auto-stripped hashline display prefixes`，且畸形/legacy 头会被原样写进文件
+- hashline 编辑 `.ipynb` 必然失败（引擎已序列化，写盘腿又序列化一次）
+- 带 UTF-8 BOM 的 `.ipynb` 在 read 侧报 `Invalid JSON in notebook`
+- 多文件补丁部分落盘时重新带上 `Sections already written` 诊断
+- `Bun.which` 缺失、`Bun.hash` 忽略 `seed`
+
+### Added
+
+- hashline 回归测试四件套：`native-writer`、`native-partial-write`、`notebook-hashline`、`native-adapter-surface`（适配层 30/30 运行时导出 + 上游夹具 226 例）
+- `packaging-artifacts.spec.ts`（守住每条被广告的声明路径）与 `write-hashline-prefix-strip.spec.ts`（前缀清理 6 用例，修前 1/6 通过）
+
+### 已知收窄
+
+- 畸形 notebook（`source` 含非字符串元素、孤立代理项）行为改为与 Rust 引擎一致，详见 `0.1.7-beta.0` 节
+
+[对比 0.1.6](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.6...tool-plus-v0.1.7)
+
 ## [0.1.7-beta.1] - 2026-09-12
 
 > beta 预发布：供试用与验证，**不推 `latest`**（`npm dist-tag` 为 `beta`）。
