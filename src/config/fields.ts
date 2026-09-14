@@ -103,6 +103,8 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'rmSafe', kind: 'boolean', default: true, labelKey: 'rmSafe', hintKey: 'rmSafeHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },
+  // Web 工具卡片：本插件的浏览器行组件接管工具卡片（关掉回到官方行）。
+  { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'behavior', tool: 'bash' },
   // ---- Bash: timing & backgrounding -----------------------------------
   { name: 'autoBackgroundMs', kind: 'number', default: 60_000, labelKey: 'autoBackgroundMs', hintKey: 'autoBackgroundMsHint', group: 'timing', tool: 'bash' },
   { name: 'defaultTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'defaultTimeoutMs', hintKey: 'defaultTimeoutMsHint', group: 'timing', tool: 'bash' },

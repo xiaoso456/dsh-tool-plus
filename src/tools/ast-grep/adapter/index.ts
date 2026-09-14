@@ -25,6 +25,7 @@ import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from './sdk.ts'
 import { AstGrepTool } from '../../omp/tools/ast-grep.ts'
+import { searchMatchesCardMeta } from '../../../web/host/search.ts'
 import astGrepMd from '../../omp/prompts/tools/ast-grep.md' with { type: 'text' }
 
 export type { ToolSession } from './sdk.ts'
@@ -46,6 +47,43 @@ function toText(result: AgentToolResult<any>): string {
     throw new Error(text || 'ast_grep failed')
   }
   return text
+}
+
+/** DSH ast_grep 工具输出形状（output.schema 镜像）。 */
+export interface AstGrepToolOutput {
+  text: string
+  matchCount?: number
+  fileCount?: number
+  files?: string[]
+  scopePath?: string
+  truncated?: boolean
+  /** 引擎给渲染器的分组显示文本（与 grep 同构）。 */
+  displayContent?: string
+  /** 搜索时的会话 cwd：display 头里的相对路径按它还原成绝对路径。 */
+  cwd?: string
+}
+
+/**
+ * 把 OMP AgentToolResult 转成 DSH ast_grep 工具输出。
+ *
+ * 此前适配层只回 `{text}`，卡片拿不到任何结构化数据；现在把引擎的
+ * `displayContent`（分组显示文本）+ `files` + `matchCount` + `limitReached`
+ * 一并带出，供 `presentationMeta` 投影成 search 卡（§4.6）。isError 仍抛错，
+ * 报错文案不变。
+ */
+export function toAstGrepToolResult(result: AgentToolResult<any>): AstGrepToolOutput {
+  const text = toText(result)
+  const details = (result.details ?? {}) as Record<string, unknown>
+  return {
+    text,
+    ...(typeof details.matchCount === 'number' ? { matchCount: details.matchCount } : {}),
+    ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
+    ...(Array.isArray(details.files) ? { files: details.files.filter((entry): entry is string => typeof entry === 'string') } : {}),
+    ...(typeof details.scopePath === 'string' ? { scopePath: details.scopePath } : {}),
+    ...(details.limitReached === true || details.truncated === true ? { truncated: true } : {}),
+    ...(typeof details.displayContent === 'string' ? { displayContent: details.displayContent } : {}),
+    ...(typeof details.cwd === 'string' ? { cwd: details.cwd } : {}),
+  }
 }
 
 /**
@@ -73,9 +111,19 @@ export function registerAstGrep(ctx: Context, getConfig: () => RuntimeConfig): (
         additionalProperties: false,
         properties: {
           text: { type: 'string', required: true },
+          matchCount: { type: 'number' },
+          fileCount: { type: 'number' },
+          files: { type: 'array', items: { type: 'string' } },
+          scopePath: { type: 'string' },
+          truncated: { type: 'boolean' },
+          displayContent: { type: 'string' },
+          cwd: { type: 'string' },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
+      // 卡片 meta：与 grep 同一份解析器（§4.6）。解析不出分组或没有匹配 → 不产 meta
+      // （null，不能是 undefined：宿主对 undefined 判 non-lossless JSON 并改写成 isError）。
+      presentationMeta: (_args: any, value: any) => (searchMatchesCardMeta(value) as any) ?? null,
     },
     async execute(args: any, exec: any) {
       const session = createToolSession(exec, getConfig())
@@ -89,7 +137,7 @@ export function registerAstGrep(ctx: Context, getConfig: () => RuntimeConfig): (
         },
         exec.signal,
       )
-      return { text: toText(result) }
+      return toAstGrepToolResult(result)
     },
     presentCall: (args: any) => ({
       card: 'generic',

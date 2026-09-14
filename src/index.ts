@@ -27,6 +27,7 @@ import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
+import { bashCardMeta } from './web/host/bash.ts'
 import { installBunShim } from './tools/shared/bun-shim.ts'
 import { applyConfiguredTruncation } from './config/truncate.ts'
 import { cleanupSnapshots } from './tools/bash/shell-snapshot.ts'
@@ -180,6 +181,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         ],
       },
       render: (_args, value) => [{ type: 'text', text: value.kind === 'background' ? `Backgrounded as job ${value.jobId}; result will be delivered automatically when it finishes. Continue with other work — do not poll for it.` : renderBashResult(value) }],
+      // Card metadata for the plugin's own terminal row: the value already
+      // carries the run state, so nothing is read back or recomputed.
+      presentationMeta: (_args: unknown, value: unknown) => bashCardMeta(value),
     },
     async execute(args: BashToolArgs, exec) {
       validateBashArgs(args)

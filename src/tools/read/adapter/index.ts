@@ -23,6 +23,7 @@ import type { ToolSession } from '../../omp/sdk.ts'
 import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { ReadTool } from '../../omp/tools/read.ts'
 import type { AttachmentsService, ImageBridge, LlmRouteService, SavedImageRef } from '../../shared/image-bridge.ts'
+import { readCardMeta } from '../../../web/host/read.ts'
 import readMd from '../../omp/prompts/tools/read.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
@@ -90,6 +91,17 @@ export interface ReadToolOutput {
   truncated?: boolean
   /** 拍板#22：图片读取的附件提交结果（信封文本已并入 text，此字段供 UI/审计）。 */
   image?: SavedImageRef
+  /**
+   * 引擎给渲染器的无前缀窗口（read.ts 的 `details.displayContent`）：卡片
+   * meta 的唯一数据源，不含 hashline/行号前缀，供 gutter 自绘。
+   */
+  display?: { text: string; startLine: number; lineNumbers?: Array<number | null> }
+  /** 引擎的 source meta（`{type:'path'|'url'|'internal', value}`）——卡片取路径用。 */
+  source?: { type: string; value: string }
+  /** 目录列举读取（不出行号卡）。 */
+  isDirectory?: boolean
+  /** 结果里 text 块的个数（>1 说明是多目标/信封读取，不出行号卡）。 */
+  textBlocks?: number
 }
 
 /**
@@ -102,14 +114,31 @@ export function toReadToolResult(result: AgentToolResult<any>, args: any): ReadT
   const text = toText(result)
   const details = (result.details ?? {}) as Record<string, unknown>
   const notice = formatOutputNotice(details.meta as OutputMeta | undefined)
+  const source = (details.meta as OutputMeta | undefined)?.source
+  const display = asDisplayContent(details.displayContent)
   return {
     path: String(details.resolvedPath ?? args.path ?? ''),
     text,
+    textBlocks: result.content.filter(block => block.type === 'text').length,
     ...(notice ? { notice } : {}),
     ...(typeof details.totalLines === 'number' ? { totalLines: details.totalLines } : {}),
     ...(typeof details.truncation !== 'undefined' ? { truncated: true } : {}),
     ...(details.image !== undefined && typeof details.image === 'object' ? { image: details.image as SavedImageRef } : {}),
+    ...(display === undefined ? {} : { display }),
+    ...(source === undefined ? {} : { source: { type: String(source.type), value: String(source.value) } }),
+    ...(details.isDirectory === true ? { isDirectory: true } : {}),
   }
+}
+
+/** 校验并逐字带出引擎的 displayContent（形状不对就当没有，降级走通用行）。 */
+function asDisplayContent(raw: unknown): ReadToolOutput['display'] | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined
+  const display = raw as { text?: unknown; startLine?: unknown; lineNumbers?: unknown }
+  if (typeof display.text !== 'string' || typeof display.startLine !== 'number') return undefined
+  const lineNumbers = Array.isArray(display.lineNumbers)
+    ? display.lineNumbers as Array<number | null>
+    : undefined
+  return { text: display.text, startLine: display.startLine, ...(lineNumbers === undefined ? {} : { lineNumbers }) }
 }
 
 /** render：模型可见文本 = 工具文本 + session 层提示（OMP messages.ts 语义）。 */
@@ -156,6 +185,26 @@ export function registerRead(ctx: Context, getConfig: () => RuntimeConfig): () =
           truncated: { type: 'boolean' },
           totalLines: { type: 'number' },
           offset: { type: 'number' },
+          // 卡片取数载体（§4.4）：引擎的 displayContent + source meta。
+          display: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              text: { type: 'string', required: true },
+              startLine: { type: 'integer', required: true },
+              lineNumbers: { type: 'array', items: { oneOf: [{ type: 'integer' }, { type: 'null' }] } },
+            },
+          },
+          source: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              type: { type: 'string', required: true },
+              value: { type: 'string', required: true },
+            },
+          },
+          isDirectory: { type: 'boolean' },
+          textBlocks: { type: 'integer' },
           image: {
             type: 'object',
             additionalProperties: false,
@@ -199,11 +248,10 @@ export function registerRead(ctx: Context, getConfig: () => RuntimeConfig): () =
         }
         return blocks as never
       },
-      presentationMeta: (_args: any, value: any) => ({
-        ...(value.path !== undefined ? { path: value.path } : {}),
-        ...(value.offset !== undefined ? { offset: value.offset } : {}),
-        ...(value.totalLines !== undefined ? { lines: value.totalLines } : {}),
-      }) as any,
+      // 卡片 meta：官方 read 卡的窗口形状（§4.4）。投影函数在 src/web/host/read.ts，
+      // 任何取不到数据的情形都返回 null（不产 meta），绝不抛；不产卡必须显式 null
+      // ——返回 undefined 会被宿主判成 non-lossless JSON，把成功的调用改写成 isError。
+      presentationMeta: (args: any, value: any) => (readCardMeta(args, value) as any) ?? null,
     },
     async execute(args: any, exec: any) {
       return executeReadTool(exec, getConfig(), args, ctx)

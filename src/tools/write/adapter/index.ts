@@ -17,6 +17,8 @@ import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import { renderOmpPrompt, sanitizeWritePrompt } from '../../shared/omp-prompt.ts'
 import { attachOmpSessionState, persistOmpSessionState } from '../../shared/session-state.ts'
+// Web 卡片投影（plan web-tool-cards §4.1）：纯计算、无 I/O，meta 只带 path + lang。
+import { projectWriteCardMeta } from '../../../web/host/write.ts'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
@@ -53,6 +55,8 @@ function toText(result: AgentToolResult<any>): string {
 export interface WriteToolOutput {
   path: string
   text: string
+  /** 卡片用语法提示；认不出语言时不带该键（meta 里不许出现 undefined）。 */
+  lang?: string
 }
 
 /** 完整执行链路（defineTool.execute 与单测共用）。 */
@@ -70,9 +74,12 @@ export async function executeWriteTool(exec: any, cfg: RuntimeConfig, args: any)
   persistOmpSessionState(exec?.agent?.session, session)
   const text = toText(result)
   const details = (result.details ?? {}) as Record<string, unknown>
+  // 卡片投影只读 resolvedPath/args.path 与扩展名表：不读 before、不算 diff。
+  const card = projectWriteCardMeta({ resolvedPath: details.resolvedPath }, args)
   return {
     path: String(details.resolvedPath ?? args.path ?? ''),
     text,
+    ...(card !== null && card.lang !== undefined ? { lang: card.lang } : {}),
   }
 }
 
@@ -95,12 +102,14 @@ export function registerWrite(ctx: Context, getConfig: () => RuntimeConfig): voi
         properties: {
           path: { type: 'string', required: true },
           text: { type: 'string', required: true },
+          lang: { type: 'string' },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
-      presentationMeta: (_args: any, value: any) => ({
-        ...(value.path !== undefined ? { path: value.path } : {}),
-      }) as any,
+      // 契约形状 { kind:'write', path, lang?, madeExecutable? }；无可用路径 → null
+      // （presentationMeta 返回 undefined 会被宿主判成 non-lossless JSON，把成功的
+      //  调用改写成 isError，所以"不产卡"必须显式返回 null）。
+      presentationMeta: (_args: any, value: any) => (projectWriteCardMeta(value) ?? null) as any,
     },
     async execute(args: any, exec: any) {
       return executeWriteTool(exec, getConfig(), args)

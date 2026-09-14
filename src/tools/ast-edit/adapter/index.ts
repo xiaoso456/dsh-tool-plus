@@ -22,6 +22,9 @@ import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from './sdk.ts'
 import type { ResolveInvoker } from './sdk.ts'
 import { AstEditTool } from '../../omp/tools/ast-edit.ts'
+// Web 卡片投影（plan web-tool-cards §4.3）：预览取引擎 displayContent，计数取 fileReplacements。
+import { projectAstEditCardMeta } from '../../../web/host/ast-edit.ts'
+import type { AstEditCardMeta } from '../../../web/contract.ts'
 import astEditMd from '../../omp/prompts/tools/ast-edit.md' with { type: 'text' }
 
 export type { ToolSession } from './sdk.ts'
@@ -64,6 +67,24 @@ function toText(result: AgentToolResult<any>): string {
 }
 
 /**
+ * ast_edit 卡片 value 字段（output.schema 镜像）。预览已按 AST_EDIT_META_MAX_BYTES
+ * 在投影里截断，这里只做搬运，保证 meta 里不出现 undefined。
+ */
+function astEditCardFields(card: AstEditCardMeta): {
+  preview: string
+  files: { path: string; count: number }[]
+  replacements: number
+  applied: boolean
+} {
+  return {
+    preview: card.preview,
+    files: card.files,
+    replacements: card.replacements,
+    applied: card.applied,
+  }
+}
+
+/**
  * Register the ast_edit tool. Argument shape matches OMP verbatim:
  * `ops` is a non-empty array of `{ pat, out }` rewrite rules, and `paths` is a
  * non-empty array of files, directories, globs, or internal URLs.
@@ -101,9 +122,35 @@ export function registerAstEdit(ctx: Context, getConfig: () => RuntimeConfig): (
         additionalProperties: false,
         properties: {
           text: { type: 'string', required: true },
+          preview: { type: 'string' },
+          files: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                count: { type: 'integer', required: true },
+              },
+            },
+          },
+          replacements: { type: 'integer' },
+          applied: { type: 'boolean' },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
+      // ast_edit 卡片 meta（preview/files/replacements/applied）；无预览 → 不产 meta
+      // （null，不能是 undefined：宿主对 undefined 判 non-lossless JSON 并改写成 isError）。
+      presentationMeta: (_args: any, value: any) =>
+        (typeof value?.preview === 'string' && value.preview !== ''
+          ? {
+              kind: 'ast_edit',
+              preview: value.preview,
+              files: Array.isArray(value.files) ? value.files : [],
+              replacements: typeof value.replacements === 'number' ? value.replacements : 0,
+              applied: value.applied === true,
+            }
+          : null) as any,
     },
     async execute(args: any, exec: any) {
       const session = createToolSession(exec, getConfig())
@@ -116,11 +163,28 @@ export function registerAstEdit(ctx: Context, getConfig: () => RuntimeConfig): (
       // Preview/apply (plan.md 拍板#14): the verbatim execute() returned the
       // preview; if a pending apply was staged (replacements > 0), run it now
       // so the edits are REALLY written, and surface the applied result.
+      const previewDetails = (result.details ?? {}) as Record<string, unknown>
       if (session.pendingInvoker) {
         const applied = await session.pendingInvoker()
-        return { text: toText(applied) }
+        // The resolve wrapper puts the engine's details under
+        // `details.sourceResultDetails` (ResolveDetails); older/plain results
+        // carry them directly.
+        const resolveDetails = (applied.details ?? {}) as Record<string, unknown>
+        const appliedDetails =
+          typeof resolveDetails.sourceResultDetails === 'object' && resolveDetails.sourceResultDetails !== null
+            ? (resolveDetails.sourceResultDetails as Record<string, unknown>)
+            : resolveDetails
+        // 应用腿的 details 不带 displayContent，预览腿才有——卡片用预览的显示文本。
+        const card = projectAstEditCardMeta({
+          ...appliedDetails,
+          displayContent: appliedDetails.displayContent ?? previewDetails.displayContent,
+        })
+        const text = toText(applied)
+        return card === null ? { text } : { text, ...astEditCardFields(card) }
       }
-      return { text: toText(result) }
+      const card = projectAstEditCardMeta(previewDetails)
+      const text = toText(result)
+      return card === null ? { text } : { text, ...astEditCardFields(card) }
     },
     presentCall: (args: any) => ({
       card: 'generic',

@@ -23,6 +23,7 @@ import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
 import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { GrepTool } from '../../omp/tools/grep.ts'
+import { searchMatchesCardMeta } from '../../../web/host/search.ts'
 import grepMd from './prompts/tools/grep.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
@@ -56,6 +57,10 @@ export interface GrepToolOutput {
   files?: string[]
   scopePath?: string
   truncated?: boolean
+  /** 引擎给渲染器的分组显示文本（`# dir/` + `## file` + `*N│line` 代码帧）。 */
+  displayContent?: string
+  /** 搜索时的会话 cwd：display 头里的相对路径按它还原成绝对路径。 */
+  cwd?: string
 }
 
 /**
@@ -77,6 +82,8 @@ export function toGrepToolResult(result: AgentToolResult<any>): GrepToolOutput {
     ...(Array.isArray(details.files) ? { files: details.files as string[] } : {}),
     ...(typeof details.scopePath === 'string' ? { scopePath: details.scopePath } : {}),
     ...(details.truncated === true ? { truncated: true } : {}),
+    ...(typeof details.displayContent === 'string' ? { displayContent: details.displayContent } : {}),
+    ...(typeof details.cwd === 'string' ? { cwd: details.cwd } : {}),
   }
 }
 
@@ -137,14 +144,17 @@ export function registerGrep(ctx: Context, getConfig: () => RuntimeConfig): void
           files: { type: 'array', items: { type: 'string' } },
           scopePath: { type: 'string' },
           truncated: { type: 'boolean' },
+          // 卡片取数载体（§4.5）：引擎的分组显示文本 + 会话 cwd。
+          displayContent: { type: 'string' },
+          cwd: { type: 'string' },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
-      presentationMeta: (_args: any, value: any) => ({
-        ...(typeof value.matchCount === 'number' ? { matches: value.matchCount } : {}),
-        ...(typeof value.fileCount === 'number' ? { files: value.fileCount } : {}),
-        ...(value.scopePath !== undefined ? { path: value.scopePath } : {}),
-      }) as any,
+      // 卡片 meta：官方 search 卡的 grouped-matches 形状（§4.5）。引擎明确报零
+      // （matchCount=0）时投影成空卡；有匹配却解析不出分组、或没有零计数背书
+      // 的脏输入，则不产 meta（null，客户端退回通用行，结果文本照样完整可见）。
+      // 不能返回 undefined——那会被宿主判成 non-lossless JSON 并改写成 isError。
+      presentationMeta: (_args: any, value: any) => (searchMatchesCardMeta(value) as any) ?? null,
     },
     async execute(args: any, exec: any) {
       return executeGrepTool(exec, getConfig(), args, ctx)

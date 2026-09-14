@@ -24,6 +24,7 @@ import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
 import { formatOutputNotice, type OutputMeta } from '../../omp/tools/output-meta.ts'
 import { GlobTool } from '../../omp/tools/glob.ts'
+import { searchPathsCardMeta } from '../../../web/host/search.ts'
 import globMd from './prompts/tools/glob.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
@@ -55,6 +56,8 @@ export interface GlobToolOutput {
   text: string
   fileCount?: number
   truncated?: boolean
+  /** 引擎的结果路径列表（display 相对路径），卡片按它出 paths 卡。 */
+  paths?: string[]
 }
 
 /**
@@ -74,6 +77,7 @@ export function toGlobToolResult(result: AgentToolResult<any>, args: any): GlobT
     text: text + notice,
     ...(typeof details.fileCount === 'number' ? { fileCount: details.fileCount } : {}),
     ...(typeof details.truncated === 'boolean' ? { truncated: details.truncated } : {}),
+    ...(Array.isArray(details.files) ? { paths: details.files.filter((entry): entry is string => typeof entry === 'string') } : {}),
   }
 }
 
@@ -121,13 +125,15 @@ export function registerGlob(ctx: Context, getConfig: () => RuntimeConfig): void
           text: { type: 'string', required: true },
           fileCount: { type: 'number' },
           truncated: { type: 'boolean' },
+          // 卡片取数载体（§4.7）：引擎的结果路径列表。
+          paths: { type: 'array', items: { type: 'string' } },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
-      presentationMeta: (_args: any, value: any) => ({
-        ...(value.fileCount !== undefined ? { files: value.fileCount } : {}),
-        ...(value.truncated !== undefined ? { truncated: value.truncated } : {}),
-      }) as any,
+      // 卡片 meta：官方 search 卡的 paths 形状（§4.7）。引擎明确报零（paths=[] 且
+      // fileCount=0）时投影成空卡；没有零计数背书的裸空数组是脏输入，不产 meta
+      // （null，不是 undefined——undefined 会被宿主判成 non-lossless JSON 并改写成 isError）。
+      presentationMeta: (_args: any, value: any) => (searchPathsCardMeta(value) as any) ?? null,
     },
     async execute(args: any, exec: any) {
       return executeGlobTool(exec, getConfig(), args, ctx)

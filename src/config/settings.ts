@@ -73,6 +73,12 @@ export interface RuntimeConfig {
   snapshotEnabled: boolean
   rmSafe: boolean
   useShellCommandWrapper: boolean
+  /**
+   * Whether the browser half mounts this plugin's tool cards (the Node runtime
+   * never reads it; it rides the resolved config so the field table, the schema,
+   * and this projection stay a single source of truth).
+   */
+  webCards: boolean
   maxBackgroundJobs: number
   outputTruncate: OutputTruncateConfig
   // File tools (OMP parity)
@@ -160,6 +166,8 @@ export interface Config {
   /** Redefine `rm` in the session shell to move into the system trash (default true). */
   rmSafe?: boolean
   useShellCommandWrapper?: boolean
+  /** Mount this plugin's browser tool cards (default true; off returns to the shipped rows). */
+  webCards?: boolean
   maxBackgroundJobs?: number
   outputTruncateStrategy?: OutputTruncateStrategy
   outputTruncateTriggerBytes?: number
@@ -233,6 +241,7 @@ export const Config: z<Config> = z.object({
   snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)),
   rmSafe: z.boolean().default(fieldDefault('rmSafe', true)),
   useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)),
+  webCards: z.boolean().default(fieldDefault('webCards', true)),
   maxBackgroundJobs: z.number().default(fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS)),
   outputTruncateStrategy: z.union(['bytes', 'lines'] as const).default(fieldDefault('outputTruncateStrategy', 'bytes')),
   outputTruncateTriggerBytes: z.number().default(fieldDefault('outputTruncateTriggerBytes', 10_240)),
@@ -315,6 +324,7 @@ export function resolveConfig(config: Config): RuntimeConfig {
     snapshotEnabled: config.snapshotEnabled ?? fieldDefault('snapshotEnabled', true),
     rmSafe: config.rmSafe ?? fieldDefault('rmSafe', true),
     useShellCommandWrapper: config.useShellCommandWrapper ?? fieldDefault('useShellCommandWrapper', false),
+    webCards: config.webCards ?? fieldDefault('webCards', true),
     maxBackgroundJobs: config.maxBackgroundJobs ?? fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS),
     outputTruncate: {
       strategy: config.outputTruncateStrategy ?? fieldDefault('outputTruncateStrategy', DEFAULT_OUTPUT_TRUNCATE.strategy),

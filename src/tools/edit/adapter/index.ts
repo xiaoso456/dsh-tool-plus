@@ -32,6 +32,9 @@ import { expandApplyPatchToEntries } from '../../omp/edit/modes/apply-patch.ts'
 import { executeApplyPatchPerFile, executeSinglePathEntries, resolveEditPath } from '../../omp/edit/dispatch.ts'
 import { writethroughNoop } from '../../omp/tools/writethrough.ts'
 import { attachOmpSessionState, persistOmpSessionState } from '../../shared/session-state.ts'
+// Web 卡片投影（plan web-tool-cards §4.2）：只搬引擎已算好的 diff，不重新采样。
+import { projectEditCardMeta } from '../../../web/host/edit.ts'
+import type { CardDiffHunk } from '../../../web/contract.ts'
 import type { RuntimeConfig } from '../../../config/settings.ts'
 import {
   renderOmpPrompt,
@@ -156,6 +159,17 @@ function runPatchEntry(options: {
 /** DSH edit 工具输出形状（output.schema 镜像）。 */
 export interface EditToolOutput {
   text: string
+  /** 卡片用 diff（已按 EDIT_META_MAX_BYTES 截断；空/不可解析时不带该键）。 */
+  diffs?: CardDiffHunk[]
+}
+
+/**
+ * 把成功结果带上卡片投影（纯展示用；投影不抛异常，null → 不产 meta）。
+ * 错误路径不经此函数，保证报错文案一字不变。
+ */
+function withEditCard(result: AgentToolResult<any>, text: string): EditToolOutput {
+  const diffs = projectEditCardMeta(result.details)?.diffs
+  return diffs === undefined ? { text } : { text, diffs }
 }
 
 /**
@@ -186,7 +200,7 @@ function toEditToolResult(
         : ''
     throw new Error(`${text || 'edit failed'}${supplement}`)
   }
-  return { text }
+  return withEditCard(result, text)
 }
 
 /**
@@ -273,7 +287,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
         signal,
         writethrough,
       })
-      return { text: toText(result) }
+      return withEditCard(result, toText(result))
     }
 
     const filePath: string = args.file_path ?? args.path ?? ''
@@ -299,7 +313,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
         // full-file overwrite (OMP index.ts patch mode).
         allowCreateOverwrite: true,
       })
-      return { text: toText(result) }
+      return withEditCard(result, toText(result))
     }
 
     // ---- replace mode (single or multi-segment) -------------------------
@@ -385,9 +399,27 @@ export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () =
         additionalProperties: false,
         properties: {
           text: { type: 'string', required: true },
+          diffs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                oldText: { required: true, oneOf: [{ type: 'string' }, { type: 'null' }] },
+                newText: { type: 'string', required: true },
+              },
+            },
+          },
         },
       },
       render: (_args: any, value: any) => [{ type: 'text', text: String(value.text ?? '') }],
+      // 只有跑成功的顶层调用才到这里；没有 diffs → 不产 meta（null，客户端走兜底）。
+      // 不能返回 undefined：宿主对 undefined 判 non-lossless JSON 并改写成 isError。
+      presentationMeta: (_args: any, value: any) =>
+        (Array.isArray(value?.diffs) && value.diffs.length > 0
+          ? { kind: 'edit', diffs: value.diffs }
+          : null) as any,
     },
     async execute(args: any, exec: any) {
       // 完整执行链路见 executeEditTool（defineTool.execute 与单测共用）。

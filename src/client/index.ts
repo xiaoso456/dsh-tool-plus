@@ -28,6 +28,7 @@ import { BashPlusCard, type BashPlusCardFace, type BashPlusSettings } from './Ba
 import { ToolPlusSection, type ToolPlusSectionInjected } from './ToolPlusSection.tsx'
 import type { ToolSettingsValue } from './forms.ts'
 import { en, zh } from './locales.ts'
+import { registerToolCards } from '../web/client/registerToolCards.ts'
 
 /**
  * Settings namespace of this plugin, spelled here because a client package
@@ -59,6 +60,11 @@ export function apply(ctx: ClientContext): void {
     locale: BASH_PLUS_LOCALE_NS,
     inject: (): BashPlusCardFace => ({ scope }),
   }, BashPlusCard))
+
+  // Tool cards: this plugin draws its own rows for the tools it registers —
+  // shadowing the shipped rows where the composition has one, additive for the
+  // AST tools — and keeps them in step with the `webCards` switch.
+  registerToolCards(ctx)
 
   // The plugin's own Settings page, placed right after the Plugins section
   // (order 15) so the tool suite reads as one more settings surface. The
