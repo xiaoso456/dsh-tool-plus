@@ -78,6 +78,9 @@ function externalStubs(): Record<string, unknown> {
       useState: (initial: unknown) => [initial, () => {}],
     },
     'react/jsx-runtime': { Fragment: Symbol('Fragment'), jsx: primitive, jsxs: primitive },
+    // The image card portals its lightbox to `document.body`; the spec never
+    // opens it, so an inert identity stand-in is all the factory needs.
+    'react-dom': { createPortal: (children: unknown) => children },
     '@deepseek-ai/dsh-client-ui-slots': { SlotCore },
     '@deepseek-ai/dsh-client-ui-primitives': primitives,
     // Used for its `RpcId` brand inside a lazily-built RPC channel.
@@ -323,6 +326,7 @@ describe('lib/client.js — the lazy-CJS factory the loader executes', () => {
       '@deepseek-ai/dsh-client-ui-primitives',
       'react/jsx-runtime',
       '@deepseek-ai/dsh-client-connection/client',
+      'react-dom',
     ])
   })
 })

@@ -44,6 +44,9 @@ export type ToolCardLocaleKey =
   | 'terminal.running' | 'terminal.failed' | 'terminal.done' | 'terminal.noOutput'
   // Background bash hand-off (generic shell).
   | 'bash.background'
+  // Image card: loader states, the open affordance, and the lightbox chrome.
+  | 'image.loading' | 'image.loadFailed' | 'image.open' | 'image.openNamed'
+  | 'image.dialog' | 'image.close' | 'image.unnamed' | 'image.caption'
   // Generic shell fallbacks.
   | 'generic.params' | 'generic.noDetail' | 'inspect'
 
@@ -96,6 +99,14 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   'terminal.done': '已完成',
   'terminal.noOutput': '无输出',
   'bash.background': '后台任务 {jobId}',
+  'image.loading': '加载中',
+  'image.loadFailed': '加载失败',
+  'image.open': '查看原图',
+  'image.openNamed': '查看原图：{name}',
+  'image.dialog': '原图预览',
+  'image.close': '关闭',
+  'image.unnamed': '图片',
+  'image.caption': '{name} · {width}×{height} · {size}',
   'generic.params': '{count} 个参数',
   'generic.noDetail': '没有更多可展示的细节',
   inspect: '查看',
@@ -150,6 +161,14 @@ export const en: Record<ToolCardLocaleKey, string> = {
   'terminal.done': 'Done',
   'terminal.noOutput': 'No output',
   'bash.background': 'Background job {jobId}',
+  'image.loading': 'Loading',
+  'image.loadFailed': 'Load failed',
+  'image.open': 'View original',
+  'image.openNamed': 'View original: {name}',
+  'image.dialog': 'Original image',
+  'image.close': 'Close',
+  'image.unnamed': 'Image',
+  'image.caption': '{name} · {width}×{height} · {size}',
   'generic.params': '{count} params',
   'generic.noDetail': 'No further detail',
   inspect: 'Inspect',

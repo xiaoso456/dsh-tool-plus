@@ -44,6 +44,54 @@ const CSS = `
 .twc-body{margin:4px 0 4px 4px;min-width:0}
 .twc-text{margin:4px 0 4px 4px;padding:10px 14px;max-height:260px;overflow:auto;border-radius:12px;background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word}
 .twc-note{margin:4px 0 4px 4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.twc-media{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin:4px 0 4px 4px;min-width:0}
+/* Image gallery: the wrapping group the message gallery uses, so a card's
+   images and a message's images wrap the same way. */
+.twc-imgGallery{display:flex;flex-wrap:wrap;gap:10px;max-width:100%;min-width:0}
+/* Thumbnail frame (figma message-image rule): a 16px-radius tile that crops
+   with object-fit cover, sized inline for a lone image and 64×64 in a gallery. */
+.twc-imgFrame{display:grid;flex:0 0 auto;place-items:center;box-sizing:border-box;min-width:44px;min-height:44px;padding:0;overflow:hidden;border:0.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:16px;background:var(--dsw-alias-interactive-bg-hover);cursor:zoom-in}
+.twc-imgFrame[data-variant='tile']{width:64px;height:64px;min-width:64px;min-height:64px}
+.twc-imgFrame:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.twc-mediaImg{display:block;width:100%;height:100%;object-fit:cover}
+.twc-imgLoading{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+/* Failed load: the frame itself becomes the retry control (the official
+   behaviour), so a transient failure costs one click instead of a reload. It
+   carries the frame's own box model — border-box, same 44px floor — so the
+   reserved box survives loading → loaded → failed unchanged (no jump). */
+.twc-imgError{box-sizing:border-box;min-width:44px;min-height:44px;max-width:240px;padding:10px 12px;overflow:hidden;border:0.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:10px;background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
+.twc-imgError[data-variant='tile']{width:64px;height:64px;min-width:64px;min-height:64px;padding:4px;border-radius:16px}
+.twc-imgError:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+/* Original-image lightbox: a body portal, a mask on its own layer (blurring
+   the backdrop itself would blur the preview and the close control), and the
+   preview stacked with its caption so the two always read as one object. */
+.twc-lightbox{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:40px}
+.twc-lightboxMask{position:absolute;inset:0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}
+.twc-lightboxStack{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;max-height:calc(100vh - 80px);min-width:0}
+.twc-lightboxImg{max-width:min(100%,1600px);max-height:calc(100vh - 130px);object-fit:contain;border-radius:12px;background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv3)}
+.twc-lightboxClose{position:fixed;top:20px;right:20px;z-index:1;display:grid;place-items:center;width:36px;height:36px;border:0.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:999px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);cursor:pointer}
+.twc-lightboxClose:hover{background:var(--dsw-alias-interactive-bg-hover-solid)}
+.twc-lightboxClose:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+/* The caption carries the reference's own numbers — name, intrinsic size,
+   byte length — so the enlarged view states what the file actually is. It sits
+   in the stack under the image: fixed to the viewport it read as a separate
+   object from a centred image, and a tall image could squeeze it out. */
+.twc-lightboxCaption{margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 14px;border:0.5px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:999px;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+/* Motion is feedback, never decoration: the hover lift, the skeleton pulse,
+   and the lightbox entrance all sit behind the user's motion preference. A
+   reduced-motion reader keeps every state change, just without the glide. */
+.twc-imgFrame:hover{box-shadow:var(--dsw-shadow-lv1-blur)}
+@media (prefers-reduced-motion: no-preference){
+  .twc-imgFrame{transition:transform 160ms ease,box-shadow 160ms ease}
+  .twc-imgFrame:hover{transform:scale(1.01)}
+  .twc-imgFrame:active{transform:scale(0.99)}
+  .twc-imgLoading{animation:twc-img-pulse 1.6s ease-in-out infinite}
+  .twc-lightbox{animation:twc-lightbox-in 160ms ease-out}
+  .twc-lightboxImg{animation:twc-lightbox-img-in 180ms ease-out}
+  @keyframes twc-img-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+  @keyframes twc-lightbox-in{from{opacity:0}to{opacity:1}}
+  @keyframes twc-lightbox-img-in{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+}
 .twc-inspect{display:inline-flex;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;border:0.5px solid var(--dsw-alias-border-l3);border-radius:999px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:16px;cursor:pointer;opacity:0;transition:opacity 100ms ease}
 .twc-root:hover .twc-inspect,.twc-inspect:focus-visible{opacity:1}
 .twc-inspect:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}
