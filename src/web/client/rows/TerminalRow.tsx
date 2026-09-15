@@ -17,10 +17,11 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowTerminalCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
-  argText, cardMeta, cardState, cardTitle, firstLine, parseCardArgs, parseShellStatus, resultText,
+  argText, cardMeta, cardState, cardTitle, parseCardArgs, parseShellStatus, resultText,
   terminalBlockLabels,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
+import { bashCardSummary } from './command-card-facts.ts'
 
 /** Props the slot hands this row, plus its own locale seat. */
 type RowProps = ToolCallViewProps & PropsLocale<typeof CARD_LOCALE_NS>
@@ -80,9 +81,13 @@ function TerminalCard(props: RowProps & { title: string }) {
       ? foreground.exitCode
       : typeof status.exitCode === 'number' ? status.exitCode : undefined
   const workdir = argText(args, 'workdir') ?? foreground?.workingDir ?? sessionCwd
-  const summary = interrupted
-    ? (timedOut ? t('timedOut') : t('cancelled'))
-    : argText(args, 'description') ?? firstLine(command)
+  // The head states the intent *and* the command: a description alone left the
+  // reader expanding the card to learn what actually ran.
+  const summary = bashCardSummary(
+    argText(args, 'description'),
+    command,
+    interrupted ? (timedOut ? t('timedOut') : t('cancelled')) : null,
+  )
   return (
     <ToolCardShell t={t} state={state} title={title} summary={summary} inspect={inspect}>
       <TerminalBlock

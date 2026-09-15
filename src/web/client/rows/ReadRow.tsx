@@ -32,6 +32,7 @@ import {
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 import { imageCardMaterial, imageFitBox, type CardImageMaterial } from './image-card.ts'
+import { readCardSummary } from './read-card-facts.ts'
 
 /** Props the slot hands this row, plus its own locale seat. */
 type RowProps = ToolCallViewProps & PropsLocale<typeof CARD_LOCALE_NS>
@@ -100,7 +101,10 @@ function ReadCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
-      summary={displayPath(meta.path, cwd)}
+      // The head reports the call verbatim (selector included, so a windowed
+      // read is distinguishable from a whole-file one); the link below keeps the
+      // projected path, which is the part that must name a real file.
+      summary={readCardSummary(args, meta.path, cwd)}
       filePath={meta.path}
       filePathLine={meta.offset}
       openFile={openFile}

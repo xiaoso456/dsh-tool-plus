@@ -16,6 +16,7 @@ import { narrowAstEditCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import { cardMeta, cardState, cardTitle, displayPath, isSubCall, parseCardArgs, resultText } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
+import { astEditRuleLine } from './command-card-facts.ts'
 
 /** Props the slot hands this row, plus its own locale seat. */
 type RowProps = ToolCallViewProps & PropsLocale<typeof CARD_LOCALE_NS>
@@ -55,6 +56,9 @@ function AstEditCard(props: RowProps & { title: string }) {
   const single = files === 1 ? meta.files[0]?.path : undefined
   const output = resultText(block)
   const parseErrors = PARSE_ERROR.test(output)
+  // The body previews the *result*; the rule that produced it is only in the
+  // call's own arguments, so it is stated above the preview.
+  const rule = astEditRuleLine(args, t)
   const summary = single !== undefined && single !== '' ? displayPath(single, cwd) : t('astEdit.files', { count: files })
   return (
     <ToolCardShell
@@ -68,6 +72,7 @@ function AstEditCard(props: RowProps & { title: string }) {
       inspect={inspect}
     >
       <div className="twc-body">
+        {rule !== null && <p className="twc-note">{rule}</p>}
         <CodeBlock code={meta.preview} copyLabel={t('copy')} copiedLabel={t('copied')} />
         {output !== '' && (
           <p className="twc-note">{parseErrors ? `${t('astEdit.parseErrors')}: ${output}` : output}</p>

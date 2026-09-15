@@ -31,13 +31,14 @@ export type ToolCardLocaleKey =
   | 'title.grep' | 'title.glob' | 'title.astGrep' | 'title.astEdit'
   // write card header.
   | 'write.lines' | 'write.madeExecutable'
-  // ast_edit card header and footer.
+  // ast_edit card header, rule line, and footer.
   | 'astEdit.replacements' | 'astEdit.files' | 'astEdit.parseErrors'
+  | 'astEdit.rules' | 'astEdit.rulesRest'
   // read card chrome.
   | 'read.window' | 'read.collapseAria' | 'read.expandAria' | 'read.expandRest'
   // search card chrome (grep / glob / ast_grep).
   | 'search.paths' | 'search.paths.truncated'
-  | 'search.matches' | 'search.matches.truncated' | 'search.noResults'
+  | 'search.matches' | 'search.matches.truncated' | 'search.noResults' | 'search.scope'
   | 'search.collapseAria' | 'search.expandAria' | 'search.expandRest'
   // terminal card chrome.
   | 'terminal.signal' | 'terminal.exitCode'
@@ -80,6 +81,8 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   'astEdit.replacements': '{count} 处替换',
   'astEdit.files': '{count} 个文件',
   'astEdit.parseErrors': '解析错误',
+  'astEdit.rules': '规则',
+  'astEdit.rulesRest': '… 其余 {count} 条',
   'read.window': '显示 {shown} / {total} 行',
   'read.collapseAria': '收起内容',
   'read.expandAria': '展开其余 {count} 行',
@@ -89,6 +92,7 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   'search.matches': '{shown} 处匹配 · {files} 个文件',
   'search.matches.truncated': '显示 {shown} / 共 {total} 处匹配 · {files} 个文件',
   'search.noResults': '无结果',
+  'search.scope': '范围 {path}',
   'search.collapseAria': '收起结果',
   'search.expandAria': '展开其余 {count} 行结果',
   'search.expandRest': '… 其余 {count} 行',
@@ -142,6 +146,8 @@ export const en: Record<ToolCardLocaleKey, string> = {
   'astEdit.replacements': '{count} replacements',
   'astEdit.files': '{count} files',
   'astEdit.parseErrors': 'Parse errors',
+  'astEdit.rules': 'Rules',
+  'astEdit.rulesRest': '… {count} more',
   'read.window': 'Showing {shown} of {total} lines',
   'read.collapseAria': 'Collapse content',
   'read.expandAria': 'Expand {count} more lines',
@@ -151,6 +157,7 @@ export const en: Record<ToolCardLocaleKey, string> = {
   'search.matches': '{shown} matches · {files} files',
   'search.matches.truncated': 'Showing {shown} of {total} matches · {files} files',
   'search.noResults': 'No results',
+  'search.scope': 'in {path}',
   'search.collapseAria': 'Collapse results',
   'search.expandAria': 'Expand {count} more result lines',
   'search.expandRest': '… {count} more lines',

@@ -14,6 +14,7 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowSearchCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import { argText, argsSummary, cardMeta, cardState, cardTitle, isSubCall, parseCardArgs, searchBlockLabels } from '../row-utils.ts'
+import { searchCardSuffix } from './search-card-facts.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
 /** Props the slot hands this row, plus its own locale seat. */
@@ -42,7 +43,7 @@ export default function SearchRow(props: RowProps) {
  * @returns the search card.
  */
 function SearchCard(props: RowProps & { title: string }) {
-  const { t, block, inspect, title } = props
+  const { t, block, cwd, inspect, title } = props
   const args = parseCardArgs(block)
   const meta = narrowSearchCardMeta(cardMeta(block))
   // A Code Dispatch child's result is drawn by its parent card's own body.
@@ -51,7 +52,8 @@ function SearchCard(props: RowProps & { title: string }) {
   }
   // The subject of the search — `pattern` for grep, `pat` for ast_grep, the
   // path for glob — is the most useful summary; the banner inside the block
-  // carries the counts.
+  // carries the counts. The scope and the counts also ride the collapsed head,
+  // where the subject alone cannot say which tree was searched.
   const subject = argText(args, 'pattern') ?? argText(args, 'pat') ?? argText(args, 'path')
   const labels = searchBlockLabels(t)
   return (
@@ -60,6 +62,7 @@ function SearchCard(props: RowProps & { title: string }) {
       state={cardState(block)}
       title={title}
       summary={subject ?? argsSummary(args, t)}
+      summarySuffix={searchCardSuffix(args, meta, cwd, t)}
       inspect={inspect}
     >
       {meta.shape === 'matches'
