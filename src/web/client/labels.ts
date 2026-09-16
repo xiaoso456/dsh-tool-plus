@@ -25,7 +25,7 @@ export type ToolCardLocaleKey =
   | 'collapseAria' | 'expandAria' | 'expandRest'
   | 'files.one' | 'files.other'
   // Run state words used for the shell's assistive-technology status line.
-  | 'running' | 'done' | 'failed' | 'cancelled' | 'timedOut' | 'noOutput'
+  | 'running' | 'done' | 'failed' | 'stopped' | 'cancelled' | 'timedOut' | 'noOutput'
   // One title per tool key this plugin renders.
   | 'title.bash' | 'title.read' | 'title.write' | 'title.edit'
   | 'title.grep' | 'title.glob' | 'title.astGrep' | 'title.astEdit'
@@ -65,6 +65,10 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   running: '运行中',
   done: '完成',
   failed: '失败',
+  // The shipped word for a call that was stopped rather than failed
+  // (`row.stopped`); a stopped call is not a failed one, and the row's own
+  // summary already says timed out / cancelled in the reader's language.
+  stopped: '已停止',
   cancelled: '已取消',
   timedOut: '已超时',
   noOutput: '无输出',
@@ -130,6 +134,7 @@ export const en: Record<ToolCardLocaleKey, string> = {
   running: 'Running',
   done: 'Done',
   failed: 'Failed',
+  stopped: 'Stopped',
   cancelled: 'Cancelled',
   timedOut: 'Timed out',
   noOutput: 'No output',

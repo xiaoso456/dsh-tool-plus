@@ -44,14 +44,14 @@ export default function FileMutationRow(props: RowProps) {
  * @returns the diff card.
  */
 function FileMutationCard(props: RowProps & { title: string }) {
-  const { t, block, cwd, inspect, openFile, title } = props
+  const { t, block, cwd, inspect, openFile, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowEditCardMeta(cardMeta(block))
   const replaceForm = replaceHunks(args)
   // A Code Dispatch child's diff is drawn by its parent card's own body; the
   // shipped rows keep those on the generic path and so do we.
   if (isSubCall(block) || block.isError === true || (meta === null && replaceForm === null)) {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const diffs: DiffHunk[] = meta === null ? replaceForm ?? [] : meta.diffs
   const paths = [...new Set(diffs.map(hunk => hunk.path))]
@@ -65,6 +65,7 @@ function FileMutationCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       summary={summary}
       summarySuffix={`+${totals.added} -${totals.removed}`}
       filePath={single}

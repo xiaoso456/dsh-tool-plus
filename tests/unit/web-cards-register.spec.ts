@@ -34,6 +34,12 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => {
     DiffBlock: StandIn,
     DisclosureRow: StandIn,
     StateDot: StandIn,
+    // The leading glyph table the shared shell draws from.
+    IconApiOutline14: StandIn,
+    IconBrowseOutline16: StandIn,
+    IconEditOutline16: StandIn,
+    IconSearchOutline16: StandIn,
+    IconSparkle16: StandIn,
     diffTotals: () => ({ added: 0, removed: 0 }),
   }
 })

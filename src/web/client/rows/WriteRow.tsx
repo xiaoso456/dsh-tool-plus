@@ -43,7 +43,7 @@ export default function WriteRow(props: RowProps) {
  * @returns the preview card.
  */
 function WriteCard(props: RowProps & { title: string }) {
-  const { t, block, cwd, inspect, openFile, title } = props
+  const { t, block, cwd, inspect, openFile, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowWriteCardMeta(cardMeta(block))
   const content = argText(args, 'content')
@@ -51,7 +51,7 @@ function WriteCard(props: RowProps & { title: string }) {
   // A Code Dispatch child's write preview is drawn by its parent card's own
   // body, so it stays on the generic path (as the shipped diff rows do).
   if (isSubCall(block) || block.isError === true || content === null || path === null) {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const lines = t('write.lines', { count: lineCount(content) })
   const skip = meta?.madeExecutable === true ? ` · ${t('write.madeExecutable')}` : ''
@@ -61,6 +61,7 @@ function WriteCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       summary={displayPath(path, cwd)}
       summarySuffix={lines + skip}
       filePath={path}

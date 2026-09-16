@@ -3,9 +3,11 @@
  *
  * The shipped `ToolRow` is not reusable from a plugin (ui-tool is not part of
  * the client platform baseline), so this is our own: one 24px header line
- * (state dot + title + separator + ellipsized summary + optional `+N -M`
+ * (tool glyph + title + separator + ellipsized summary + optional `+N -M`
  * suffix + clickable path), a keyboard-reachable disclosure, and a body that
- * is either the card a row built or the flattened result text.
+ * is either the card a row built or the flattened result text. The leading
+ * glyph gives way to a state dot on a failed or interrupted call, and the row
+ * sweeps while the call runs, as the shipped row does.
  *
  * Two properties matter more than the visuals:
  * - **Never throw.** Every value is coerced defensively, and {@link CardBoundary}
@@ -19,17 +21,57 @@
  */
 
 import { Component, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { DisclosureRow, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  argsSummary, cardState, dotState, firstLine, resultText, stateStatus,
+  DisclosureRow, IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16, StateDot,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  cardArgsRaw, cardState, firstLine, resultText, stateStatus,
   type CardBlockView, type CardOpenFileOptions, type CardState, type CardTranslate,
 } from './row-utils.ts'
+import { leadingGlyph, leadingKind, type CardLeadingGlyph } from './rows/card-leading.ts'
+import { fallbackCardLink, fallbackCardSummary } from './rows/fallback-card-facts.ts'
+
+/** Leading glyphs (the shipped table): every glyph renders at 14 inside the 16px leading box. */
+const LEADING_GLYPHS: Record<CardLeadingGlyph, ReactNode> = {
+  bash: <IconApiOutline14 size={14} />,
+  read: <IconBrowseOutline16 size={14} />,
+  edit: <IconEditOutline16 size={14} />,
+  search: <IconSearchOutline16 size={14} />,
+  others: <IconSparkle16 size={14} />,
+}
+
+/**
+ * The leading mark of one row: the tool's glyph while the call is clean or
+ * running, and the state dot a failure or an interrupt swaps in — the shipped
+ * `leadingFor` rule, so a failed row gives up its identity for the state
+ * exactly where the shipped row does.
+ * @param state - the card's run state.
+ * @param toolName - the call's wire tool name, when the node carries one.
+ * @returns the node the leading box draws.
+ */
+function leadingFor(state: CardState, toolName: string | null | undefined): ReactNode {
+  switch (leadingKind(state)) {
+    case 'error': return <StateDot state="error" />
+    case 'warning': return <StateDot state="warning" />
+    default: return LEADING_GLYPHS[leadingGlyph(toolName)]
+  }
+}
 
 /** Chrome CSS, keyed by `data-plugin-css` and injected once per page. */
 const CSS = `
 .twc-root{display:flex;flex-direction:column;min-width:0}
-.twc-row{position:relative;min-width:0}
+/* The sweep's own anchor and clip, repeated from the shipped sheet so the band
+   cannot escape the row if the shared row chrome ever drops them. */
+.twc-row{position:relative;min-width:0;overflow:hidden}
 .twc-leading{flex-shrink:0}
+/* Running sweep — the shipped row's own treatment (ui-tool/ToolRow.module.css),
+   copied band for band: a 300px glare of the theme background glides from
+   off-left to off-right, washing the glyph and the text toward the background
+   as it passes. Same anchor as the shipped sheet puts it on: DisclosureRow's
+   own row already carries the position:relative and the overflow:hidden that
+   clips the band. */
+.twc-root[data-state='running'] .twc-row::after{content:'';position:absolute;top:0;bottom:0;left:0;width:300px;background:linear-gradient(90deg,transparent 0%,color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,transparent 100%);animation:twc-row-sweep 2.6s ease-out infinite;pointer-events:none}
+@keyframes twc-row-sweep{0%{left:-300px}90%,100%{left:100%}}
 .twc-chevron{color:var(--dsw-alias-label-secondary)}
 .twc-title{font-weight:400}
 .twc-sep{flex:none;width:2px;height:2px;border-radius:1px;margin:0 8px;background:var(--dsw-alias-label-caption)}
@@ -95,8 +137,11 @@ const CSS = `
 .twc-root:hover .twc-inspect,.twc-inspect:focus-visible{opacity:1}
 .twc-inspect:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}
 .twc-visuallyHidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.twc-fallbackDot{flex:none;width:8px;height:8px;border-radius:999px;background:var(--dsw-alias-state-error-primary)}
-@media (prefers-reduced-motion: reduce){.twc-inspect{transition:none}}
+/* Motion is feedback, never decoration: the running sweep is the one animation
+   this shell borrows from the shipped row, which runs it with no motion query
+   at all. A reduced-motion reader loses only the glide — the state itself is
+   still announced through the visually-hidden status word. */
+@media (prefers-reduced-motion: reduce){.twc-inspect{transition:none}.twc-root[data-state='running'] .twc-row::after{display:none}}
 `
 
 /** Inject the card stylesheet once per page; the loader drops plugin style tags on unload. */
@@ -120,8 +165,10 @@ function injectCss(): void {
 export interface ToolCardShellProps {
   /** Card translate seat. */
   t: CardTranslate
-  /** Run state driving the leading dot and the status word. */
+  /** Run state driving the leading mark and the status word. */
   state: CardState
+  /** Wire tool name selecting the leading glyph; absent/unknown = the generic glyph. */
+  tool?: string | null | undefined
   /** Single-line title (the tool name). */
   title: string
   /** Collapsed summary after the separator; empty renders no separator. */
@@ -158,7 +205,7 @@ function hasContent(node: ReactNode): boolean {
  */
 export function ToolCardShell(props: ToolCardShellProps) {
   injectCss()
-  const { t, state, title, children, filePath, openFile, inspect } = props
+  const { t, state, title, children, filePath, openFile, inspect, tool } = props
   const [expanded, setExpanded] = useState(props.defaultOpen === true)
   const bodyCard = hasContent(children) ? children : null
   const bodyText = typeof props.text === 'string' && props.text !== '' ? props.text : null
@@ -191,7 +238,14 @@ export function ToolCardShell(props: ToolCardShellProps) {
       <span className="twc-sep" aria-hidden />
       {fileLink
         ? (
-          <button type="button" className="twc-fileLink" onClick={openPath} onKeyDown={openPathKeyDown}>
+          /* The link carries its own colour, so a failure line that ever gains
+             a path keeps the error tone instead of turning neutral. */
+          <button
+            type="button"
+            className={errorTone ? 'twc-fileLink twc-errorSummary' : 'twc-fileLink'}
+            onClick={openPath}
+            onKeyDown={openPathKeyDown}
+          >
             {summaryText}
           </button>
         )
@@ -208,7 +262,7 @@ export function ToolCardShell(props: ToolCardShellProps) {
         leadingClassName="twc-leading"
         titleClassName="twc-title"
         chevronClassName="twc-chevron"
-        icon={<StateDot state={dotState(state)} />}
+        icon={leadingFor(state, tool)}
         title={title}
         open={open}
         expandable={expandable}
@@ -238,6 +292,12 @@ export interface GenericCardProps {
   block: CardBlockView
   /** The call's parsed arguments, when there are any. */
   args: Record<string, unknown> | null
+  /** Wire tool name selecting the leading glyph; absent/unknown = the generic glyph. */
+  toolName?: string | null | undefined
+  /** Session workspace root, so a stated path is shortened the rows' way. */
+  cwd?: string | undefined
+  /** Opens the call's file in the host's viewer; absent = the path is plain text. */
+  openFile?: ((path: string, options?: CardOpenFileOptions) => void) | undefined
   /** Jump to this call in the trajectory view. */
   inspect?: (() => void) | undefined
 }
@@ -248,21 +308,27 @@ export interface GenericCardProps {
  * A card is only drawn once its metadata passed a `narrow*` guard, so anything
  * else — a running call, a window-truncated call, a Code Dispatch child, a
  * failure, a payload from another plugin version — lands here with the call's
- * own title, run state, argument count, and result text.
+ * own title, run state, the fact its arguments state, and result text.
  * @param props - see {@link GenericCardProps}.
  * @returns the generic shell.
  */
-export function GenericCard({ t, title, block, args, inspect }: GenericCardProps) {
+export function GenericCard({ t, title, block, args, toolName, cwd, openFile, inspect }: GenericCardProps) {
   const state = cardState(block)
   const output = resultText(block)
   const failure = state === 'error' ? firstLine(output) : ''
+  // Only a head that IS the call's own fact may become the link: a failure line
+  // is not an argument, so it stays plain text (and keeps its error tone).
+  const link = failure === '' ? fallbackCardLink(toolName, args) : null
   return (
     <ToolCardShell
       t={t}
       state={state}
       title={title}
-      summary={failure === '' ? argsSummary(args, t) : failure}
+      tool={toolName}
+      summary={failure === '' ? fallbackCardSummary(toolName, args, cwd, t, cardArgsRaw(block)) : failure}
       summaryTone={failure === '' ? 'default' : 'error'}
+      filePath={link}
+      openFile={link === null ? undefined : openFile}
       text={output}
       inspect={inspect}
     />

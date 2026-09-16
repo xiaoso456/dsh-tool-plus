@@ -47,13 +47,13 @@ export default function TerminalRow(props: RowProps) {
  * @returns the terminal card or the generic shell.
  */
 function TerminalCard(props: RowProps & { title: string }) {
-  const { t, block, cwd: sessionCwd, home, inspect, title } = props
+  const { t, block, cwd: sessionCwd, home, inspect, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowTerminalCardMeta(cardMeta(block))
   const command = argText(args, 'command')
   const state = cardState(block)
   if (block.isError === true || command === null) {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={sessionCwd} inspect={inspect} />
   }
   if (meta !== null && meta.mode === 'background') {
     return (
@@ -61,6 +61,7 @@ function TerminalCard(props: RowProps & { title: string }) {
         t={t}
         state={state}
         title={title}
+        tool={toolName}
         summary={t('bash.background', { jobId: meta.jobId })}
         text={resultText(block)}
         inspect={inspect}
@@ -89,7 +90,7 @@ function TerminalCard(props: RowProps & { title: string }) {
     interrupted ? (timedOut ? t('timedOut') : t('cancelled')) : null,
   )
   return (
-    <ToolCardShell t={t} state={state} title={title} summary={summary} inspect={inspect}>
+    <ToolCardShell t={t} state={state} title={title} tool={toolName} summary={summary} inspect={inspect}>
       <TerminalBlock
         command={command}
         cwd={workdir}

@@ -13,9 +13,9 @@
 import { describe, expect, it } from 'vitest'
 import { CARD_LOCALE_NS, cardLocales, en, zh } from '../../src/web/client/labels.ts'
 import {
-  argText, argsSummary, cardMeta, cardState, cardTitle, diffBlockLabels, displayPath, dotState,
+  argText, argsSummary, cardMeta, cardState, cardTitle, diffBlockLabels, displayPath,
   firstLine, isSubCall, lineCount, parseCardArgs, parseShellStatus, readBlockLabels, resultText,
-  searchBlockLabels, terminalBlockLabels,
+  searchBlockLabels, stateStatus, terminalBlockLabels,
   type CardBlockView, type CardTranslate,
 } from '../../src/web/client/row-utils.ts'
 
@@ -174,20 +174,39 @@ describe('parseCardArgs', () => {
   })
 })
 
-describe('cardState and dotState', () => {
+describe('stateStatus', () => {
+  it('carries every non-clean state to assistive technology, and nothing for ok', () => {
+    // The leading mark is colour-only (and the glyph is identity-only), so this
+    // word is the only thing a screen reader gets about the run state.
+    const t = translator(zh)
+    expect(stateStatus('running', t)).toBe(zh.running)
+    expect(stateStatus('error', t)).toBe(zh.failed)
+    // A stopped call is not a failed one: the shipped row announces
+    // `row.stopped` here, and the row's own visible summary already says
+    // timed out / cancelled rather than "failed".
+    expect(stateStatus('warning', t)).toBe(zh.stopped)
+    expect(stateStatus('ok', t)).toBeNull()
+  })
+
+  it('never asks the dictionary for a key it does not have', () => {
+    // `translator` throws on a missing key, so the four states above are also a
+    // key-set guard on the dictionary.
+    const t = translator(en)
+    expect(stateStatus('warning', t)).toBe(en.stopped)
+  })
+})
+
+describe('cardState', () => {
   it('reports a running call until it settles', () => {
     expect(cardState(running({}))).toBe('running')
-    expect(dotState('running')).toBe('ongoing')
   })
 
   it('reports a settled success as ok', () => {
     expect(cardState(settled({}))).toBe('ok')
-    expect(dotState('ok')).toBe('done')
   })
 
   it('reports a failed call as an error', () => {
     expect(cardState(settled({}, { isError: true }))).toBe('error')
-    expect(dotState('error')).toBe('error')
   })
 
   it('reports a timed-out or cancelled foreground command as a warning', () => {
@@ -195,7 +214,22 @@ describe('cardState and dotState', () => {
     const aborted = settled({}, { meta: { kind: 'terminal', mode: 'foreground', exitCode: null, timedOut: false, aborted: true } })
     expect(cardState(timedOut)).toBe('warning')
     expect(cardState(aborted)).toBe('warning')
-    expect(dotState('warning')).toBe('warning')
+  })
+
+  it('reports an interrupted call as a warning, not a failure', () => {
+    // A turn stopped mid-call is projected as a settled failure carrying
+    // `error.code === 'interrupted'`. The shipped row model reads that BEFORE
+    // `isError` and lands on its stopped (amber) state; reading `isError`
+    // first would paint a stopped call red and call it failed.
+    const interrupted = settled({}, { isError: true, error: { name: 'Interrupted', code: 'interrupted' } })
+    expect(cardState(interrupted)).toBe('warning')
+  })
+
+  it('keeps a plain failure an error, whatever its error code', () => {
+    const failed = settled({}, { isError: true, error: { name: 'ToolError', code: 'tool_error' } })
+    const nameless = settled({}, { isError: true, error: 'nonsense' })
+    expect(cardState(failed)).toBe('error')
+    expect(cardState(nameless)).toBe('error')
   })
 
   it('keeps a non-zero exit ok, because bash reports it as result data', () => {

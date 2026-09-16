@@ -68,7 +68,7 @@ export default function ReadRow(props: RowProps) {
  * @returns the read card.
  */
 function ReadCard(props: RowProps & { title: string }) {
-  const { t, block, cwd, inspect, openFile, title } = props
+  const { t, block, cwd, inspect, openFile, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowReadCardMeta(cardMeta(block))
   // Derived once per frozen node. The hook runs before this component's early
@@ -76,13 +76,13 @@ function ReadCard(props: RowProps & { title: string }) {
   const material = useMemo(() => imageCardMaterial(block, cwd), [block, cwd])
   // A Code Dispatch child's window is drawn by its parent card's own body.
   if (isSubCall(block) || block.isError === true) {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   if (meta === null) {
     // An image read is exactly the read that produces no window, so the image
     // branch sits here; with no material to draw the shell stays generic.
     if (material === null) {
-      return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+      return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
     }
     return (
       <ImageReadCard
@@ -90,6 +90,7 @@ function ReadCard(props: RowProps & { title: string }) {
         block={block}
         material={material}
         title={title}
+        toolName={toolName}
         inspect={inspect}
         openFile={openFile}
         loadImage={props.loadImage}
@@ -101,6 +102,7 @@ function ReadCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       // The head reports the call verbatim (selector included, so a windowed
       // read is distinguishable from a whole-file one); the link below keeps the
       // projected path, which is the part that must name a real file.
@@ -132,6 +134,8 @@ interface ImageReadCardProps {
   material: CardImageMaterial
   /** Resolved card title. */
   title: string
+  /** Wire tool name selecting the leading glyph. */
+  toolName?: string | null | undefined
   /** Jump to this call in the trajectory view. */
   inspect?: (() => void) | undefined
   /** Opens the read path in the host's file viewer. */
@@ -178,7 +182,7 @@ function sameImageState(left: ImageState, right: ImageState): boolean {
  * @param props - see {@link ImageReadCardProps}.
  * @returns the image card.
  */
-function ImageReadCard({ t, block, material, title, inspect, openFile, loadImage }: ImageReadCardProps) {
+function ImageReadCard({ t, block, material, title, toolName, inspect, openFile, loadImage }: ImageReadCardProps) {
   const images = material.images
   const text = resultText(block)
   return (
@@ -186,6 +190,7 @@ function ImageReadCard({ t, block, material, title, inspect, openFile, loadImage
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       summary={material.label}
       filePath={material.path}
       openFile={openFile}

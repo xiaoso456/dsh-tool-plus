@@ -19,7 +19,6 @@ import type {
   DiffBlockLabels,
   ReadBlockLabels,
   SearchBlockLabels,
-  StateDotState,
   TerminalBlockLabels,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -43,6 +42,12 @@ export interface CardBlockView {
   readonly call?: { readonly name?: unknown; readonly argsRaw?: unknown } | null
   readonly content?: unknown
   readonly isError?: unknown
+  /**
+   * Settled failure detail. A turn stopped mid-call is projected as a settled
+   * `isError` block carrying `code: 'interrupted'`, which is a stop, not a
+   * failure — the shipped row model reads this before `isError`.
+   */
+  readonly error?: unknown
   readonly meta?: unknown
 }
 
@@ -54,7 +59,7 @@ const STATE_STATUS_KEY: Record<CardState, ToolCardLocaleKey | null> = {
   running: 'running',
   ok: null,
   error: 'failed',
-  warning: 'failed',
+  warning: 'stopped',
 }
 
 /** Parsed-argument cache: the node is immutable, so one parse serves every render. */
@@ -79,6 +84,22 @@ function callHead(block: CardBlockView): { readonly name?: unknown; readonly arg
 /** Whether `value` is a plain object, the only argument shape the cards accept. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * The call's original argument text.
+ *
+ * A running call carries it directly; a settled result carries the head
+ * backfilled from the in-window `tool/call`, which is absent when window
+ * truncation left that event outside. The text outlives the parse: a call whose
+ * arguments are still streaming is not valid JSON yet, and the shell states its
+ * first line rather than pretending the call said nothing.
+ * @param block - the frozen running-or-settled call node.
+ * @returns the argument text, or `''` when no head survives.
+ */
+export function cardArgsRaw(block: CardBlockView): string {
+  const raw = callHead(block)?.argsRaw
+  return typeof raw === 'string' ? raw : ''
 }
 
 /**
@@ -113,32 +134,27 @@ export function parseCardArgs(block: CardBlockView): Record<string, unknown> | n
 /**
  * Run state of one call.
  *
- * A settled `isError` result is an error; a foreground command that timed out
- * or was cancelled is amber rather than green (the shipped terminal model
- * reads only the trailing exit marker, which is exactly what the card owner
- * was told not to trust). A non-zero exit stays `ok`: bash reports a failing
- * command as result data, and the card's own status pill carries the red.
+ * A turn stopped mid-call is projected as a settled `isError` block carrying
+ * `error.code === 'interrupted'`; the shipped row model reads that before
+ * `isError`, so a stopped call is amber and named "stopped" rather than failed.
+ * Any other settled `isError` result is an error. A foreground command that
+ * timed out or was cancelled is amber rather than green (the shipped terminal
+ * model reads only the trailing exit marker, which is exactly what the card
+ * owner was told not to trust). A non-zero exit stays `ok`: bash reports a
+ * failing command as result data, and the card's own status pill carries the
+ * red.
  * @param block - the frozen running-or-settled call node.
  * @returns the card run state.
  */
 export function cardState(block: CardBlockView): CardState {
   if (!isSettled(block)) return 'running'
+  if (isRecord(block.error) && block.error.code === 'interrupted') return 'warning'
   if (block.isError === true) return 'error'
   const terminal = narrowTerminalCardMeta(cardMeta(block))
   if (terminal !== null && terminal.mode === 'foreground' && (terminal.timedOut || terminal.aborted)) {
     return 'warning'
   }
   return 'ok'
-}
-
-/** Map a card run state onto the primitive's dot semantics. */
-export function dotState(state: CardState): StateDotState {
-  switch (state) {
-    case 'running': return 'ongoing'
-    case 'error': return 'error'
-    case 'warning': return 'warning'
-    default: return 'done'
-  }
 }
 
 /**

@@ -43,12 +43,12 @@ export default function SearchRow(props: RowProps) {
  * @returns the search card.
  */
 function SearchCard(props: RowProps & { title: string }) {
-  const { t, block, cwd, inspect, title } = props
+  const { t, block, cwd, inspect, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowSearchCardMeta(cardMeta(block))
   // A Code Dispatch child's result is drawn by its parent card's own body.
   if (isSubCall(block) || block.isError === true || meta === null) {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} inspect={inspect} />
   }
   // The subject of the search — `pattern` for grep, `pat` for ast_grep, the
   // path for glob — is the most useful summary; the banner inside the block
@@ -61,6 +61,7 @@ function SearchCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       summary={subject ?? argsSummary(args, t)}
       summarySuffix={searchCardSuffix(args, meta, cwd, t)}
       inspect={inspect}

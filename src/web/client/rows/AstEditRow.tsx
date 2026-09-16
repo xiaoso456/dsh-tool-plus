@@ -45,12 +45,12 @@ export default function AstEditRow(props: RowProps) {
  * @returns the preview card.
  */
 function AstEditCard(props: RowProps & { title: string }) {
-  const { t, block, cwd, inspect, openFile, title } = props
+  const { t, block, cwd, inspect, openFile, title, toolName } = props
   const args = parseCardArgs(block)
   const meta = narrowAstEditCardMeta(cardMeta(block))
   // A Code Dispatch child's preview is drawn by its parent card's own body.
   if (isSubCall(block) || block.isError === true || meta === null || meta.preview === '') {
-    return <GenericCard t={t} title={title} block={block} args={args} inspect={inspect} />
+    return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const files = meta.files.length
   const single = files === 1 ? meta.files[0]?.path : undefined
@@ -65,6 +65,7 @@ function AstEditCard(props: RowProps & { title: string }) {
       t={t}
       state={cardState(block)}
       title={title}
+      tool={toolName}
       summary={summary}
       summarySuffix={`${t('astEdit.replacements', { count: meta.replacements })} · ${t('astEdit.files', { count: files })}`}
       filePath={single}
