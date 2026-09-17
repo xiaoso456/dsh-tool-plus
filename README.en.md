@@ -107,7 +107,7 @@ Works out of the box, no configuration needed. Common tweaks: background thresho
 - **dsh CLI**: installed globally, `npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 or ≥ 24
 - **Git Bash** (recommended): serves as the bash execution environment on Windows
-- Targets DeepSeek Harness `dsh` v0.1.2-rc.1 (pre-release; interfaces may change)
+- Targets DeepSeek Harness `dsh` v0.1.5-rc.1 (pre-release; interfaces may change)
 
 ## Notes
 
