@@ -113,6 +113,18 @@ Works out of the box, no configuration needed. Common tweaks: background thresho
 
 - No standalone `pwsh` tool: shell work is handled by the more capable persistent `bash`
 
+**Safe rm sends deleted files to the system trash.** Where they land, and whether you can see them:
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| **Location** | Recycle Bin | Trash `~/.Trash` | `$XDG_DATA_HOME/Trash`; defaults to `~/.local/share/Trash` |
+| **Another volume / external disk** | That volume's Recycle Bin | That volume's `.Trashes` | `.Trash-<uid>` at that mount point |
+| **Visible in the OS trash** | Yes | Yes | Same volume: yes; another volume: open that location |
+| **File name** | Unchanged | Unchanged | A UUID; the original name comes from `.trashinfo` |
+| **Put back** | Yes | Yes | Depends on the file manager |
+| **Implementation** | Shell API | System API | Third-party XDG implementation |
+| **Known limits** | No Recycle Bin on network drives | Requires macOS 10.12+ | Some desktops do not list it — restore from the location above |
+
 ## Build
 
 ```sh
