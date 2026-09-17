@@ -69,11 +69,13 @@ export interface ToolPlusTab {
 
 /** Identifiers of every tool tab. */
 export type ToolPlusToolId =
+  | 'web'
   | 'bash' | 'read' | 'writeEdit'
   | 'grep' | 'glob' | 'astGrep' | 'astEdit'
 
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
+  cards: 'groupCards',
   timing: 'groupTiming',
   output: 'groupOutput',
   truncation: 'groupTruncation',
@@ -95,6 +97,9 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
  * single source; settings.ts reads from here.
  */
 export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
+  // ---- Web 卡片：本插件的浏览器行组件接管全部八个工具的卡片（关掉回到官方行）----
+  { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'cards', tool: 'web' },
+
   // ---- Bash: behavior -------------------------------------------------
   { name: 'enableRunInBackground', kind: 'boolean', default: true, labelKey: 'enableRunInBackground', hintKey: 'enableRunInBackgroundHint', group: 'behavior', tool: 'bash' },
   { name: 'minimizerEnabled', kind: 'boolean', default: true, labelKey: 'minimizerEnabled', hintKey: 'minimizerEnabledHint', group: 'behavior', tool: 'bash' },
@@ -103,8 +108,6 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'rmSafe', kind: 'boolean', default: true, labelKey: 'rmSafe', hintKey: 'rmSafeHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },
-  // Web 工具卡片：本插件的浏览器行组件接管工具卡片（关掉回到官方行）。
-  { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'behavior', tool: 'bash' },
   // ---- Bash: timing & backgrounding -----------------------------------
   { name: 'autoBackgroundMs', kind: 'number', default: 60_000, labelKey: 'autoBackgroundMs', hintKey: 'autoBackgroundMsHint', group: 'timing', tool: 'bash' },
   { name: 'defaultTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'defaultTimeoutMs', hintKey: 'defaultTimeoutMsHint', group: 'timing', tool: 'bash' },
@@ -202,6 +205,8 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
 
 /** Tool tabs in nav order; empty `fields` = no configurable settings. */
 export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
+  // The whole-plugin switch leads the strip: it is not a bash option.
+  { id: 'web', labelKey: 'tabWeb', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'web').map(f => f.name) },
   { id: 'bash', labelKey: 'tabBash', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'bash').map(f => f.name) },
   { id: 'read', labelKey: 'tabRead', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'read').map(f => f.name) },
   { id: 'writeEdit', labelKey: 'tabWriteEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'writeEdit').map(f => f.name) },

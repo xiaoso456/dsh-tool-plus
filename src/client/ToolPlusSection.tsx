@@ -1,8 +1,9 @@
 /**
  * Tool Plus settings section — the plugin's own page in the Settings panel,
  * registered into the `settings.section` slot (nav id `tool-plus`). The page
- * renders one tab per tool (Bash / Read / Write & Edit / Grep /
- * Ast Edit / Read Image); switching a tab shows that tool's configurable
+ * renders one tab per tool (Bash / Read / Write & Edit / Grep / Glob /
+ * Ast Grep / Ast Edit) plus a leading `Web 卡片` tab for the plugin-wide
+ * browser-card switch; switching a tab shows that tool's configurable
  * fields, while tools without global settings show a placeholder. Only the
  * active tool's panel is rendered; the shared staged form over the
  * `tool-plus` namespace lives at the page level, so drafts survive switching

@@ -38,16 +38,13 @@ Install **both** the plugin and the presets:
 ### Install from npm (recommended)
 
 ```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus
+dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-tool-plus
 ```
 
-### Install from GitHub
+`--allow-build` lets this package's install script run; it requires pnpm ≥ 10.4, and on pnpm 11+ omitting it fails the install with `ERR_PNPM_IGNORED_BUILDS`. If your pnpm is too old for the flag, allow the script first and re-run:
 
-Track the latest development build:
-
-```sh
-dsh plugin --profile web add github:xiaoso456/dsh-tool-plus
-```
+- Append to `~/.dsh/profiles/web/pnpm-workspace.yaml`: `allowBuilds:` and `  '@xiaoso/dsh-tool-plus': true`
+- Or run `cd ~/.dsh/profiles/web && pnpm approve-builds --all` (pnpm ≥ 10.32)
 
 ### Local development
 

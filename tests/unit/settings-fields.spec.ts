@@ -160,6 +160,26 @@ describe('bash-plus back-compat removed', () => {
 })
 
 describe('grouping sanity', () => {
+  it('gives the web-card switch a tab of its own instead of hiding it under Bash', () => {
+    // The switch mounts this plugin's browser cards for all eight tools; it is
+    // a plugin-wide presentation setting, not a bash option, so it must not sit
+    // inside the Bash tab where nobody would look for it.
+    const webTab = TOOL_PLUS_TABS.find(tab => tab.id === 'web')
+    expect(webTab, 'the settings page needs a Web-cards tab').toBeDefined()
+    expect(webTab!.labelKey).toBe('tabWeb')
+    expect(webTab!.fields).toEqual(['webCards'])
+    expect(toolPlusField('webCards')!.tool).toBe('web')
+    expect(TOOL_PLUS_GROUP_LABELS[toolPlusField('webCards')!.group]).toBeTruthy()
+
+    const bashTab = TOOL_PLUS_TABS.find(tab => tab.id === 'bash')
+    expect(bashTab, 'the bash tab must still exist').toBeDefined()
+    expect(bashTab!.fields).not.toContain('webCards')
+    expect(bashTab!.fields.length).toBeGreaterThan(20)
+
+    // Nav order: a whole-plugin switch leads the strip.
+    expect(TOOL_PLUS_TABS[0]!.id).toBe('web')
+  })
+
   it('every group label key exists in the group table', () => {
     const groups = new Set(TOOL_PLUS_FIELDS.map(f => f.group))
     for (const group of groups) expect(TOOL_PLUS_GROUP_LABELS[group]).toBeTruthy()

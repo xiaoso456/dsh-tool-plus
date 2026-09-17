@@ -38,16 +38,13 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 ### 从 npm 安装（推荐）
 
 ```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus
+dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-tool-plus
 ```
 
-### 从 GitHub 安装
+`--allow-build` 放行本包的安装脚本，需要 pnpm ≥ 10.4；pnpm 11 起不加会直接报 `ERR_PNPM_IGNORED_BUILDS` 装不上。用不了该参数（pnpm 版本过低）时，先任选一种放行方式，再重跑安装命令：
 
-跟踪最新开发版：
-
-```sh
-dsh plugin --profile web add github:xiaoso456/dsh-tool-plus
-```
+- 往 `~/.dsh/profiles/web/pnpm-workspace.yaml` 追加两行：`allowBuilds:` 与 `  '@xiaoso/dsh-tool-plus': true`
+- 或执行 `cd ~/.dsh/profiles/web && pnpm approve-builds --all`（需 pnpm ≥ 10.32）
 
 ### 本地开发
 

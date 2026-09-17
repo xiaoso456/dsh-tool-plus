@@ -9,8 +9,8 @@
 export type BashPlusLocaleKey =
   | 'title' | 'description'
   | 'nav' | 'pageTitle' | 'pageDescription'
-  | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
-  | 'groupTiming' | 'groupOutput' | 'groupTruncation' | 'groupBehavior'
+  | 'tabWeb' | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
+  | 'groupCards' | 'groupTiming' | 'groupOutput' | 'groupTruncation' | 'groupBehavior'
   | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupSearchDefaults' | 'groupFetch' | 'groupAst'
   | 'noConfigTitle' | 'noConfigHint'
   | 'readSummarizeEnabled' | 'readSummarizeEnabledHint'
@@ -92,6 +92,7 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   nav: 'Tool Plus',
   pageTitle: 'Tool Plus 工具配置',
   pageDescription: '按工具切换，调整每个工具的全局配置；保存后对新调用生效。',
+  tabWeb: 'Web 卡片',
   tabBash: 'Bash',
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
@@ -100,6 +101,7 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
+    groupCards: '卡片',
   groupTiming: '超时与后台',
   groupOutput: '输出',
   groupTruncation: '完成消息截断',
@@ -285,6 +287,7 @@ export const en: Record<BashPlusLocaleKey, string> = {
   nav: 'Tool Plus',
   pageTitle: 'Tool Plus tool configuration',
   pageDescription: 'Switch by tool to adjust its global settings; values apply …',
+  tabWeb: 'Web cards',
   tabBash: 'Bash',
   tabRead: 'Read',
   tabWriteEdit: 'Write & Edit',
@@ -293,6 +296,7 @@ export const en: Record<BashPlusLocaleKey, string> = {
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
   tabReadImage: 'Read Image',
+    groupCards: 'Cards',
   groupTiming: 'Timeouts & backgrounding',
   groupOutput: 'Output',
   groupTruncation: 'Completion truncation',
