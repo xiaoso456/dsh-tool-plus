@@ -57,7 +57,7 @@ importers:
         specifier: ^25.3.0
         version: 25.9.0
       trash:
-        specifier: ^10.1.1
+        specifier: 10.1.1
         version: 10.1.1
       yaml:
         specifier: ^2.9.0
