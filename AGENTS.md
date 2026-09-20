@@ -4,22 +4,22 @@
 
 ## 项目
 
-`@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。一个 git 仓库发两个 npm 包：
+`@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。
 
-| 包 | 目录 | 版本线 |
+**只发一个包**（2026-09-20 起）：根包 `@xiaoso/dsh-tool-plus`。仓库里的 `presets/` 目录（两套 agent 预设模板 + `install-presets.mjs`）随根包的 `files` 一起发布，插件首次启动时按"目录不存在才写入"自动补齐到 `~/.dsh/.agent-presets/`——所以**不再需要**单独安装预设。
+
+| 包 | 目录 | 状态 |
 |---|---|---|
-| `@xiaoso/dsh-tool-plus` | 仓库根 | 始终同版 |
-| `@xiaoso/dsh-tool-plus-presets` | `presets/` | 始终同版 |
+| `@xiaoso/dsh-tool-plus` | 仓库根 | **唯一在发的包** |
+| `@xiaoso/dsh-tool-plus-presets` | `presets/` | **已退役**：不再发新版（旧版已 `npm deprecate`）；目录仍随根包发布，仅作为模板来源 |
 
-**版本号同步**：两包始终同版（拍板 2026-08-27），发布迭代时两边的 package.json 一起 `pnpm version prerelease`，谁有变更发谁。
-
-两包 `publishConfig` 均已配 `tag: latest` / `access: public`——发布直接落在 latest 标签，`dsh plugin add`（不带 tag）默认安装与 dsh 当前版本匹配（官方 dsh CLI 同样将 latest 指向 rc 版本）。
+`publishConfig` 已配 `tag: latest` / `access: public`——发布直接落在 latest 标签，`dsh plugin add`（不带 tag）默认安装与 dsh 当前版本匹配。**发预发布必须显式带 tag**（如 `npm publish --tag beta`），否则会推到 latest，把 beta 塞给所有默认安装的用户。
 
 ## 发布与推送（每次迭代照此走）
 
 ```sh
-# 1. 两包版本同步自增（都执行，保持一致）
-pnpm version prerelease            # 在包所在目录执行
+# 1. 版本自增（只操作根包）
+pnpm version prerelease
 
 # 2. 四连验证
 pnpm typecheck && pnpm build && pnpm test
@@ -28,14 +28,13 @@ pnpm typecheck && pnpm build && pnpm test
 #    （格式沿用历史版本：## [<ver>] - <日期> + Added/Changed/Fixed/Removed
 #    + 对比链接），随本版变更一起提交；不更新不得发版
 
-# 4. 提交 + 打消歧标签（两包同仓，用前缀区分）
-git commit -am "release: <pkg> v<ver>"
-git tag presets-v<ver>             # 或 tool-plus-v<ver>
+# 4. 提交 + 标签
+git commit -am "release: tool-plus v<ver>"
+git tag tool-plus-v<ver>
 
-# 5. 推 git + 发 npm（谁有变更发谁）
+# 5. 推 git + 发 npm（正式版落 latest；预发布加 --tag beta）
 git push && git push --tags        # 先推分支，再推标签（--tags 只推标签不推分支）
-npm publish ./presets              # 预设包（显式路径，防 npm 把 "presets" 当包名）
-npm publish                        # 主包（发布直接落 latest，无需额外参数）
+npm publish                        # 主包（含 presets/ 模板）
 
 # 6. 发 GitHub Release（手动，不用 workflow；notes 用 CHANGELOG 本节内容）
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>

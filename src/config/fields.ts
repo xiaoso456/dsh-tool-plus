@@ -76,6 +76,9 @@ export type ToolPlusToolId =
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
   cards: 'groupCards',
+  // 「预设」组没有对应字段（内容来自 presets/status RPC，不是设置键），但它同样
+  // 是「全局」tab 里的一个分组，标题走同一张表，避免第二处文案来源。
+  preset: 'groupPresets',
   timing: 'groupTiming',
   output: 'groupOutput',
   truncation: 'groupTruncation',
@@ -97,7 +100,7 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
  * single source; settings.ts reads from here.
  */
 export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
-  // ---- Web 卡片：本插件的浏览器行组件接管全部八个工具的卡片（关掉回到官方行）----
+  // ---- 全局 tab · 对话卡片分组：本插件的浏览器行组件接管全部八个工具的卡片（关掉回到官方行）----
   { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'cards', tool: 'web' },
 
   // ---- Bash: behavior -------------------------------------------------
@@ -205,7 +208,11 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
 
 /** Tool tabs in nav order; empty `fields` = no configurable settings. */
 export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
-  // The whole-plugin switch leads the strip: it is not a bash option.
+  // The plugin-level tab leads the strip: it is not a bash option. Its user-facing
+  // name is 「全局」/ Global (labelKey keeps the historical `tabWeb` name — the
+  // host shell's own 「通用」tab must not be confused with this inner tab bar);
+  // it holds the plugin-wide card switch plus the preset group
+  // (`TOOL_PLUS_GROUP_LABELS.preset`).
   { id: 'web', labelKey: 'tabWeb', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'web').map(f => f.name) },
   { id: 'bash', labelKey: 'tabBash', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'bash').map(f => f.name) },
   { id: 'read', labelKey: 'tabRead', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'read').map(f => f.name) },

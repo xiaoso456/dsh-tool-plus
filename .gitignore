@@ -24,6 +24,10 @@ refs/
 # Local memory store
 .dsh-meow/
 
+# Python bytecode left behind by one-off tooling
+__pycache__/
+*.pyc
+
 # Docs stay local (archives/plans/audits, not committed)
 docs/*
 # ...except README screenshots, which must ship with the repo

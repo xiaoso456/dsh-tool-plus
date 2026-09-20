@@ -2,8 +2,10 @@
  * Tool Plus settings section — the plugin's own page in the Settings panel,
  * registered into the `settings.section` slot (nav id `tool-plus`). The page
  * renders one tab per tool (Bash / Read / Write & Edit / Grep / Glob /
- * Ast Grep / Ast Edit) plus a leading `Web 卡片` tab for the plugin-wide
- * browser-card switch; switching a tab shows that tool's configurable
+ * Ast Grep / Ast Edit) plus a leading 全局 / Global tab — the plugin-level
+ * container, holding two groups: 对话卡片 (the plugin-wide browser-card
+ * switch) and 预设 (the agent-preset roster: status, difference summary and
+ * the manual upgrade/reset actions); switching a tab shows that tool's configurable
  * fields, while tools without global settings show a placeholder. Only the
  * active tool's panel is rendered; the shared staged form over the
  * `tool-plus` namespace lives at the page level, so drafts survive switching
@@ -34,6 +36,7 @@ import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
 import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
+import { PresetPanel } from './PresetPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the bound settings scope. */
@@ -85,7 +88,7 @@ const CSS = `
 .tps-emptyHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .tps-readOnly{margin:0;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
 .tps-footer{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 0;border-top:1px solid var(--dsw-alias-border-l2)}
-.tps-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-error)}
+.tps-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-state-error-primary)}
 .tps-applies{flex:1;min-width:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
 .tps-unsavedDot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-business-primary);animation:tps-pulse 1.8s ease-in-out infinite}
@@ -166,7 +169,8 @@ function isFieldVisible(field: ToolPlusField, form: ReturnType<typeof useToolFor
  * switches first, per their declaration order), grouped under their group
  * heading, or the no-config placeholder for tools without global settings.
  * Fields whose visibility condition is unmet are omitted. `action` fields
- * render their own button row (host RPC via the caller's `run`).
+ * render their own button row (host RPC via the caller's `run`). The 全局 tab
+ * appends its preset group (roster/status/actions) after the field groups.
  */
 function ToolTabPanel(props: {
   tab: ToolPlusTab
@@ -287,6 +291,9 @@ function ToolTabPanel(props: {
           </div>
         </section>
       ))}
+      {/* 「全局」tab 的第二个分组：预设清单。它不进表单（没有设置键），自带
+          RPC 状态与动作，所以在这里单独挂，而不是在字段表里插一个假字段。 */}
+      {tab.id === 'web' ? <PresetPanel t={t} /> : null}
     </>
   )
 }

@@ -22,11 +22,14 @@ import { closeSessionShells, executeBash } from './tools/bash/bash-executor.ts'
 import { allocateSpillFile, saveOriginalText, sweepStaleSpillFiles } from './tools/bash/adapter/spill.ts'
 import { startBashJob, type ManagedBashJob } from './tools/bash/background.ts'
 import { extractCdWorkdir } from './tools/bash/cd-workdir.ts'
-import { setRuntimeLogger } from './tools/bash/logger.ts'
+import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
+import { applyPresetAction, ensureDefaultPresets } from './presets/install.ts'
+import { listPresetStatuses } from './presets/status.ts'
+import { comparePresetFile, listTemplates } from './presets/compare.ts'
 import { bashCardMeta } from './web/host/bash.ts'
 import { installBunShim } from './tools/shared/bun-shim.ts'
 import { applyConfiguredTruncation } from './config/truncate.ts'
@@ -137,10 +140,34 @@ export function apply(ctx: Context, config: Config = {}): void {
     registerModeSensitive()
   })
 
-  // Tool-plus RPC (`/tool-plus` channel: `browser/detect` + `rmSafe/status`)
-  // served to the settings panel; teardown on plugin dispose. Best-effort:
-  // without a Connection service (CLI-only deployments) this is a no-op.
-  const disposeBrowserProbe = installBrowserProbeRpc(ctx, { getRmSafe: () => cfg.rmSafe })
+  // Tool-plus RPC (`/tool-plus` channel: `browser/detect`, `rmSafe/status`,
+  // `presets/status`, `presets/apply`) served to the settings panel; teardown
+  // on plugin dispose. Best-effort: without a Connection service (CLI-only
+  // deployments) this is a no-op. One channel takes one handler, so every
+  // endpoint family rides this single registration.
+  const disposeBrowserProbe = installBrowserProbeRpc(ctx, {
+    getRmSafe: () => cfg.rmSafe,
+    presets: {
+      listStatuses: (roster) => listPresetStatuses(roster),
+      applyAction: (id, action, templateId) => applyPresetAction(id, action, {}, templateId),
+      listTemplates: () => listTemplates(),
+      // 只读比较：读两份组合文件后交给纯函数；任一侧读不到都返回 unreadable
+      // （那是面板要渲染的状态，不是调用失败）。
+      comparePreset: (preset, templateId) => comparePresetFile(preset.path, templateId),
+    },
+  })
+
+  // Agent presets on startup: write our two shipped templates into the user
+  // root **only when a preset directory is missing**. An existing preset is
+  // never touched — every update/reset is user-initiated from the settings
+  // panel — and a failure here must never take the plugin down with it.
+  try {
+    const { created, failed } = ensureDefaultPresets()
+    if (created.length > 0) runtimeLogger().info(`preset templates installed: ${created.join(', ')}`)
+    for (const item of failed) runtimeLogger().warn(`preset template ${item.id} not installed: ${item.reason}`)
+  } catch (error) {
+    runtimeLogger().warn(`preset bootstrap skipped: ${error instanceof Error ? error.message : String(error)}`)
+  }
 
   ctx.systemPrompt.section({
     name: 'tool:bash',

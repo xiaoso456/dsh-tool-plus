@@ -1,25 +1,30 @@
 /**
- * T11-2 回归：冲突注册跨工具调用保持（OMP ConflictHistory 挂 session）。
+ * OMP session 级状态跨调用桥接。
  *
- * OMP 的 ConflictHistory 挂在 ToolSession 上，read 注册、write 消费。
- * DSH 适配层每次 execute 都新建 ToolSession，必须通过
- * shared/session-state.ts 按 DSH session 对象（exec.agent.session）持久化。
- * 本测试模拟两次独立工具调用（各自 executeReadTool/executeWriteTool），
- * 共享同一个 exec.agent.session 对象，验证：
- *  - read 注册的冲突 id 在 write 时可用（conflict://1 解决成功）
- *  - 文件内容真实被改写（theirs 侧保留，标记清除）
- *  - 无 session 上下文时状态不跨调用保持（退化为每次新建）
+ * 上游把 session 级状态挂在 ToolSession 上跨调用共享（refs tools/index.ts:358-362；
+ * 18.1.17 的 native `EditStore`：hashline 快照 / CUT-PUT 寄存器 / no-op 守卫），
+ * 而 DSH 每次 execute 都新建 ToolSession —— 所以 `shared/session-state.ts` 必须按
+ * DSH session 对象（`exec.agent.session`）把状态 persist/attach 回来，否则
+ * conflictHistory（T11-2）与 editStore（A-4）都会静默失效。
+ *
+ * 本文件覆盖两层：
+ *  - 状态 API 本身：attach/persist 对 editStore 与 conflictHistory 对称（A-4）；
+ *  - 端到端：两次独立工具调用（read 注册 → write 消费 `conflict://1`）共享同一
+ *    session 对象时冲突可用、文件真被改写；无 session 上下文时状态不跨调用（T11-2）。
+ * @module tests
  */
+
 import { afterEach, describe, expect, it } from 'vitest'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { attachOmpSessionState, persistOmpSessionState } from '../../src/tools/shared/session-state.ts'
 import { executeReadTool } from '../../src/tools/read/adapter/index.ts'
 import { executeWriteTool } from '../../src/tools/write/adapter/index.ts'
 
 const tmpDirs: string[] = []
 function tmpDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-plus-conflict-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-plus-session-'))
   tmpDirs.push(dir)
   return dir
 }
@@ -38,10 +43,39 @@ const CONFLICTED = [
   '',
 ].join('\n')
 
-/** 模拟 DSH exec 上下文：agent.session 是同一对象（跨调用稳定）。 */
+/** 模拟 DSH exec 上下文：`agent.session` 是同一对象（跨调用稳定）。 */
 function execFor(cwd: string, session: object): any {
   return { agent: { session: { header: { cwd }, ...session } }, signal: undefined }
 }
+
+describe('OMP session 状态桥接（A-4）', () => {
+  it('editStore 经 persist → attach 跨调用 round-trip', () => {
+    const sessionKey = {}
+    const store = { snapshots: new Map<string, string>() }
+
+    // 第一次调用结束：引擎在 ToolSession 上建好的编辑存储写回共享态
+    persistOmpSessionState(sessionKey, {
+      conflictHistory: { nextId: 2 } as unknown as object,
+      editStore: store,
+    } as never)
+
+    // 第二次调用开始：新 ToolSession 应拿到上次的编辑存储（同一实例）
+    const nextSession: { conflictHistory?: unknown; editStore?: unknown } = {}
+    attachOmpSessionState(nextSession, sessionKey)
+
+    expect(nextSession.conflictHistory).toEqual({ nextId: 2 })
+    expect(nextSession.editStore).toBe(store)
+  })
+
+  it('无 sessionKey 时跳过（不挂状态），与 conflictHistory 语义一致', () => {
+    const session: { conflictHistory?: unknown; editStore?: unknown } = {}
+    attachOmpSessionState(session, undefined)
+    expect(session.editStore).toBeUndefined()
+    expect(session.conflictHistory).toBeUndefined()
+
+    expect(() => persistOmpSessionState(undefined, { editStore: {} } as never)).not.toThrow()
+  })
+})
 
 describe('冲突注册跨调用（T11-2）', () => {
   it('read 注册 → write conflict://1 解决成功，文件被改写', async () => {

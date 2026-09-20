@@ -18,7 +18,7 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 - **edit**：replace 默认，另支持 patch / hashline / apply-patch 三种补丁格式；多段编辑、唯一性校验、空白差异模糊匹配
 - **grep / glob**：全文搜索与文件名匹配；mtime 排序、上下文行、忽略规则可配置
 - **ast_grep / ast_edit**（可选）：基于语法树的结构化代码搜索与重写，可在设置中开启
-- **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板，一条命令安装（见安装章节）
+- **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板
 
 设置面板（Bash 工具页）：
 
@@ -30,10 +30,7 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 
 ## 安装
 
-插件与预设**都要安装**：
-
-- **工具插件**：提供全套工具，自动接管官方 bash / pwsh / 文件 / 搜索工具；
-- **agent 预设**：官方预设里没有这些工具的配置，直接用默认配置会缺能力——标准版 / PTC 两套模板就是来补齐这块的。
+- **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板
 
 ### 从 npm 安装（推荐）
 
@@ -52,47 +49,18 @@ dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-too
 dsh plugin --profile web add link:<本仓库路径>
 ```
 
-### 预设安装
+### 预设
 
-**方法一 · 使用 npx 脚本安装**
+| 预设 | 底座 | 说明 |
+|---|---|---|
+| **Tool Plus 标准增强版** | 官方 standard | 官方标准模式全部能力 + 文件/Shell 工具集换成本插件 |
+| **Tool Plus PTC 增强版** | 官方 PTC（Code Mode） | 同上，但经 Code Mode 以 `run_code` 组合多步操作 |
 
-```sh
-npx @xiaoso/dsh-tool-plus-presets
-```
+已有旧版预设想跟上当前版本，用设置页「Tool Plus → 预设」：
 
-**方法二 · 使用大模型配置预设**（不依赖上面的包）——把下面这段发给一个能改你电脑上文件的 AI 会话：
-
-```text
-请为我安装 DeepSeek Harness 的两个增强 agent 预设。
-
-1. 找到全局 dsh 包内的官方预设目录 config/agent-presets/，其中有 standard 与 code 两套模板，
-   各含 preset.yml 和 agent.cordis.yml。（Windows 在 npm 全局 node_modules\@deepseek-ai\dsh\ 下；
-   macOS/Linux 先跑 npm root -g 定位；找不到就全盘搜索已安装的 @deepseek-ai/dsh 包。）
-2. 在 ~/.dsh/.agent-presets/ 下新建 tool-plus-standard 与 tool-plus-ptc 两个目录。
-
-3. tool-plus-standard：把官方 standard 的两个文件复制过来，然后修改：
-   - preset.yml 整个替换为：
-       name: Tool Plus 标准增强版
-       description: 标准模式全部能力，文件/Shell 工具集替换为 @xiaoso/dsh-tool-plus，pwsh 默认禁用
-       order: 2
-   - agent.cordis.yml：
-     a. 把 id: tool-bash 的条目改为
-          - id: tool-plus
-            name: '@xiaoso/dsh-tool-plus'
-            disabled: true
-     b. 把 id: tool-pwsh 条目的平台条件禁用改成固定一行 disabled: true
-     c. 整块删除 id: tool-fs 和 id: tool-fs-search 两个条目（后者还带 sampleOverCapGlobResults 配置）
-
-4. tool-plus-ptc：把官方 code 的两个文件复制过来，做第 3 步完全相同的三处修改，
-   但 preset.yml 替换为：
-       name: Tool Plus PTC 增强版
-       description: PTC(Code Mode) 全部能力，文件/Shell 工具集替换为 @xiaoso/dsh-tool-plus，pwsh 默认禁用
-       order: 3
-
-5. 完成后列出这两个目录的文件树，并提醒我重启运行中的 dsh 让预设生效。
-```
-
-两法效果相同：文件落到 `~/.dsh/.agent-presets/`，重启 dsh 后在会话里选用预设即生效。
+- **最小更新**：只禁用冲突的工具行，保留其余本地改动
+- **重置为对比模板**：整份覆盖成所选模板，写前自动备份
+- **查看差异**：先看差在哪几行，再决定动不动手
 
 ## 配置
 

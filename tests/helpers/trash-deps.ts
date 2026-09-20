@@ -1,6 +1,6 @@
 /**
  * rmSafe 测试共享依赖工厂：fake trash + 真实文件系统 lstat/stat。
- * 供 trash-cli.spec.ts 与 trash-cli-coreutils.spec.ts 复用（避免复制）。
+ * 供 trash-cli.spec.ts 复用（避免复制）。
  */
 import * as fs from 'node:fs'
 import type { TrashCliDeps } from '../../src/tools/bash/trash-cli.ts'

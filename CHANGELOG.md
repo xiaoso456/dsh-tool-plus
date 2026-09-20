@@ -1,9 +1,29 @@
 # Changelog
 
-本文件记录 `@xiaoso/dsh-tool-plus` 与 `@xiaoso/dsh-tool-plus-presets` 的版本更新（两个包的版本号始终保持一致）。
+本文件记录 `@xiaoso/dsh-tool-plus` 的版本更新。（`@xiaoso/dsh-tool-plus-presets` 已于 2026-09-20 退役：预设模板随主包发布、首次启动自动补齐，该包不再发新版。）
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+
+## [0.1.9] - 2026-09-20
+
+### Added
+
+- 设置页新增预设面板（Tool Plus → 预设）：可对比本地预设与随包模板，只更新冲突的工具行，或整份重置为所选模板
+- 预设面板显示两项状态：工具行是否已接入本插件、与所选模板相差几处
+- 各动作按钮带问号图标，悬停可看该动作具体做什么
+
+### Changed
+
+- 预设随插件安装：安装插件后不再需要单独安装预设包，两套模板首次启动时自动写入
+- 设置页按钮与状态色改为与宿主一致
+
+### Fixed
+
+- 预设面板此前读不到状态，一直显示部署不可用
+- 动作说明浮层此前会被设置面板遮挡或被裁切，文字颜色在浅色主题下难以辨认
+
+[对比 0.1.8](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.8...tool-plus-v0.1.9)
 
 ## [0.1.8] - 2026-09-17
 

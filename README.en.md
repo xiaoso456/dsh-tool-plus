@@ -18,7 +18,7 @@ Essential tools enhancement for DeepSeek Harness: persistent bash, structured re
 - **edit**: `replace` by default, with patch / hashline / apply-patch formats also supported; multi-hunk edits, uniqueness validation, fuzzy matching tolerant of whitespace differences
 - **grep / glob**: full-text search and filename matching; mtime sorting, context lines, and configurable ignore rules
 - **ast_grep / ast_edit** (optional): syntax-tree based structural code search and rewrite, enabled in settings
-- **agent presets**: two companion templates — Standard enhanced and PTC (Code Mode) — installable in one command (see Installation)
+- **agent presets**: two companion templates — Standard enhanced and PTC (Code Mode)
 
 Settings panel (Bash tab):
 
@@ -30,10 +30,7 @@ Settings panel (Bash tab):
 
 ## Installation
 
-Install **both** the plugin and the presets:
-
-- **Tool plugin**: provides the full toolset and takes over the official bash / pwsh / file / search tools;
-- **Agent presets**: the official presets contain no configuration for these tools, so the stock setup is missing capabilities — the Standard / PTC templates exist to fill exactly that gap.
+- **Agent presets**: two companion templates — Standard enhanced and PTC (Code Mode)
 
 ### Install from npm (recommended)
 
@@ -52,51 +49,18 @@ dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-too
 dsh plugin --profile web add link:<path to this repo>
 ```
 
-### Preset installation
+### Presets
 
-**Option 1 · Install with the npx script**
+| Preset | Base | What it is |
+|---|---|---|
+| **Tool Plus 标准增强版** | official standard | everything in standard mode, with the file/shell toolset swapped for this plugin |
+| **Tool Plus PTC 增强版** | official PTC (Code Mode) | same, but composing multi-step operations through Code Mode's `run_code` |
 
-```sh
-npx @xiaoso/dsh-tool-plus-presets
-```
+To bring an older local copy up to date, use **Tool Plus → Presets** in the settings page:
 
-**Option 2 · Have an AI session configure the presets** (no dependency on the package above) — paste the following into an AI session that can edit files on your machine:
-
-```text
-Please install the two enhanced agent presets for DeepSeek Harness.
-
-1. Locate the official preset directory config/agent-presets/ inside the globally installed dsh package;
-   it contains the standard and code templates, each with preset.yml and agent.cordis.yml.
-   (On Windows it is under the global node_modules\@deepseek-ai\dsh\ directory; on macOS/Linux run
-   npm root -g first to locate it; if you cannot find it, search the whole disk for the installed
-   @deepseek-ai/dsh package.)
-2. Create two directories under ~/.dsh/.agent-presets/: tool-plus-standard and tool-plus-ptc.
-
-3. tool-plus-standard: copy over the two files from the official standard template, then modify:
-   - Replace preset.yml entirely with:
-       name: Tool Plus 标准增强版
-       description: Full standard-mode capabilities, file/shell toolset replaced by @xiaoso/dsh-tool-plus, pwsh disabled by default
-       order: 2
-   - agent.cordis.yml:
-     a. Change the entry with id: tool-bash to
-          - id: tool-plus
-            name: '@xiaoso/dsh-tool-plus'
-            disabled: true
-     b. Change the id: tool-pwsh entry's platform-conditional disable into a plain disabled: true line
-     c. Delete the two entries with id: tool-fs and id: tool-fs-search entirely
-        (the latter also carries a sampleOverCapGlobResults setting)
-
-4. tool-plus-ptc: copy over the two files from the official code template and make exactly the same
-   three changes as in step 3, except replace preset.yml with:
-       name: Tool Plus PTC 增强版
-       description: Full PTC (Code Mode) capabilities, file/shell toolset replaced by @xiaoso/dsh-tool-plus, pwsh disabled by default
-       order: 3
-
-5. When done, list the file trees of both directories and remind me to restart any running dsh
-   so the presets take effect.
-```
-
-Keep the `name:` fields as shown — they match the templates the npx script installs. Both options produce the same result: the files land in `~/.dsh/.agent-presets/`; restart dsh and select the preset in your session to activate it.
+- **Minimal update** — disables only the conflicting tool rows, keeps your other changes
+- **Reset to compared template** — replaces the whole preset with the selected template, backing it up first
+- **View differences** — shows which lines differ before you touch anything
 
 ## Configuration
 
