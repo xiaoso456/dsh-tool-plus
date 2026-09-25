@@ -50,6 +50,35 @@ function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-trash-cli-test-'))
 }
 
+/**
+ * 建一个「链接」夹具：POSIX 用真 symlink，Windows 用 junction。
+ *
+ * Windows 的 `CreateSymbolicLink` 需要管理员权限或开发者模式，普通用户/CI 直接
+ * EPERM（2026-09-25 实测本机：未提权且未开开发者模式 → "此操作需要管理员权限"）。
+ * 测试夹具不该依赖系统权限：junction 是同一种重解析点，Node 的 `lstat` 对它同样报
+ * `isSymbolicLink=true` / `isDirectory=false`（与指向目录的 symlink 同形，正是这两个
+ * 用例要断言的形状），而普通用户在 NTFS 上就能建。
+ * @param target - 链接指向的目标（Windows 上必须是**已存在**的目录）。
+ * @param link - 链接自身路径。
+ */
+function makeLink(target: string, link: string): void {
+  fs.symlinkSync(target, link, IS_WIN32 ? 'junction' : 'file')
+}
+
+/**
+ * 建一个悬空链接：先建目标目录并链接，再删掉目标目录，链接就悬空了。
+ * POSIX 下 symlink 允许直接指向不存在的路径，但这条统一路径在两边都成立（少一个分支），
+ * 且「lstat 看得见链接本身、stat 追不到目标」的语义与原始夹具一致。
+ * @param dir - 夹具目录。
+ * @param link - 链接自身路径。
+ */
+function makeDanglingLink(dir: string, link: string): void {
+  const target = path.join(dir, 'gone')
+  fs.mkdirSync(target)
+  makeLink(target, link)
+  fs.rmdirSync(target)
+}
+
 describe('parseRmArgs（coreutils rm 参数语义）', () => {
   it('无参数 → missing operand', () => {
     const parsed = parseRmArgs([])
@@ -339,7 +368,7 @@ describe('符号链接（coreutils dangling-symlink 移植）', () => {
   it('悬空链接删除成功（lstat 判断链接本身存在）', async () => {
     const dir = tmpDir()
     const dangling = path.join(dir, 'dangle')
-    fs.symlinkSync(path.join(dir, 'no-file'), dangling)
+    makeDanglingLink(dir, dangling)
     const { deps, trashCalls, code } = makeDeps()
     await runTrashCli([dangling], deps)
     expect(code()).toBe(0)
@@ -351,7 +380,7 @@ describe('符号链接（coreutils dangling-symlink 移植）', () => {
     const target = path.join(dir, 'target')
     const link = path.join(dir, 'symlink')
     fs.mkdirSync(target)
-    fs.symlinkSync(target, link)
+    makeLink(target, link)
     const { deps, trashCalls, err, code } = makeDeps()
     await runTrashCli([link], deps)
     expect(code()).toBe(0)
