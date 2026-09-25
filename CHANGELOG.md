@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.10-beta.3] - 2026-09-25
+
+> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
+
+### Added
+
+- Windows：挂载时给宿主进程分配一个不可见控制台，宿主的所有 console 子进程改为继承它 —— 上游 pi-shell 的 `where git` 探测不再**每条命令**新建一个可见窗口；代价是宿主启动时会出现一次终端窗口（默认终端为 Windows Terminal 时约 2 秒，`ShowWindow(GetConsoleWindow())` 藏不住 wt 宿主窗口）
+
+### Changed
+
+- 新增可选依赖 `koffi@^3.3.1`（原生 FFI，无安装脚本）：宿主运行时自带 koffi 时本包不重复安装，两者都取不到时该功能自动降级
+
+[对比 0.1.10-beta.2](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.10-beta.2...tool-plus-v0.1.10-beta.3)
+
 ## [0.1.10-beta.2] - 2026-09-25
 
 > 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
