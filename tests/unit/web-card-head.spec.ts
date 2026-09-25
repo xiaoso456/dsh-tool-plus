@@ -531,7 +531,7 @@ describe('web card head', () => {
         const userStored = false
         const staged = 'bytes'
 
-        // The fixed formula in BashPlusCard:
+        // The select branch of the shared form model (src/client/forms.ts):
         let overridden = false
         if (staged === null || staged === baseVal) {
           overridden = false

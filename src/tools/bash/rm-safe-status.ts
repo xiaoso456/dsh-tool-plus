@@ -81,7 +81,9 @@ export interface ProbeSpawnDeps {
 /** 默认 spawn 实现：收集 stdout，超时 kill 并标记 timedOut。 */
 const defaultSpawnDeps: ProbeSpawnDeps = {
   spawnShell: (shell, args, timeoutMs) => new Promise((resolve, reject) => {
-    const child = spawn(shell, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    // windowsHide：宿主无控制台时（桌面端）Windows 会给这个一次性 shell
+    // 新开一个控制台窗口；探测进程从不需要控制台，隐藏即可。
+    const child = spawn(shell, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let timedOut = false
     const timer = setTimeout(() => {

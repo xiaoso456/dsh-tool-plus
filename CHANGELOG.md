@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.10-beta.2] - 2026-09-25
+
+> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
+
+### Changed
+
+- 设置面只保留左侧独立的 Tool Plus 页：不再向官方「内置插件」页注册 tab，同一份配置不再有两个入口
+
+### Fixed
+
+- 在桌面端这类没有控制台的宿主里，生成 shell 快照、探测「安全 rm」这两条一次性 shell 不再闪出控制台窗口（两处 `spawn` 补 `windowsHide`）
+
+### Removed
+
+- 设置卡片组件 `src/client/BashPlusCard.tsx` 与 `settings.plugins.tab` 注册（随去 tab 一并移除）
+
+[对比 0.1.10-beta.1](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.10-beta.1...tool-plus-v0.1.10-beta.2)
+
 ## [0.1.10-beta.1] - 2026-09-25
 
 > 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。

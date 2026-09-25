@@ -328,12 +328,15 @@ describe('lib/client.js — the lazy-CJS factory the loader executes', () => {
   })
 
   it('requires only the frozen externals the loader can answer', () => {
-    expect(bootBundle().requireCalls).toEqual([
-      'react',
-      '@deepseek-ai/dsh-client-ui-primitives',
-      'react/jsx-runtime',
+    // The multiset is the contract — a require the loader cannot answer breaks
+    // the plugin — while the call ORDER follows the module graph (adding or
+    // removing a card reshuffles it) and is not load-bearing.
+    expect([...bootBundle().requireCalls].sort()).toEqual([
       '@deepseek-ai/dsh-client-connection/client',
+      '@deepseek-ai/dsh-client-ui-primitives',
+      'react',
       'react-dom',
+      'react/jsx-runtime',
     ])
   })
 })
@@ -388,12 +391,15 @@ describe('lib/client.js — exports and apply()', () => {
     const fabricated = fabricateCtx()
     ;(exports.apply as (ctx: unknown) => void)(fabricated.ctx)
 
-    // One shared form per surface: the tool-card switch, the settings card, the
-    // settings section — all resolved on the plugin's single namespace.
-    expect(fabricated.scopes).toHaveLength(3)
+    // One shared form per consumer: the tool-card switch and the plugin's own
+    // Settings page — both resolved on the plugin's single namespace.
+    expect(fabricated.scopes).toHaveLength(2)
     expect(fabricated.scopes.every(namespace => namespace === SETTINGS_NS)).toBe(true)
     expect(fabricated.locales).toContain(SETTINGS_NS)
-    expect(fabricated.core.entries('settings.plugins.tab').map(entry => entry.options.id)).toEqual([SETTINGS_NS])
+    // Deliberately no tab in the official Plugins section: the plugin ships its
+    // own Settings page, so a second entry point there would only split one form
+    // across two surfaces. The shipped inventory tab stays the only contribution.
+    expect(fabricated.core.entries('settings.plugins.tab')).toEqual([])
     expect(fabricated.core.entriesOfSlot('settings.section').map(entry => entry.options.id)).toEqual([SETTINGS_NS])
     // The winner self-check inside the plugin must not have stepped aside.
     expect(warnings.filter(message => message.includes('could not take over'))).toEqual([])

@@ -340,6 +340,11 @@ export async function getOrCreateSnapshot(
 			timeout: timeoutMs,
 			stdio: "ignore",
 			killSignal: "SIGKILL",
+			// On Windows a console child of a console-less host (the desktop app)
+			// gets a fresh console window; every other spawn in this stack opts
+			// out of that (brush sets CREATE_NO_WINDOW, pi-utils passes
+			// `windowsHide: true`). The snapshot shell never needs a console.
+			windowsHide: true,
 		});
 
 		await new Promise<void>((resolve, reject) => {
