@@ -56,11 +56,18 @@ dsh plugin --profile web add link:<path to this repo>
 | **Tool Plus 标准增强版** | official standard | everything in standard mode, with the file/shell toolset swapped for this plugin |
 | **Tool Plus PTC 增强版** | official PTC (Code Mode) | same, but composing multi-step operations through Code Mode's `run_code` |
 
-To bring an older local copy up to date, use **Tool Plus → Presets** in the settings page:
+Both presets are **declared by the plugin**: installing it (as a profile bundle) brings two `@deepseek-ai/dsh-agent-preset` declaration rows along in its patch layer, so they appear in the preset list immediately. There is no install step, and the plugin writes nothing at startup.
 
-- **Minimal update** — disables only the conflicting tool rows, keeps your other changes
-- **Reset to compared template** — replaces the whole preset with the selected template, backing it up first
-- **View differences** — shows which lines differ before you touch anything
+**Tool Plus → Presets** in the settings page is where you change them. Since dsh 0.1.7 the official preset page is read-only and the `agent_preset` tool is gone, so this panel is the only graphical entry point:
+
+- **Minimal update** — disables just the official tool rows still mounted, touching nothing else
+- **Align to template** — replaces this row's whole plugin list with the selected template
+- **Revert to bundled** — removes the override you wrote in the profile configuration (`<profile>/cordis.patch.yml`), falling back to the bundled declaration
+- **View differences** — shows which entries differ before you touch anything
+
+Writes go through the harness's own `ctx.configEditor`, so they inherit the profile lock, concurrency protection, atomic write and rollback.
+
+> Upgrading from 0.1.9 or earlier: `~/.dsh/.agent-presets/` is **read by nothing** any more (0.1.7 moved presets into the patch layer), so it is safe to delete; the panel tells you when it finds one.
 
 ## Configuration
 
@@ -71,7 +78,7 @@ Works out of the box, no configuration needed. Common tweaks: background thresho
 - **dsh CLI**: installed globally, `npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 or ≥ 24
 - **Git Bash** (recommended): serves as the bash execution environment on Windows
-- Targets DeepSeek Harness `dsh` v0.1.5-rc.1 (pre-release; interfaces may change)
+- Targets DeepSeek Harness `dsh` v0.1.7-rc.2 (pre-release; interfaces may change)
 
 ## Notes
 

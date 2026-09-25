@@ -13,7 +13,10 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowSearchCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
-import { argText, argsSummary, cardMeta, cardState, cardTitle, isSubCall, parseCardArgs, searchBlockLabels } from '../row-utils.ts'
+import {
+  argText, argsSummary, cardMeta, cardState, cardTitle, isErrorResult, isSubCall, parseCardArgs,
+  searchBlockLabels,
+} from '../row-utils.ts'
 import { searchCardSuffix } from './search-card-facts.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
@@ -47,7 +50,7 @@ function SearchCard(props: RowProps & { title: string }) {
   const args = parseCardArgs(block)
   const meta = narrowSearchCardMeta(cardMeta(block))
   // A Code Dispatch child's result is drawn by its parent card's own body.
-  if (isSubCall(block) || block.isError === true || meta === null) {
+  if (isSubCall(block) || isErrorResult(block) || meta === null) {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} inspect={inspect} />
   }
   // The subject of the search — `pattern` for grep, `pat` for ast_grep, the

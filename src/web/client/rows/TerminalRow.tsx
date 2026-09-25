@@ -17,7 +17,7 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowTerminalCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
-  argText, cardMeta, cardState, cardTitle, parseCardArgs, parseShellStatus, resultText,
+  argText, cardMeta, cardState, cardTitle, isErrorResult, parseCardArgs, parseShellStatus, resultText,
   terminalBlockLabels,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
@@ -52,7 +52,7 @@ function TerminalCard(props: RowProps & { title: string }) {
   const meta = narrowTerminalCardMeta(cardMeta(block))
   const command = argText(args, 'command')
   const state = cardState(block)
-  if (block.isError === true || command === null) {
+  if (isErrorResult(block) || command === null) {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={sessionCwd} inspect={inspect} />
   }
   if (meta !== null && meta.mode === 'background') {

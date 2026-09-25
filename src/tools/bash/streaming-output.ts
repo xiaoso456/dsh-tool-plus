@@ -9,8 +9,9 @@
  *
  *   - 纯函数（truncateHead/Middle/Tail、字节级截断、enforceInlineByteCap、
  *     截断通知格式化、streamTailUpdates）与常量经 `export *` 原样转发；
- *   - `TailBuffer` 组合包装，仅补 DSH 增量 `reset()`（background.ts 的
- *     readOutput 消费游标依赖）；
+ *   - `TailBuffer` 组合包装，仅补 DSH 增量 `reset()`（消费式读取的游标重置：
+ *     0.1.5 由 background.ts 的 readOutput 消费游标使用；0.1.7 起模型的
+ *     消费游标归 JobRegistry 的 ring，本包装保留该重置语义）；
  *   - `OutputSink` 继承 verbatim 实现，仅保留拍板#20 的 DSH 三增量：
  *       1. `OutputSummary.artifactPath`：spill 镜像真实落盘时回传路径；
  *       2. spill 写失败不致崩：verbatim 侧 `#createFileSink` 吞建流错误、
@@ -80,8 +81,10 @@ export class OutputSink extends VerbatimOutputSink {
 
 /**
  * Composition wrapper over the verbatim {@link TailBuffer}, adding the DSH
- * `reset()` increment. The verbatim class keeps its state in private fields,
- * so reset is modeled as a fresh window with the same budget.
+ * `reset()` increment: the consuming-read cursor reset the bash background
+ * producer used while `JobHooks.readOutput` existed. 0.1.7 moves the model's
+ * cursor onto the job registry's output ring, so the increment is no longer
+ * part of that path; the preview buffer still offers it.
  */
 export class TailBuffer {
 	#inner: VerbatimTailBuffer;

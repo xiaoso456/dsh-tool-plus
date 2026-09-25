@@ -1,229 +1,127 @@
 /**
- * Unit tests for the host half of the preset RPC (`src/host/preset-rpc.ts`):
- * payload validation for `presets/apply` and the roster mapping that feeds
- * `presets/status`. Both are pure — no filesystem, no Connection service.
- * @module tests
+ * 预设端点（src/host/preset-rpc.ts）单测：payload 校验 + 派发。
+ *
+ * 这一层是纯 wire adapter，所以测试只用假 deps：真正读配置、写 profile 的是
+ * `src/host/preset-host.ts`（另有 `preset-host.spec.ts`），决策的是
+ * `src/presets/plan.ts`。这里要钉住的是"半成品请求进不来"和"错误不炸到调用方"。
  */
-
 import { describe, expect, it, vi } from 'vitest'
-import { handlePresetEndpoint, parsePresetActionPayload, parsePresetComparePayload, toRosterEntry } from '../../src/host/preset-rpc.ts'
 import {
-  PRESET_ACTION_ENDPOINT,
-  PRESET_COMPARE_ENDPOINT,
-  PRESET_STATUS_ENDPOINT,
-} from '../../src/tools/shared/browser-rpc-channel.ts'
+  handlePresetEndpoint,
+  parsePresetActionPayload,
+  parsePresetComparePayload,
+  type PresetRpcDeps,
+} from '../../src/host/preset-rpc.ts'
+import type { PresetStatusListValue } from '../../src/tools/shared/browser-rpc-channel.ts'
 
-describe('parsePresetActionPayload', () => {
-  it('accepts an upgrade request', () => {
-    expect(parsePresetActionPayload({ id: 'tool-plus-standard', action: 'upgrade' }))
-      .toEqual({ id: 'tool-plus-standard', action: 'upgrade' })
-  })
-
-  it('accepts a reset request', () => {
-    expect(parsePresetActionPayload({ id: 'tool-plus-ptc', action: 'reset' }))
-      .toEqual({ id: 'tool-plus-ptc', action: 'reset' })
-  })
-
-  it('rejects a non-object payload', () => {
-    for (const payload of [undefined, null, 'upgrade', 42, ['x']]) {
-      expect(parsePresetActionPayload(payload)).toBeUndefined()
-    }
-  })
-
-  it('rejects a missing or empty id', () => {
-    expect(parsePresetActionPayload({ action: 'upgrade' })).toBeUndefined()
-    expect(parsePresetActionPayload({ id: '', action: 'upgrade' })).toBeUndefined()
-    expect(parsePresetActionPayload({ id: 7, action: 'upgrade' })).toBeUndefined()
-  })
-
-  it('rejects an unknown action', () => {
-    expect(parsePresetActionPayload({ id: 'x', action: 'delete' })).toBeUndefined()
-    expect(parsePresetActionPayload({ id: 'x' })).toBeUndefined()
-  })
-})
-
-describe('toRosterEntry', () => {
-  it('keeps the identity fields of a roster preset', () => {
-    expect(toRosterEntry({
-      id: 'standard',
-      trust: 'system',
-      path: '/root/standard',
-      name: 'Standard',
-      description: 'shipped',
-    })).toEqual({
-      id: 'standard',
-      trust: 'system',
-      path: '/root/standard',
-      name: 'Standard',
-      description: 'shipped',
-      broken: undefined,
-    })
-  })
-
-  it('treats any non-system trust as user', () => {
-    expect(toRosterEntry({ id: 'mine', trust: 'user', path: '/home/.agent-presets/mine' }).trust).toBe('user')
-    expect(toRosterEntry({ id: 'mine', trust: 'weird', path: '/p' }).trust).toBe('user')
-  })
-
-  it('carries the broken reason through', () => {
-    expect(toRosterEntry({ id: 'x', trust: 'user', path: '/p', broken: 'row 3 has no name' }).broken)
-      .toBe('row 3 has no name')
-  })
-})
-
-/** A context whose only useful surface is `get('agentPresets')`. */
-function ctxWith(service: unknown) {
-  return { get: (name: string) => (name === 'agentPresets' ? service : undefined) } as never
+const STATUS: PresetStatusListValue = {
+  presets: [{
+    id: 'tool-plus-standard',
+    entryId: 'preset-tool-plus-standard',
+    source: 'ours',
+    isDefault: false,
+    conflicts: [],
+    clean: true,
+    unrecognized: false,
+    customized: false,
+    templateDiffers: false,
+    rowCount: 2,
+  }],
+  templates: [{ id: 'tool-plus-standard', name: '标准增强版' }],
+  writable: true,
 }
 
-/** One roster entry shaped like the official service's. */
-const rosterEntry = { id: 'tool-plus-standard', trust: 'user', path: '/home/.agent-presets/tool-plus-standard' }
-
-describe('handlePresetEndpoint', () => {
-  it('leaves foreign endpoints to the caller (so the shared channel can serve them)', async () => {
-    const deps = { listStatuses: vi.fn(), applyAction: vi.fn() }
-    expect(await handlePresetEndpoint(ctxWith({ list: async () => [] }), deps, 'browser/detect', {})).toBeUndefined()
-  })
-
-  it('answers presets/status from the roster the service reports', async () => {
-    const status = { id: 'tool-plus-standard', source: 'ours', path: '/p', conflicts: [], clean: true }
-    const listStatuses = vi.fn((roster: unknown[]) => [status])
-    const list = vi.fn(async () => [rosterEntry])
-    const result = await handlePresetEndpoint(
-      ctxWith({ list }),
-      compareDeps({ listStatuses }),
-      PRESET_STATUS_ENDPOINT,
-      {},
-    )
-    expect(list).toHaveBeenCalledTimes(1)
-    expect(listStatuses.mock.calls[0][0]).toEqual([{
-      id: 'tool-plus-standard',
-      trust: 'user',
-      path: '/home/.agent-presets/tool-plus-standard',
-      name: undefined,
-      description: undefined,
-      broken: undefined,
-    }])
-    expect(result).toEqual({
-      ok: true,
-      value: { presets: [status], templates: [{ id: 'tool-plus-standard', name: '标准增强版' }] },
-    })
-  })
-
-  it('reports a missing agent-presets service instead of throwing', async () => {
-    const result = await handlePresetEndpoint(ctxWith(undefined), { listStatuses: vi.fn(), applyAction: vi.fn() } as never, PRESET_STATUS_ENDPOINT, {})
-    expect(result?.ok).toBe(false)
-    expect(result?.ok === false && result.error.message).toMatch(/not available/u)
-  })
-
-  it('rejects a malformed presets/apply payload without touching the filesystem', async () => {
-    const applyAction = vi.fn()
-    const result = await handlePresetEndpoint(ctxWith({ list: async () => [] }), { listStatuses: vi.fn(), applyAction } as never, PRESET_ACTION_ENDPOINT, { id: 'x' })
-    expect(applyAction).not.toHaveBeenCalled()
-    expect(result?.ok === false && result.error.code).toBe('bad-request')
-  })
-
-  it('applies a valid presets/apply request', async () => {
-    const applied = { ok: true, changed: false, changes: [] }
-    const applyAction = vi.fn(() => applied)
-    const result = await handlePresetEndpoint(ctxWith({ list: async () => [] }), { listStatuses: vi.fn(), applyAction } as never, PRESET_ACTION_ENDPOINT, { id: 'zz-smoke', action: 'upgrade' })
-    expect(applyAction).toHaveBeenCalledWith('zz-smoke', 'upgrade', undefined)
-    expect(result).toEqual({ ok: true, value: applied })
-  })
-
-  it('passes the picked template through on reset, and rejects an empty templateId', async () => {
-    const applyAction = vi.fn(() => ({ ok: true, changed: true, changes: [] }))
-    const deps = { listStatuses: vi.fn(), applyAction } as never
-    await handlePresetEndpoint(ctxWith({ list: async () => [] }), deps, PRESET_ACTION_ENDPOINT, {
-      id: 'mine',
-      action: 'reset',
-      templateId: 'tool-plus-ptc',
-    })
-    expect(applyAction).toHaveBeenCalledWith('mine', 'reset', 'tool-plus-ptc')
-    const bad = await handlePresetEndpoint(ctxWith({ list: async () => [] }), deps, PRESET_ACTION_ENDPOINT, {
-      id: 'mine',
-      action: 'reset',
-      templateId: '',
-    })
-    expect(bad?.ok === false && bad.error.code).toBe('bad-request')
-  })
-
-  it('turns a throwing analysis into an internal error result', async () => {
-    const result = await handlePresetEndpoint(
-      ctxWith({ list: async () => { throw new Error('boom') } }),
-      { listStatuses: vi.fn(), applyAction: vi.fn() } as never,
-      PRESET_STATUS_ENDPOINT,
-      {},
-    )
-    expect(result?.ok === false && result.error.message).toBe('boom')
-  })
-})
-
-/** Minimal deps for the compare endpoint (roster + two templates). */
-function compareDeps(over: Record<string, unknown> = {}) {
-  const comparison = {
-    status: 'ok' as const,
-    conflicts: [] as string[],
-    identical: false,
-    yoursCount: 1,
-    behindCount: 0,
-    items: [{ kind: 'only-yours' as const, row: 'compaction', path: 'config.thresholdRatio', yours: '0.4' }],
-  }
+/** 假 deps：只有被点到的方法才有实现，便于断言"没被调用"。 */
+function deps(over: Partial<PresetRpcDeps> = {}): PresetRpcDeps {
   return {
-    listStatuses: vi.fn(),
-    applyAction: vi.fn(),
-    listTemplates: vi.fn(() => [{ id: 'tool-plus-standard', name: '标准增强版' }]),
-    comparePreset: vi.fn(() => comparison),
+    listPresets: vi.fn(async () => STATUS),
+    applyAction: vi.fn(async () => ({ ok: true, changed: true, changes: [] })),
+    comparePreset: vi.fn(async (_ctx, presetId, templateId) => ({
+      presetId,
+      templateId,
+      status: 'ok' as const,
+      conflicts: [],
+      identical: true,
+      yoursCount: 0,
+      behindCount: 0,
+      items: [],
+    })),
     ...over,
-  } as never
+  }
 }
+
+const ctx = { get: () => undefined }
 
 describe('parsePresetComparePayload', () => {
   it('accepts exactly two non-empty ids', () => {
     expect(parsePresetComparePayload({ presetId: 'a', templateId: 'b' })).toEqual({ presetId: 'a', templateId: 'b' })
-  })
-
-  it('rejects anything else', () => {
-    for (const payload of [undefined, null, [], 'x', { presetId: 'a' }, { templateId: 'b' }, { presetId: '', templateId: 'b' }, { presetId: 1, templateId: 'b' }]) {
-      expect(parsePresetComparePayload(payload)).toBeUndefined()
-    }
+    expect(parsePresetComparePayload({ presetId: '', templateId: 'b' })).toBeUndefined()
+    expect(parsePresetComparePayload({ presetId: 'a' })).toBeUndefined()
+    expect(parsePresetComparePayload(['a', 'b'])).toBeUndefined()
+    expect(parsePresetComparePayload(null)).toBeUndefined()
   })
 })
 
-describe('presets/compare endpoint', () => {
-  it('returns the comparison plus both ids', async () => {
-    const deps = compareDeps()
-    const result = await handlePresetEndpoint(ctxWith({ list: async () => [rosterEntry] }), deps, PRESET_COMPARE_ENDPOINT, {
-      presetId: 'tool-plus-standard',
-      templateId: 'tool-plus-standard',
-    })
-    expect(result?.ok).toBe(true)
-    expect(result?.ok === true && result.value).toMatchObject({
-      presetId: 'tool-plus-standard',
-      templateId: 'tool-plus-standard',
-      status: 'ok',
-      identical: false,
-      items: [{ row: 'compaction', path: 'config.thresholdRatio' }],
-    })
+describe('parsePresetActionPayload', () => {
+  it('accepts the three documented actions and rejects the retired one', () => {
+    expect(parsePresetActionPayload({ id: 'a', action: 'upgrade' })).toEqual({ id: 'a', action: 'upgrade' })
+    expect(parsePresetActionPayload({ id: 'a', action: 'align', templateId: 'b' })).toEqual({ id: 'a', action: 'align', templateId: 'b' })
+    expect(parsePresetActionPayload({ id: 'a', action: 'revert' })).toEqual({ id: 'a', action: 'revert' })
+    // 旧目录机制的动作名必须被拒绝，否则面板与宿主会各说各话。
+    expect(parsePresetActionPayload({ id: 'a', action: 'reset' })).toBeUndefined()
   })
 
-  it('rejects a malformed payload without calling the comparison', async () => {
-    const deps = compareDeps()
-    const result = await handlePresetEndpoint(ctxWith({ list: async () => [rosterEntry] }), deps, PRESET_COMPARE_ENDPOINT, { presetId: 'x' })
-    expect((deps as { comparePreset: { mock: { calls: unknown[] } } }).comparePreset.mock.calls).toHaveLength(0)
-    expect(result?.ok === false && result.error.code).toBe('bad-request')
+  it('rejects a half-formed request rather than repairing it', () => {
+    expect(parsePresetActionPayload({ action: 'upgrade' })).toBeUndefined()
+    expect(parsePresetActionPayload({ id: '', action: 'upgrade' })).toBeUndefined()
+    expect(parsePresetActionPayload({ id: 'a', action: 'align', templateId: '' })).toBeUndefined()
+    expect(parsePresetActionPayload({ id: 'a', action: 'upgrade', templateId: 7 })).toBeUndefined()
+  })
+})
+
+describe('handlePresetEndpoint', () => {
+  it('owns only its three endpoints', async () => {
+    const fake = deps()
+    expect(await handlePresetEndpoint(ctx, fake, 'browser/detect', {})).toBeUndefined()
+    expect(await handlePresetEndpoint(ctx, fake, 'rmSafe/status', {})).toBeUndefined()
+    expect(fake.listPresets).not.toHaveBeenCalled()
   })
 
-  it('rejects an unknown preset or template with a clear message', async () => {
-    const unknownPreset = await handlePresetEndpoint(ctxWith({ list: async () => [rosterEntry] }), compareDeps(), PRESET_COMPARE_ENDPOINT, {
-      presetId: 'nope',
-      templateId: 'tool-plus-standard',
+  it('answers presets/status', async () => {
+    const result = await handlePresetEndpoint(ctx, deps(), 'presets/status', {})
+    expect(result).toEqual({ ok: true, value: STATUS })
+  })
+
+  it('rejects a malformed payload with bad-request and never reaches the host', async () => {
+    const fake = deps()
+    const compared = await handlePresetEndpoint(ctx, fake, 'presets/compare', { presetId: 'a' })
+    expect(compared).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    const applied = await handlePresetEndpoint(ctx, fake, 'presets/apply', { id: 'a', action: 'reset' })
+    expect(applied).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    expect(fake.comparePreset).not.toHaveBeenCalled()
+    expect(fake.applyAction).not.toHaveBeenCalled()
+  })
+
+  it('forwards a valid apply request with its template id', async () => {
+    const fake = deps()
+    const result = await handlePresetEndpoint(ctx, fake, 'presets/apply', { id: 'tool-plus-ptc', action: 'align', templateId: 'tool-plus-standard' })
+    expect(result).toEqual({ ok: true, value: { ok: true, changed: true, changes: [] } })
+    expect(fake.applyAction).toHaveBeenCalledWith(ctx, 'tool-plus-ptc', 'align', 'tool-plus-standard')
+  })
+
+  it('turns a host failure into an error result instead of throwing', async () => {
+    const fake = deps({
+      listPresets: async () => { throw new Error('ctx.configEditor is unavailable') },
+      applyAction: async () => ({ ok: false, changed: false, reason: 'refused by a home patch', changes: [] }),
     })
-    expect(unknownPreset?.ok === false && unknownPreset.error.message).toMatch(/unknown preset/u)
-    const unknownTemplate = await handlePresetEndpoint(ctxWith({ list: async () => [rosterEntry] }), compareDeps(), PRESET_COMPARE_ENDPOINT, {
-      presetId: 'tool-plus-standard',
-      templateId: 'nope',
+    expect(await handlePresetEndpoint(ctx, fake, 'presets/status', {})).toMatchObject({
+      ok: false,
+      error: { code: 'internal', message: 'ctx.configEditor is unavailable' },
     })
-    expect(unknownTemplate?.ok === false && unknownTemplate.error.message).toMatch(/unknown template/u)
+    // 宿主自己的失败结果照原样返回（它是"没写成"，不是调用失败）。
+    expect(await handlePresetEndpoint(ctx, fake, 'presets/apply', { id: 'a', action: 'revert' })).toEqual({
+      ok: true,
+      value: { ok: false, changed: false, reason: 'refused by a home patch', changes: [] },
+    })
   })
 })

@@ -6,14 +6,32 @@
 
 `@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。
 
-**只发一个包**（2026-09-20 起）：根包 `@xiaoso/dsh-tool-plus`。仓库里的 `presets/` 目录（两套 agent 预设模板 + `install-presets.mjs`）随根包的 `files` 一起发布，插件首次启动时按"目录不存在才写入"自动补齐到 `~/.dsh/.agent-presets/`——所以**不再需要**单独安装预设。
+**只发一个包**（2026-09-20 起）：根包 `@xiaoso/dsh-tool-plus`。仓库里的 `presets/` 目录随根包的 `files` 一起发布，但**交付方式在 0.1.10 变了**：不再是"首次启动写目录"，而是两个补丁文件（`presets/tool-plus-{standard,ptc}.patch.yml`）挂在 `package.json` 的 `dsh.bundle.patch` 数组里，各插入一条 `@deepseek-ai/dsh-agent-preset` 声明行。装上插件即声明两个预设，**启动时零写入**。
 
 | 包 | 目录 | 状态 |
 |---|---|---|
 | `@xiaoso/dsh-tool-plus` | 仓库根 | **唯一在发的包** |
-| `@xiaoso/dsh-tool-plus-presets` | `presets/` | **已退役**：不再发新版（旧版已 `npm deprecate`）；目录仍随根包发布，仅作为模板来源 |
+| `@xiaoso/dsh-tool-plus-presets` | `presets/` | **已退役**：不再发新版（旧版已 `npm deprecate`）；目录随根包发布，但已不是"模板目录"，而是生成出来的补丁文件 |
 
 `publishConfig` 已配 `tag: latest` / `access: public`——发布直接落在 latest 标签，`dsh plugin add`（不带 tag）默认安装与 dsh 当前版本匹配。**发预发布必须显式带 tag**（如 `npm publish --tag beta`），否则会推到 latest，把 beta 塞给所有默认安装的用户。
+
+## 预设（agent preset）——生成物，别手改
+
+两个预设是**生成物**，源在 `presets/baseline/`：
+
+```
+presets/baseline/{standard,ptc}.patch.yml   ← 官方随附预设补丁的逐字节快照（对应我们 pin 的 dsh 版本）
+scripts/build-preset-patches.mjs            ← 基线 + 显式 delta → 生成下面两个文件
+presets/tool-plus-{standard,ptc}.patch.yml  ← 生成物，入库，别手改
+```
+
+delta 只有四项，每一项都是有记录的产品决定：删 `tool-bash`/`tool-fs`/`tool-fs-search`（宿主面已由 `cordis.patch.yml` 接管，agent 面再挂一份会造成 per-session 影子实例）、强制 `tool-pwsh` 关闭、插一行文档用的 `tool-plus`（disabled）、以及身份/顺序元数据。其余**逐项等于官方基线**——官方改包名、加行、收窄默认（如 0.1.7 关掉 `tool-ralph`）都会随基线继承。
+
+**为什么这么做**：手抄副本已经害过一次——两个预设的 `delegation` group 里挂着 `@deepseek-ai/dsh-workflow-worker-thread`，而 0.1.7 把它改名成 `dsh-workflow-ptc`，于是整份预设激活失败且无测试能发现。`tests/unit/preset-patches.spec.ts` 现在钉住"生成物 == 生成器重算结果""delta 恰好只有声明的那几项""行名集合只来自基线"。
+
+**升 dsh 版本时多一步**：把 `packages/bundle/web-app/presets/{standard,ptc}.patch.yml` 从新版本重新拷进 `presets/baseline/`，跑 `pnpm presets:build`，**逐条 review diff**（官方新增/删除的行是有意义的信号，别默默继承），再跑验证链。
+
+**写路径不许自己实现**：用户改动通过 `ctx.configEditor.edit()` 写进 `<profile>/cordis.patch.yml`（按行 id `preset-<id>` 覆盖整份 `config`）。宿主的这层自带 profile 锁、HMR 串行、配置校验、原子写、失败回滚与更高优先级覆盖检查；**不要**再自己写原子写、备份文件或 profile 补丁解析——那是 0.1.7 之前的做法。
 
 ## 发布与推送（每次迭代照此走）
 
@@ -21,8 +39,8 @@
 # 1. 版本自增（只操作根包）
 pnpm version prerelease
 
-# 2. 四连验证
-pnpm typecheck && pnpm build && pnpm test
+# 2. 验证链
+pnpm presets:check && pnpm typecheck && pnpm build && pnpm test
 
 # 3. 更新 CHANGELOG.md：按 Keep a Changelog 为本次版本新增一节
 #    （格式沿用历史版本：## [<ver>] - <日期> + Added/Changed/Fixed/Removed
@@ -34,13 +52,13 @@ git tag tool-plus-v<ver>
 
 # 5. 推 git + 发 npm（正式版落 latest；预发布加 --tag beta）
 git push && git push --tags        # 先推分支，再推标签（--tags 只推标签不推分支）
-npm publish                        # 主包（含 presets/ 模板）
+npm publish                        # 主包（含 cordis.patch.yml 与 presets/*.patch.yml）
 
 # 6. 发 GitHub Release（手动，不用 workflow；notes 用 CHANGELOG 本节内容）
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
-版本对齐：插件版本号与 dsh 同版号，发布直接落在 `latest` 标签，默认安装（不带 tag）即与 dsh 匹配。README 只描述当前对应关系，不保留历史 dsh 版本号。
+版本对齐：插件 peer 精确 pin 与 dsh 同版号。**注意 0.1.7 起宿主按 peer 拒绝加载不匹配的插件**，而 npm `latest` 上 `@deepseek-ai/dsh` 还停在 `0.1.5-rc.3`——pin `0.1.7-rc.2` 的插件版本**只能发 `next`/`beta`**，发 `latest` 会拒绝所有默认安装的用户。README 只描述当前对应关系，不保留历史 dsh 版本号。
 
 ## 改动守则
 

@@ -8,7 +8,7 @@
 
 import { useId, type ReactNode } from 'react'
 import type { BashPlusLocaleKey } from './locales.ts'
-import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 
 /** One rendered number control. */
 export interface NumberControl {
@@ -244,7 +244,7 @@ export function SelectRow(props: {
             onClick={() => onOpenChange(open ? null : control.field)}
           >
             <span>{current ? t(current.labelKey) : control.value}</span>
-            <IconChevronDownOutline14 className="tp-selectChevron" />
+            <IconChevronDownOutlineRegular className="tp-selectChevron" />
           </button>
         )}
       />

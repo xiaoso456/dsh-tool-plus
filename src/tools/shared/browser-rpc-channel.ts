@@ -44,89 +44,116 @@ export type RmSafeStatusValue =
 export const PRESET_STATUS_ENDPOINT = 'presets/status'
 
 /**
- * The preset ids this plugin ships a template for. Single source of truth for
- * both halves: the host uses it for the startup bootstrap and the template
- * lookup, the panel uses it to synthesize the "not installed" rows for a
- * deployment whose roster does not carry them yet.
+ * The preset ids this plugin **declares**. Single source of truth for both
+ * halves: the host picks its own declarations out of the profile's composed
+ * configuration, and the panel uses the list to tell "ours" from everything else.
+ *
+ * They ship as `@deepseek-ai/dsh-agent-preset` declaration rows in this
+ * package's own bundle patches (`presets/<id>.patch.yml`), so installing the
+ * plugin as a profile bundle declares them: no install step, no file copy, and
+ * nothing written at startup.
  */
 export const BUNDLED_PRESET_IDS: readonly string[] = ['tool-plus-standard', 'tool-plus-ptc']
 
-/** Endpoint that applies one preset action to a user-root preset. */
+/** Endpoint that applies one preset action to the active profile. */
 export const PRESET_ACTION_ENDPOINT = 'presets/apply'
 
-/** Endpoint that compares one preset against one of our templates (read-only). */
+/** Endpoint that compares one preset against one of our declarations (read-only). */
 export const PRESET_COMPARE_ENDPOINT = 'presets/compare'
 
+/**
+ * Loader row id a preset declaration is addressed by. A profile patch overrides
+ * a declaration **by this id** — the harness's config editor locates the row by
+ * id, and the override replaces the row's whole `config`.
+ * @param presetId - The preset identity (the declaration's `config.id`).
+ * @returns The row id as it appears in profile patches.
+ */
+export function profileRowId(presetId: string): string {
+  return `preset-${presetId}`
+}
+
 /** One preset action the settings panel may ask for. */
-export type PresetActionValue = 'upgrade' | 'reset'
+export type PresetActionValue = 'upgrade' | 'align' | 'revert'
 
 /** Payload of a presets/apply call. */
 export interface PresetActionPayload {
-  /** Preset id (a directory name under the user preset root, or a roster id). */
+  /** The preset to act on. */
   id: string
-  /** `upgrade` disables conflicting rows only; `reset` overwrites from our template. */
-  action: PresetActionValue
   /**
-   * Which of our templates `reset` should align this preset to. Absent means
-   * "the template with the same id" (historical behaviour); the panel always
-   * sends the template the user picked in the compare picker, so a preset can
-   * be aligned to a different template than its own.
+   * `upgrade` disables the still-mounted official tool rows and nothing else;
+   * `align` replaces the whole plugin list with one of our declarations;
+   * `revert` removes the profile override so the row falls back to its bundled
+   * declaration.
    */
+  action: PresetActionValue
+  /** Required for `align`: which of our declarations to align this preset to. */
   templateId?: string
 }
 
-/** Which layer a preset comes from: our shipped templates, the user root, or the shipped set. */
-export type PresetSourceValue = 'ours' | 'user' | 'shipped'
+/**
+ * Where a preset comes from. dsh 0.1.7 dropped the registry's `trust` and `path`
+ * fields, so the only distinction left is "this plugin declared it" versus
+ * "something else did" (the shipped set, or another user-installed bundle).
+ */
+export type PresetSourceValue = 'ours' | 'other'
 
-/** One preset change produced by a rewrite. */
+/** One preset change produced by an upgrade. */
 export interface PresetChangeValue {
   /** The official tool row id that was handled. */
   id: string
-  /** `disabled` = row had no switch and got one; `flipped` = `disabled: false` -> true; `absent` = nothing to do. */
-  action: 'disabled' | 'flipped' | 'absent'
+  /** `disabled` = the row had no switch and got one; `flipped` = an existing value became `true`. */
+  action: 'disabled' | 'flipped'
 }
 
 /** One agent preset as surfaced to the settings panel. */
 export interface PresetStatusValue {
   id: string
+  /** Loader row id in the profile patch (`preset-<id>`); absent when this profile has no such row. */
+  entryId?: string
   name?: string
   description?: string
   source: PresetSourceValue
-  path: string
-  /** Official tool rows this preset still mounts (empty = nothing to disable). */
+  /** Whether a session naming no preset composes this one. */
+  isDefault: boolean
+  /** Official tool rows this preset still mounts enabled (empty = nothing to disable). */
   conflicts: string[]
   clean: boolean
-  /** Composition could not be parsed as a top-level row list — never rewritten. */
+  /** The plugin list is not a readable row list — never rewritten. */
   unrecognized: boolean
+  /** Why the registry cannot mount this preset, when it reported one. */
   broken?: string
-  /** Whether the preset directory exists in the writable user root. */
-  installed: boolean
-  /** Whether our package ships a template for this id. */
-  templatePresent: boolean
-  /** For template-backed presets: whether the local copy differs from the template. */
+  /** The user wrote an override for this row in the profile patch. */
+  customized: boolean
+  /** For our own presets: whether the effective content differs from the bundled declaration. */
   templateDiffers: boolean
   /**
-   * For template-backed presets: *what* differs (so the panel can say it instead
-   * of the bare "differs", which reads as contradictory next to "nothing to
-   * adjust"). Absent when there is nothing to compare.
+   * For our own presets: *what* differs (so the panel can say it instead of the
+   * bare "differs", which reads as contradictory next to "nothing to adjust").
+   * Absent when there is nothing to compare.
    */
   templateDelta?: PresetDeltaValue
+  /** Rows in the effective plugin list, group children included (scale hint). */
+  rowCount: number
 }
 
-/** One concrete difference between the local copy and the bundled template. */
+/** One concrete difference between a preset's effective content and a template. */
 export interface PresetDeltaItemValue {
   kind: 'changed' | 'only-yours' | 'only-template' | 'row-only-yours' | 'row-only-template'
-  /** Top-level row id. */
+  /**
+   * Row path: a top-level row id (`tool-web`), or a group child
+   * (`delegation/tool-ralph`). A bare id would point at the wrong row when a
+   * nested row shares its id.
+   */
   row: string
   /** Dotted path inside that row (e.g. `config.thresholdRatio`); empty for a row-level difference. */
   path: string
-  /** Value in the local copy (`only-template` / `row-only-template` omit it). */
+  /** Value in the preset's effective content (`only-template` / `row-only-template` omit it). */
   yours?: string
   /** Value in the template (`only-yours` / `row-only-yours` omit it). */
   template?: string
 }
 
-/** Concrete local-vs-template differences; `items` is capped, `total` is not. */
+/** Concrete preset-vs-template differences; `items` is capped, `total` is not. */
 export interface PresetDeltaValue {
   items: PresetDeltaItemValue[]
   total: number
@@ -146,7 +173,7 @@ export function isYoursDelta(kind: PresetDeltaItemValue['kind']): boolean {
   return kind === 'changed' || kind === 'only-yours' || kind === 'row-only-yours'
 }
 
-/** One template we ship, as the panel's "compare with" picker needs it. */
+/** One declaration we ship, as the panel's "compare with" picker needs it. */
 export interface PresetTemplateValue {
   id: string
   name?: string
@@ -154,25 +181,25 @@ export interface PresetTemplateValue {
 
 /** presets/compare request. */
 export interface PresetComparePayloadValue {
-  /** The preset being inspected (any roster id). */
+  /** The preset being inspected (any preset in the roster). */
   presetId: string
-  /** The template we ship to compare it against. */
+  /** The declaration we ship to compare it against. */
   templateId: string
 }
 
 /**
  * presets/compare result: the full, uncapped comparison between one preset and
- * one of our templates. `conflicts` answers "are our tools wired in", `items`
+ * one of our declarations. `conflicts` answers "are our tools wired in", `items`
  * answers "how else does the content differ" (and is what the diff dialog shows).
  */
 export interface PresetCompareValue {
   presetId: string
   templateId: string
-  /** `unreadable` when either side cannot be read/parsed — nothing to compare. */
+  /** `unreadable` when either side cannot be resolved — nothing to compare. */
   status: 'ok' | 'unreadable'
   /** Official tool rows still mounted (empty = the plugin's tools are wired in). */
   conflicts: string[]
-  /** Content is structurally identical (comments/formatting ignored). */
+  /** Content is structurally identical (row order and formatting ignored). */
   identical: boolean
   /** Full-population counts: your own edits vs the template being ahead. */
   yoursCount: number
@@ -184,15 +211,33 @@ export interface PresetCompareValue {
 /** presets/status result. */
 export interface PresetStatusListValue {
   presets: PresetStatusValue[]
-  /** Templates this package ships (the "compare with" picker's options). */
+  /** Declarations this package ships (the "compare with" picker's options). */
   templates: PresetTemplateValue[]
+  /**
+   * Whether this deployment has an editable profile at all (`ctx.configEditor`
+   * is present). Without it the panel can still show state but cannot write.
+   */
+  writable: boolean
+  /**
+   * Absolute path of a legacy `$DSH_HOME/.agent-presets` directory, present only
+   * when one still exists and is non-empty. dsh 0.1.7 reads no such directory —
+   * it is a cleanup hint for users upgrading from the directory mechanism, not a
+   * feature of this deployment.
+   */
+  legacyPresetRoot?: string
 }
 
-/** presets/apply result (mirrors PresetInstallResult from presets/install). */
+/** presets/apply result. */
 export interface PresetActionResultValue {
   ok: boolean
   changed: boolean
+  /** Why nothing was written, or why the write failed (one line for the panel). */
   reason?: string
+  /**
+   * The `<profile patch>.bak-<version>` copy taken before this write, when the
+   * patch already existed. One backup per profile, written once and never
+   * overwritten, so it always holds the earliest pre-change state.
+   */
   backupPath?: string
   changes: PresetChangeValue[]
 }

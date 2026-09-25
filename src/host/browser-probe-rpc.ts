@@ -6,7 +6,8 @@
  *
  * **Why this registers its own route instead of calling `connection.rpc.handle`.**
  * The documented helper is unusable from a plugin in a real web deployment on
- * dsh 0.1.5-rc.1: `HostConnectionService.rpc` builds its handle against
+ * dsh 0.1.5-rc.1 — and still on 0.1.7-rc.1, re-checked for this migration:
+ * `HostConnectionService.rpc` builds its handle against
  * `owner = this.ctx` (`rpc-host.ts: "Generic channel registry scoped to the
  * Context reading this service"`), and `register()` then evaluates
  * `owner.webServer.register(route)`. The client-connection row declares

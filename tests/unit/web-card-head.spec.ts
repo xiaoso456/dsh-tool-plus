@@ -356,7 +356,8 @@ describe('web card head', () => {
       it('draws every glyph from the shipped leading table', () => {
         // Same five glyphs the shipped generic tool card maps its variants onto.
         for (const icon of [
-          'IconApiOutline14', 'IconBrowseOutline16', 'IconEditOutline16', 'IconSearchOutline16', 'IconSparkle16',
+          'IconApiOutlineRegular', 'IconBrowseOutlineRegular', 'IconEditOutlineRegular',
+          'IconSearchOutlineRegular', 'IconSparkleRegular',
         ]) {
           expect(shell, icon).toContain(icon)
           expect(shell, `${icon} must come from the shipped primitives package`)

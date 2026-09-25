@@ -1,160 +1,130 @@
 /**
- * preset 状态探测：把 roster 变成设置页要的清单。同步、只读。
+ * preset 状态：把宿主交给我们的事实折成设置页要的清单。同步、只读。
  *
- * roster 由调用方（RPC 层）从 `ctx.agentPresets.list()` 映射后传入——本模块
- * 不依赖 cordis 类型，只吃一个最小结构，因此可以纯 fs 单测。三种来源按设计
- * 文档 §4.2 区分：
- * - `ours`：本插件随包的两个预设（id 在 {@link DEFAULT_PRESET_IDS} 里），
- *   可"更新"（只改冲突行）与"重置"（整份对齐模板）；
- * - `user`：用户根里的其它预设，只能"升级"（只改冲突行）；
- * - `shipped`：随部署提供的官方预设（`trust: 'system'`），只读展示。
+ * 事实从哪来（0.1.7 起官方只提供这两处，`path` / `trust` 都已不存在）：
+ * - `ctx.configEditor.configuration()` —— 每个**可寻址**的 profile 行给
+ *   `{entry, inherited, override}`。`inherited` 是随包声明那一层（我们的
+ *   模板），`override` 是用户写进 profile 补丁那一层。bundle 补丁 insert 的
+ *   `preset-*` 行也是根 include 的子行，所以这里拿得到。
+ * - `ctx.agentPresets.list()` —— 名册身份与激活诊断（`broken`），**没有**
+ *   `path`，也**没有** `trust`。
  *
- * 判定只读文件、绝不写入：官方随附根与用户根在这里都只是被读。
+ * 三种来源的旧口径已失效，现在的区分只剩"是不是本插件声明的"：
+ * - `ours`：id 在 {@link BUNDLED_PRESET_IDS} 里 → 三个动作齐全；
+ * - `other`：别人的声明（官方随附，或用户装的别的 bundle）→ 只给"最小更新"，
+ *   因为我们只该修冲突行，不该替别人重写整份内容。
  * @module @xiaoso/dsh-tool-plus/presets/status
  */
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import {
-  COMPOSITION_FILE_NAME,
-  DEFAULT_PRESET_IDS,
-  type PresetDeps,
-  templateDir,
-  userPresetDir,
-} from './paths.ts'
-import { analyzePresetComposition } from './rewrite.ts'
-import { presetDelta, type PresetDelta } from './delta.ts'
 
-/** 预设来源：我们随包的两份 / 用户自建 / 官方随附。 */
-export type PresetSource = 'ours' | 'user' | 'shipped'
+import { BUNDLED_PRESET_IDS, type PresetStatusListValue, type PresetStatusValue } from '../tools/shared/browser-rpc-channel.ts'
+import { analyzePlugins } from './conflicts.ts'
+import { presetDelta } from './delta.ts'
+import { flattenRows, isRowList } from './rows.ts'
 
 /**
- * roster 的一行（调用方从 `ctx.agentPresets.list()` 映射而来，字段名对齐
- * `dsh-agent-presets` 的 `AgentPreset`：`path` 是**组合文件**的绝对路径）。
+ * 一个 preset 的原始事实（宿主层收集，本模块纯消费）。
+ *
+ * `inherited` / `override` 是**完整 config 对象**（`{id,name,description,order,plugins}`），
+ * 不是 plugins 列表 —— 因为 profile 补丁按行 id 覆盖时替换的是**整份 `config`**，
+ * 判断"改没改过"必须看整份，不能只看 plugins。
  */
-export interface PresetRosterEntry {
+export interface PresetFacts {
+  /** 预设身份（`config.id`）。 */
   id: string
-  trust: 'system' | 'user'
-  path: string
+  /** profile 补丁里那一行的 id（`preset-<id>`）；本 profile 没有这一行时为 undefined。 */
+  entryId?: string
   name?: string
   description?: string
+  isDefault: boolean
+  /** 宿主报告的不可挂载原因（行名解析不到、缺服务…），原样带出。 */
   broken?: string
+  /** 生效的完整 config（宿主的 `entry.options.config`）；取不到时为 undefined。 */
+  effective?: Record<string, unknown>
+  /** 随包声明那一层的 config（`configEditor` 的 `inherited`）；取不到时为 undefined。 */
+  inherited?: Record<string, unknown>
+  /** 用户在 profile 层写的 config（`configEditor` 的 `override`）；空对象 = 没有覆盖。 */
+  override?: Record<string, unknown>
+  /** 这个 preset 是不是本插件声明的（id ∈ {@link BUNDLED_PRESET_IDS}）。 */
+  ours: boolean
 }
 
-/** 一个预设的设置页状态。 */
-export interface PresetStatus {
-  id: string
-  name?: string
-  description?: string
-  source: PresetSource
-  /** 组合文件绝对路径（`agent.cordis.yml`）。 */
-  path: string
-  /** 仍挂着的官方冲突行（空 = 本插件的工具已生效）。 */
-  conflicts: string[]
-  /** 无冲突且形状可识别。 */
-  clean: boolean
-  /** 组合文件**可读但**不成顶层行列表 → 一律不处理（内容问题，§5.5）。 */
-  unrecognized: boolean
-  /** roster 报告的不可挂载原因，原样带出。 */
-  broken?: string
-  /**
-   * 用户根（`<dshHome>/.agent-presets/<id>`）里有这个预设的副本。
-   * 设置页对我们随包的两份据此显示"已安装 / 未安装"；官方随附的预设不在用户
-   * 根，故恒为 false。
-   */
-  installed: boolean
-  /** 包内存在这个 id 的模板（只有我们随包的两份才有）。 */
-  templatePresent: boolean
-  /** 已安装且与模板逐字节不同 → 本地有改动（重置会覆盖它）。 */
-  templateDiffers: boolean
-  /**
-   * 与模板**具体**差在哪些键（只读列出；`templateDiffers` 只说明"有差异"，
-   * 面板需要能说清"差在哪"，否则和"工具行无需调整"并列时会自相矛盾）。
-   * 无模板或不可比较时为 undefined。
-   */
-  templateDelta?: PresetDelta
+/** 生效的 plugins：宿主的生效 config 优先，回落到覆盖层、再回落到随包声明。 */
+function effectivePlugins(facts: PresetFacts): unknown {
+  if (facts.effective?.plugins !== undefined) return facts.effective.plugins
+  const overridePlugins = facts.override?.plugins
+  if (overridePlugins !== undefined) return overridePlugins
+  return facts.inherited?.plugins
+}
+
+/** 覆盖里是不是真带了内容（`{}` 表示没有覆盖行）。 */
+function isCustomized(facts: PresetFacts): boolean {
+  return facts.override !== undefined && Object.keys(facts.override).length > 0
 }
 
 /**
- * 只读组合文件的三种结局：读到 / 压根不存在 / 存在但读不了。
- * "不存在"与"读不了"必须分开：不存在是**存在性**问题（由 `installed` 与
- * roster 的 `broken` 表达），不成顶层行列表才是**内容**问题（`unrecognized`）。
+ * 把一个 preset 折成面板状态。
+ * @param facts - 宿主收集的原始事实。
+ * @param templateIds - 随包声明的模板清单（用于"与随包声明是否一致"）。
+ * @returns 面板状态行。
  */
-type CompositionRead = { kind: 'ok'; text: string } | { kind: 'missing' } | { kind: 'unreadable' }
+export function toPresetStatus(facts: PresetFacts, templateIds: readonly string[]): PresetStatusValue {
+  const plugins = effectivePlugins(facts)
+  const analysis = analyzePlugins(plugins)
+  const customized = isCustomized(facts)
+  const rows = isRowList(plugins) ? flattenRows(plugins).size : 0
 
-/** 读组合文件；绝不抛。ENOENT/ENOTDIR 归为"不存在"，其余归为"读不了"。 */
-function readComposition(file: string): CompositionRead {
-  try {
-    return { kind: 'ok', text: fs.readFileSync(file, 'utf8') }
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    return code === 'ENOENT' || code === 'ENOTDIR' ? { kind: 'missing' } : { kind: 'unreadable' }
+  // 只有我们自己声明的预设才谈"与随包模板的差异"：别的 preset 的 inherited
+  // 是别人的内容，拿它跟我们的模板比没有意义。
+  const comparable = facts.ours && templateIds.includes(facts.id) && isRowList(plugins) && isRowList(facts.inherited?.plugins)
+  const templateDiffers = comparable && presetDelta(plugins, facts.inherited?.plugins, { limit: Number.MAX_SAFE_INTEGER }).total > 0
+  const templateDelta = templateDiffers
+    ? presetDelta(plugins, facts.inherited?.plugins)
+    : undefined
+  const delta = templateDelta !== undefined && templateDelta.total > 0 ? templateDelta : undefined
+
+  return {
+    id: facts.id,
+    ...(facts.entryId === undefined ? {} : { entryId: facts.entryId }),
+    ...(facts.name === undefined ? {} : { name: facts.name }),
+    ...(facts.description === undefined ? {} : { description: facts.description }),
+    source: facts.ours ? 'ours' : 'other',
+    isDefault: facts.isDefault,
+    conflicts: analysis.conflicts,
+    clean: analysis.clean,
+    unrecognized: analysis.shape === 'unrecognized',
+    ...(facts.broken === undefined ? {} : { broken: facts.broken }),
+    customized,
+    templateDiffers,
+    ...(delta === undefined ? {} : { templateDelta: delta }),
+    rowCount: rows,
   }
 }
 
-/** 只读文本文件；读不到返回 undefined（不抛）。 */
-function readTextFile(file: string): string | undefined {
-  try {
-    return fs.readFileSync(file, 'utf8')
-  } catch {
-    return undefined
+/**
+ * 列出每个事实的状态，并给出模板清单。
+ * @param facts - 宿主收集的原始事实（顺序即面板顺序）。
+ * @param writable - 本部署有没有可编辑的 profile（`configEditor` 是否在场）。
+ * @returns `presets/status` 的完整返回值。
+ */
+export function listPresetStatuses(facts: readonly PresetFacts[], writable: boolean): PresetStatusListValue {
+  const templateIds = facts.filter((item) => item.ours).map((item) => item.id)
+  const templates = facts
+    .filter((item) => item.ours)
+    .map((item) => (item.name === undefined ? { id: item.id } : { id: item.id, name: item.name }))
+  return {
+    presets: facts.map((item) => toPresetStatus(item, templateIds)),
+    templates,
+    writable,
   }
 }
 
 /**
- * 列出每个 roster 行的状态（顺序与入参一致）。
- * @param roster - 调用方映射好的预设清单（`path` = 组合文件路径）。
- * @param deps - 路径注入（fs 层测试用）。
- * @returns 逐行的设置页状态。
+ * 取某个模板声明的 plugins（面板"对比 / 对齐"的右侧）。
+ * @param facts - 同一个事实集合。
+ * @param templateId - 模板 id（本插件声明的某个 preset）。
+ * @returns 该模板的 plugins；不是我们的模板时 undefined。
  */
-export function listPresetStatuses(
-  roster: readonly PresetRosterEntry[],
-  deps: PresetDeps = {},
-): PresetStatus[] {
-  return roster.map((entry) => {
-    const source: PresetSource =
-      DEFAULT_PRESET_IDS.includes(entry.id) ? 'ours' : entry.trust === 'system' ? 'shipped' : 'user'
-
-    const installed = fs.existsSync(userPresetDir(entry.id, deps))
-    const templateFile = path.join(templateDir(entry.id, deps), COMPOSITION_FILE_NAME)
-    const templatePresent = fs.existsSync(templateFile)
-
-    const read = readComposition(entry.path)
-    const analysis =
-      read.kind === 'ok'
-        ? analyzePresetComposition(read.text)
-        : // missing：文件不存在，不是内容问题；unreadable：无法识别，不处理。
-          {
-            conflicts: [] as string[],
-            clean: false,
-            shape: read.kind === 'unreadable' ? ('unrecognized' as const) : ('ok' as const),
-          }
-    const unrecognized = read.kind === 'missing' ? false : analysis.shape === 'unrecognized'
-
-    const templateText = installed && templatePresent ? readTextFile(templateFile) : undefined
-    const templateDiffers =
-      templateText !== undefined && read.kind === 'ok' && templateText !== read.text
-    // 有差异就说清差在哪：面板上"与自带模板不同"和"工具行无需调整"是两件事，
-    // 只有把差异逐条列出来，用户才不会觉得这两句话在打架。
-    const templateDelta =
-      templateDiffers && templateText !== undefined && read.kind === 'ok'
-        ? presetDelta(read.text, templateText)
-        : undefined
-    const delta = templateDelta !== undefined && templateDelta.total > 0 ? templateDelta : undefined
-
-    return {
-      id: entry.id,
-      name: entry.name,
-      description: entry.description,
-      source,
-      path: entry.path,
-      conflicts: analysis.conflicts,
-      clean: analysis.clean,
-      unrecognized,
-      broken: entry.broken,
-      installed,
-      templatePresent,
-      templateDiffers,
-      templateDelta: delta,
-    }
-  })
+export function templatePlugins(facts: readonly PresetFacts[], templateId: string): unknown {
+  const fact = facts.find((item) => item.ours && item.id === templateId)
+  return fact?.inherited?.plugins
 }

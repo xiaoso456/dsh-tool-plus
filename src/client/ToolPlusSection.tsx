@@ -28,8 +28,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { IconCheckOutline16, IconWarningOutline16, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
+import { IconCheckOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
 import { TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
@@ -39,9 +39,9 @@ import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
-/** Registration-side face: the bound settings scope. */
+/** Registration-side face: the `tool-plus` entry's shared configuration form. */
 export interface ToolPlusSectionInjected {
-  scope: SettingsScope<ToolSettingsValue>
+  form: ConfigForm<ToolSettingsValue>
 }
 
 /** Props the renderer binds for the section (owner + locale + injected face). */
@@ -300,8 +300,8 @@ function ToolTabPanel(props: {
 
 /** Render the Tool Plus settings section. */
 export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
-  const { t, scope } = props
-  const form = useToolForm(scope, ALL_FIELDS)
+  const { t, form: configForm } = props
+  const form = useToolForm(configForm, ALL_FIELDS)
   const sectionRef = useRef<HTMLDivElement | null>(null)
   const tabsId = useRef(`tps-${Math.random().toString(36).slice(2, 8)}`)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -318,9 +318,9 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   // verify the injection (query = ensure + verify) and announce the result
   // as a toast. Turning rmSafe off stays silent; unchanged saves stay silent.
   const handleSave = useCallback(async () => {
-    const before = Boolean(scope.getSnapshot().value?.rmSafe ?? true)
+    const before = Boolean(configForm.getSnapshot().value?.rmSafe ?? true)
     await form.actions.save()
-    const after = Boolean(scope.getSnapshot().value?.rmSafe ?? true)
+    const after = Boolean(configForm.getSnapshot().value?.rmSafe ?? true)
     if (before === after || !after) return
     try {
       const rpc = createWebConnectionRpc()
@@ -332,7 +332,7 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
     } catch {
       // RPC unavailable (non-web deployment): stay silent.
     }
-  }, [scope, form, t])
+  }, [configForm, form, t])
 
   const runAction = useCallback((field: ToolPlusField) => {
     const actionKey = field.actionKey
@@ -560,7 +560,7 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
       {rmSafeToast !== null && (
         <Toast
           text={rmSafeToast.text}
-          icon={rmSafeToast.ok ? <IconCheckOutline16 /> : <IconWarningOutline16 />}
+          icon={rmSafeToast.ok ? <IconCheckOutlineRegular /> : <IconWarningOutlineRegular />}
           onDone={() => { setRmSafeToast(null) }}
         />
       )}

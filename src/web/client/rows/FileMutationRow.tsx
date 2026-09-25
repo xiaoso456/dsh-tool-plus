@@ -16,7 +16,8 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowEditCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
-  argText, cardMeta, cardState, cardTitle, diffBlockLabels, displayPath, isSubCall, parseCardArgs,
+  argText, cardMeta, cardState, cardTitle, diffBlockLabels, displayPath, isErrorResult, isSubCall,
+  parseCardArgs,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
@@ -50,7 +51,7 @@ function FileMutationCard(props: RowProps & { title: string }) {
   const replaceForm = replaceHunks(args)
   // A Code Dispatch child's diff is drawn by its parent card's own body; the
   // shipped rows keep those on the generic path and so do we.
-  if (isSubCall(block) || block.isError === true || (meta === null && replaceForm === null)) {
+  if (isSubCall(block) || isErrorResult(block) || (meta === null && replaceForm === null)) {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const diffs: DiffHunk[] = meta === null ? replaceForm ?? [] : meta.diffs

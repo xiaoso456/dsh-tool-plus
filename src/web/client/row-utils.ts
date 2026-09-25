@@ -16,6 +16,7 @@
  */
 
 import type {
+  CodeToolbarLabels,
   DiffBlockLabels,
   ReadBlockLabels,
   SearchBlockLabels,
@@ -68,6 +69,23 @@ const parsedArgs = new WeakMap<object, Record<string, unknown> | null>()
 /** Whether a block is the settled half of a call pair. */
 export function isSettled(block: CardBlockView): boolean {
   return block.kind === 'tool-result'
+}
+
+/**
+ * Whether a call already landed as a failed result.
+ *
+ * Only a settled result can be wrong about its work: the union's error state is
+ * `ToolResultNode.isError` alone, and the shipped row model reads it the same
+ * way — settle on the `kind` discriminant (`'kind' in block`) and only then look
+ * at `error`, `isError`. A preparing or dispatched call has no result yet, so it
+ * is never an error; the rows that fall back to the generic shell keep exactly
+ * the criterion they have always had (`isError === true`), stated where the
+ * union still allows it.
+ * @param block - the frozen running-or-settled call node.
+ * @returns whether the call settled as a failure.
+ */
+export function isErrorResult(block: CardBlockView): boolean {
+  return isSettled(block) && block.isError === true
 }
 
 /**
@@ -149,7 +167,7 @@ export function parseCardArgs(block: CardBlockView): Record<string, unknown> | n
 export function cardState(block: CardBlockView): CardState {
   if (!isSettled(block)) return 'running'
   if (isRecord(block.error) && block.error.code === 'interrupted') return 'warning'
-  if (block.isError === true) return 'error'
+  if (isErrorResult(block)) return 'error'
   const terminal = narrowTerminalCardMeta(cardMeta(block))
   if (terminal !== null && terminal.mode === 'foreground' && (terminal.timedOut || terminal.aborted)) {
     return 'warning'
@@ -360,22 +378,41 @@ export function parseShellStatus(text: string): ShellStatus {
   return { output: rest, exitCode, signal, timedOut }
 }
 
+/**
+ * Bind the card dictionary to the shared code-card toolbar labels.
+ *
+ * The toolbar rides every code surface the primitives draw (the diff block, the
+ * read block), and the host's own adapter for it reads the base locale's
+ * `codeBlock.*` wording; this dictionary carries the same three strings, so a
+ * takeover's code cards read exactly as the shipped ones do.
+ * @param t - the card translate seat.
+ * @returns the language fallback and wrapping actions.
+ */
+export function codeToolbarLabels(t: CardTranslate): CodeToolbarLabels {
+  return {
+    codeLabel: t('codeBlock.title'),
+    wrapLabel: t('codeBlock.wrap'),
+    unwrapLabel: t('codeBlock.unwrap'),
+  }
+}
+
 /** Bind the card dictionary to the diff primitive's chrome labels. */
 export function diffBlockLabels(t: CardTranslate): DiffBlockLabels {
   return {
+    ...codeToolbarLabels(t),
     copy: t('copy'),
     copied: t('copied'),
     collapseAria: t('collapseAria'),
     expandAria: count => t('expandAria', { count }),
     collapse: t('collapse'),
     expand: count => t('expandRest', { count }),
-    files: count => t(count === 1 ? 'files.one' : 'files.other', { count }),
   }
 }
 
 /** Bind the card dictionary to the read primitive's chrome labels. */
 export function readBlockLabels(t: CardTranslate): ReadBlockLabels {
   return {
+    ...codeToolbarLabels(t),
     window: (shown, total) => t('read.window', { shown, total }),
     copy: t('copy'),
     copied: t('copied'),
@@ -412,6 +449,7 @@ export function terminalBlockLabels(t: CardTranslate): TerminalBlockLabels {
   return {
     signal: signal => t('terminal.signal', { signal }),
     exitCode: exitCode => t('terminal.exitCode', { code: exitCode }),
+    noExitCode: t('terminal.noExitCode'),
     running: t('terminal.running'),
     failed: t('terminal.failed'),
     done: t('terminal.done'),

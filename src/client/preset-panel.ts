@@ -1,9 +1,16 @@
 /**
- * 预设面板的纯映射层：把 `presets/status` / `presets/apply` 的返回值翻成本地化
- * 文案、可用动作与差异摘要。零 React、零 DOM、零 I/O —— 由
- * `tests/unit/preset-panel.spec.ts` 单独覆盖，UI（`PresetPanel.tsx`）只做渲染。
+ * 预设面板的纯映射层：把 `presets/status` / `presets/apply` / `presets/compare`
+ * 的返回值翻成本地化文案、可用动作与差异摘要。零 React、零 DOM、零 I/O ——
+ * 由 `tests/unit/preset-panel.spec.ts` 单独覆盖，UI（`PresetPanel.tsx`）只做渲染。
  *
- * 契约来源：`docs/superpowers/specs/2026-09-17-preset-upgrade-design.md` §4.2/§7。
+ * 语义基线（dsh 0.1.7 起，别再按旧目录机制理解）：
+ * - 预设是 profile 配置里的一条 `@deepseek-ai/dsh-agent-preset` 声明行；
+ * - "没被改动过" = 这一行在 profile 补丁里**没有** `config`（`customized === false`）；
+ * - 三个动作：`upgrade` 只禁冲突行、`align` 用所选模板整份替换 plugins、
+ *   `revert` 删掉覆盖回落到随包声明；
+ * - 本插件只**声明**两个预设（{@link BUNDLED_PRESET_IDS}）；别的 preset 归别人，
+ *   面板最多替它修冲突行，不改它的内容。
+ *
  * 类型与端点名直接取自共享契约模块 `src/tools/shared/browser-rpc-channel.ts`
  * （两半同一个来源，客户端这一侧不复制一份会漂移的定义）。
  * @module @xiaoso/dsh-tool-plus/client/preset-panel
@@ -32,7 +39,7 @@ export { BUNDLED_PRESET_IDS }
 /** 端点名（共享契约常量，见模块注释）。 */
 export { PRESET_ACTION_ENDPOINT, PRESET_COMPARE_ENDPOINT, PRESET_STATUS_ENDPOINT }
 
-/** 预设来源：我们的随包模板 / 用户根 / 官方随附。 */
+/** 预设来源：本插件声明的 / 别人声明的。 */
 export type PresetSource = PresetSourceValue
 
 /** 一个预设的完整状态（`presets/status` 的一项）。 */
@@ -41,10 +48,10 @@ export type PresetStatus = PresetStatusValue
 /** `presets/status` 的返回值。 */
 export type PresetStatusResult = PresetStatusListValue
 
-/** 一个预设动作：`upgrade` = 只改冲突行；`reset` = 整份对齐当前模板。 */
+/** 一个预设动作：`upgrade` 只禁冲突行；`align` 整份对齐模板；`revert` 回落到随包声明。 */
 export type PresetAction = PresetActionValue
 
-/** 与自带模板的一处具体差异。 */
+/** 与随包声明的一处具体差异。 */
 export type PresetDelta = PresetDeltaValue
 
 /** 可选模板（面板"对比模板"下拉的一项）。 */
@@ -71,40 +78,6 @@ const CONFLICT_NAME_KEYS: Record<string, BashPlusLocaleKey> = {
 }
 
 /**
- * 组合文件读不到但形状没问题：`conflicts` 为空、`clean` 为假，且既没被 roster
- * 标 `broken` 也不是形状无法识别 —— 唯一解释是文件不存在/读不了（例如目录在、
- * `agent.cordis.yml` 缺）。这不是"与模板一致"，要对用户说「未安装」。
- */
-function compositionUnreadable(status: PresetStatus): boolean {
-  return status.broken === undefined
-    && !status.unrecognized
-    && !status.clean
-    && status.conflicts.length === 0
-}
-
-/**
- * roster 缺席我们随包的两份时补出「未安装」行（不改变 roster 原有顺序，
- * 补出的行按 {@link BUNDLED_PRESET_IDS} 顺序排在前面）。
- */
-export function mergeBundledPresets(presets: readonly PresetStatus[]): PresetStatus[] {
-  const present = new Set(presets.map(preset => preset.id))
-  const missing: PresetStatus[] = BUNDLED_PRESET_IDS
-    .filter(id => !present.has(id))
-    .map(id => ({
-      id,
-      source: 'ours' as const,
-      path: '',
-      conflicts: [],
-      clean: false,
-      unrecognized: false,
-      installed: false,
-      templatePresent: true,
-      templateDiffers: false,
-    }))
-  return missing.length === 0 ? [...presets] : [...missing, ...presets]
-}
-
-/**
  * 下拉里一次只看一个预设时的默认选中项：随包的那份（{@link BUNDLED_PRESET_IDS}
  * 的第一项）在场就选它，否则退清单第一项；空清单返回 undefined。
  */
@@ -114,8 +87,8 @@ export function initialPresetId(presets: readonly PresetStatus[]): string | unde
 }
 
 /**
- * 当前选中项在重拉状态后可能已经消失（预设被删、改名、roster 变化）：仍在场就
- * 保留，否则回落到 {@link initialPresetId}，避免下拉指向一个不存在的选项。
+ * 当前选中项在重拉状态后可能已经消失（声明被移除、roster 变化）：仍在场就保留，
+ * 否则回落到 {@link initialPresetId}，避免下拉指向一个不存在的选项。
  */
 export function resolveSelectedPresetId(
   presets: readonly PresetStatus[],
@@ -125,7 +98,7 @@ export function resolveSelectedPresetId(
   return initialPresetId(presets)
 }
 
-/** 下拉选项文案：优先展示 name（preset.yml 的显示名），缺了就退 id。 */
+/** 下拉选项文案：优先展示 name（声明里的显示名），缺了就退 id。 */
 export function presetOptionLabel(preset: PresetStatus): string {
   return preset.name !== undefined && preset.name !== '' ? preset.name : preset.id
 }
@@ -166,7 +139,7 @@ export function presetToolIndicator(
 
 /**
  * 状态点 ②（完整比较）：这份预设的内容与我们选中的模板差多少 ——
- * 不只是工具开关，整份组合文件都算。
+ * 不只是工具开关，整份插件行列表都算。
  * @param t - 文案表。
  * @param compare - 当前比较结果；尚未返回时给"正在比较"的黄点。
  * @returns 状态点。
@@ -184,7 +157,7 @@ export function presetCompareIndicator(
   }
 }
 
-/** 差异弹窗的一行：点号路径 + 两侧的值（缺失/整行用本地化占位）。 */
+/** 差异弹窗的一行：路径 + 两侧的值（缺失/整行用本地化占位）。 */
 export interface PresetDiffRow {
   path: string
   /** 这份预设的值。 */
@@ -194,7 +167,7 @@ export interface PresetDiffRow {
 }
 
 /**
- * 差异弹窗的行：把比较结果翻成"路径 / 两份预设各自的值"三列。
+ * 差异弹窗的行：把比较结果翻成"路径 / 两份各自的值"三列。
  * 值缺失或整行差异都给出占位词，让用户一眼看出哪边没有。
  * @param t - 文案表。
  * @param compare - 当前比较结果。
@@ -230,10 +203,10 @@ export function presetTemplateLabel(template: PresetTemplate): string {
 }
 
 /**
- * 选中的模板：①选中的预设自己有同名模板就用它（`tool-plus-ptc` 就该比
- * `tool-plus-ptc`）；②否则退随包的第一份模板（`BUNDLED_PRESET_IDS[0]`，即
- * `tool-plus-standard`，别按目录名排序撞上 ptc）；③再不行才退清单第一项。
- * 清单为空返回 undefined。
+ * 选中的模板：①手动选过且仍在场就用它；②否则选与当前预设**同名**的那份
+ * （`tool-plus-ptc` 就该比 `tool-plus-ptc`）；③再退随包的第一份
+ * （`BUNDLED_PRESET_IDS[0]`，即 `tool-plus-standard`，别按目录名排序撞上 ptc）；
+ * ④最后退清单第一项。清单为空返回 undefined。
  * @param templates - 可选模板清单。
  * @param current - 当前选中的模板 id。
  * @param presetId - 当前选中的预设 id（同名模板优先）。
@@ -251,48 +224,65 @@ export function resolveSelectedTemplateId(
 }
 
 /**
- * 补充说明行：读取失败原因、无法识别的内容。差异不再在这里铺开 ——
- * 它进了「查看差异」弹窗，正文只留两个状态点。
+ * 补充说明行：为什么读不到、这个 preset 归谁、以及"你改过它"这件事。
+ * 差异不在这里铺开 —— 它进了「查看差异」弹窗，正文只留状态点与必要解释。
  * @param t - 文案表。
  * @param status - 该预设的状态。
+ * @param writable - 本部署有没有可编辑的 profile。
  * @returns 要渲染的说明行（可能为空）。
  */
-export function presetNotes(t: (key: BashPlusLocaleKey) => string, status: PresetStatus): string[] {
+export function presetNotes(
+  t: (key: BashPlusLocaleKey) => string,
+  status: PresetStatus,
+  writable = true,
+): string[] {
   const notes: string[] = []
+  if (!writable) notes.push(t('presetNoteNoProfile'))
   if (status.broken !== undefined) {
     notes.push(t('presetNoteBroken').replace('{reason}', status.broken))
   } else if (status.unrecognized) {
     notes.push(t('presetNoteUnrecognized'))
   }
+  if (status.source === 'ours' && writable && status.entryId === undefined) {
+    notes.push(t('presetNoteNoRow'))
+  }
+  if (status.source === 'other') notes.push(t('presetNoteOther'))
+  else if (status.customized) notes.push(t('presetNoteCustomized'))
   return notes
 }
 
 /**
  * 该预设可执行的动作，按渲染顺序。
  *
- * - 官方随附预设一律无动作（写不了，它的只读语义由"没有按钮"表达，不再用徽标）；
- * - 其余预设都给两个动作：`upgrade`（最小更新：只禁用冲突行）与 `reset`
- *   （用**所选模板**整份覆盖）；
- * - 读不了、无法识别时只剩 `reset` —— 整份覆盖是唯一能修的办法，最小更新会拒绝。
+ * - 本部署没有可编辑 profile（`writable === false`）→ 一个动作都不给；
+ * - 这一行不可寻址（`entryId` 缺席）→ 一个动作都不给（写了也没地方落）；
+ * - **别人的** preset → 只给 `upgrade`（我们只该修冲突行，不该替别人重写内容）；
+ * - **我们的** preset → `upgrade` + `align`；有覆盖时再加 `revert`；
+ * - 内容不可识别时 `upgrade` 没有意义（它要逐行判定），只给 `align` / `revert`。
  * @param status - 该预设的状态。
+ * @param writable - 本部署有没有可编辑的 profile。
  * @returns 动作清单。
  */
-export function presetActions(status: PresetStatus): PresetAction[] {
-  if (status.source === 'shipped') return []
-  // 「最小更新」要读得到组合文件才谈得上改行：读不了 / 形状不认 / 目录还没有 → 只给重置。
-  const unusable = status.broken !== undefined
-    || status.unrecognized
-    || !status.installed
-    || compositionUnreadable(status)
-  return unusable ? ['reset'] : ['upgrade', 'reset']
+export function presetActions(status: PresetStatus, writable = true): PresetAction[] {
+  if (!writable || status.entryId === undefined) return []
+  if (status.source === 'other') return status.unrecognized ? [] : ['upgrade']
+  if (status.unrecognized) return status.customized ? ['align', 'revert'] : ['align']
+  return status.customized ? ['upgrade', 'align', 'revert'] : ['upgrade', 'align']
 }
 
-/** 动作按钮文案：两个动作都面向所有可写预设，文案不再区分来源。 */
+/** 动作按钮文案。 */
 export function presetActionText(
   t: (key: BashPlusLocaleKey) => string,
   action: PresetAction,
 ): string {
-  return action === 'reset' ? t('presetActionReset') : t('presetActionUpdate')
+  if (action === 'align') return t('presetActionAlign')
+  if (action === 'revert') return t('presetActionRevert')
+  return t('presetActionUpdate')
+}
+
+/** 需要二次确认的动作：两个会动到用户已有内容的动作。 */
+export function presetActionNeedsConfirm(action: PresetAction): boolean {
+  return action === 'align' || action === 'revert'
 }
 
 /**
@@ -301,7 +291,7 @@ export function presetActionText(
  * @param t - 文案表。
  * @param action - 该按钮的动作。
  * @param status - 该预设状态（决定"要不要更新"）。
- * @param templateLabel - 当前所选模板的显示名（重置提示里点名它是哪份）。
+ * @param templateLabel - 当前所选模板的显示名（对齐提示里点名它是哪份）。
  * @returns 悬浮提示文案。
  */
 export function presetActionHint(
@@ -315,7 +305,8 @@ export function presetActionHint(
     for (const [name, value] of Object.entries(values)) text = text.replaceAll(`{${name}}`, value)
     return text
   }
-  if (action === 'reset') return fill('presetActionResetHint', { template: templateLabel })
+  if (action === 'align') return fill('presetActionAlignHint', { template: templateLabel })
+  if (action === 'revert') return t('presetActionRevertHint')
   if (status.conflicts.length === 0) return t('presetActionUpdateNothing')
   return fill('presetActionUpdateHint', {
     count: String(status.conflicts.length),
@@ -332,37 +323,37 @@ export function presetConflictNames(t: (key: BashPlusLocaleKey) => string, confl
 }
 
 /**
- * 重置的二次确认文案。还没安装（含 roster 缺席补出的行）时没有本地改动可丢，
- * 不能拿"会覆盖本地改动"吓人；其余情况按覆盖风险如实提示。两种情况都点名
- * 用的是**哪份模板**：重置的来源是用户在「对比模板」里选的那份。
+ * 二次确认文案。两个动作都会动到用户可能已经改过的内容，所以必须说清后果，
+ * 并且**点名写入位置**——这是本插件唯一会改用户 profile 配置的地方。
  * @param t - 文案表。
  * @param status - 该预设状态。
+ * @param action - 待确认的动作。
  * @param templateLabel - 所选模板的显示名。
  * @returns 确认文案。
  */
 export function presetConfirmText(
   t: (key: BashPlusLocaleKey) => string,
   status: PresetStatus,
+  action: PresetAction,
   templateLabel: string,
 ): string {
-  if (!status.installed || compositionUnreadable(status)) {
-    return t('presetConfirmInstall').replace('{template}', templateLabel)
-  }
-  return t('presetConfirmReset').replace('{template}', templateLabel)
+  if (action === 'revert') return t('presetConfirmRevert')
+  const lines = [t('presetConfirmAlign').replace('{template}', templateLabel)]
+  if (status.customized) lines.push(t('presetConfirmAlignEdits'))
+  return lines.join('\n')
 }
 
 /**
- * 执行前摘要：将要改哪几行 / 将写入什么。**没事可做时返回 null**（不渲染这一行）——
- * 用户明确要求去掉「工具行都已禁用，无需调整。」这种"没有信息量的状态句"。
+ * 执行前摘要：**当前状态**下有什么需要处理的。没事可做时返回 null
+ * （不渲染这一行）——用户明确要求去掉"工具行都已禁用，无需调整。"这种没有
+ * 信息量的状态句。
  * @param t - 文案表。
  * @param status - 该预设状态。
  * @returns 摘要文案，或 null（无需渲染）。
  */
 export function presetPendingText(t: (key: BashPlusLocaleKey) => string, status: PresetStatus): string | null {
-  const actions = presetActions(status)
-  if (actions.length === 0) return null
-  if (status.broken !== undefined || status.unrecognized) return t('presetPendingReset')
-  if (!status.installed || compositionUnreadable(status)) return t('presetPendingInstall')
+  if (status.source === 'ours' && status.entryId === undefined) return null
+  if (status.unrecognized) return t('presetPendingBroken')
   if (status.conflicts.length === 0) return null
   const names = presetConflictNames(t, status.conflicts)
   return t('presetPendingRows')
@@ -371,12 +362,16 @@ export function presetPendingText(t: (key: BashPlusLocaleKey) => string, status:
 }
 
 /**
- * 执行后结果：成功（改了几处、改了哪几处、是否留了备份）/ 无变化 / 失败原因。
+ * 执行后结果：成功（改了几处、改了哪几处）/ 无变化 / 失败原因。
  * 多行文本，`\n` 分段；调用方的结果行按 `white-space: pre-wrap` 渲染。
  *
- * `action` 必须传：宿主只在 `upgrade` 时返回逐行改动（`reset` 是整份覆盖，
- * `changes` 恒为空），所以重置不能套用"调整了 N 行"的句式 —— 否则会渲染成
- * "调整了 0 处"这种假话。
+ * `action` 必须传：宿主只在 `upgrade` 时返回逐行改动（`align` 是整份替换、
+ * `revert` 是删覆盖，两者的 `changes` 恒为空），所以它们不能套用"调整了 N 行"
+ * 的句式 —— 否则会渲染成"调整了 0 处"这种假话。
+ * @param t - 文案表。
+ * @param result - 宿主返回的执行结果。
+ * @param action - 刚执行的动作。
+ * @returns 结果文案。
  */
 export function presetResultText(
   t: (key: BashPlusLocaleKey) => string,
@@ -386,18 +381,21 @@ export function presetResultText(
   if (!result.ok) {
     return t('presetResultFailed').replace('{reason}', result.reason ?? t('presetFailUnknown'))
   }
-  if (action === 'reset') {
-    if (!result.changed) return t('presetResultResetNoChange')
-    const lines = [t('presetResultResetDone')]
-    if (result.backupPath !== undefined) lines.push(t('presetResultBackup'))
-    return lines.join('\n')
+  const lines: string[] = []
+  if (action === 'align') {
+    lines.push(result.changed ? t('presetResultAlignDone') : t('presetResultAlignNoChange'))
+  } else if (action === 'revert') {
+    lines.push(result.changed ? t('presetResultRevertDone') : t('presetResultRevertNoChange'))
+  } else if (!result.changed) {
+    lines.push(t('presetResultNoChange'))
+  } else {
+    lines.push(t('presetResultDone').replace('{count}', String(result.changes.length)))
+    if (result.changes.length > 0) {
+      const names = presetConflictNames(t, result.changes.map(change => change.id))
+      lines.push(t('presetResultRows').replace('{rows}', names.join(t('presetListSeparator'))))
+    }
   }
-  if (!result.changed) return t('presetResultNoChange')
-  const lines = [t('presetResultDone').replace('{count}', String(result.changes.length))]
-  if (result.changes.length > 0) {
-    const names = presetConflictNames(t, result.changes.map(change => change.id))
-    lines.push(t('presetResultRows').replace('{rows}', names.join(t('presetListSeparator'))))
-  }
+  // 只有真写盘时宿主才会落备份，所以这一行出现即代表"改动前的内容留了一份"。
   if (result.backupPath !== undefined) lines.push(t('presetResultBackup'))
   return lines.join('\n')
 }

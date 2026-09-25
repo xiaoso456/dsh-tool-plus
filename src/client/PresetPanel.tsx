@@ -20,8 +20,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  IconChevronDownOutline14,
-  IconQuestionOutline14,
+  IconChevronDownOutlineRegular,
+  IconQuestionOutlineRegular,
   Menu,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -34,8 +34,8 @@ import {
   PRESET_ACTION_ENDPOINT,
   PRESET_COMPARE_ENDPOINT,
   PRESET_STATUS_ENDPOINT,
-  mergeBundledPresets,
   presetActionHint,
+  presetActionNeedsConfirm,
   presetActionText,
   presetActions,
   presetCompareIndicator,
@@ -129,6 +129,16 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   const [phase, setPhase] = useState<PresetPhase>('loading')
   const [presets, setPresets] = useState<readonly PresetStatus[]>([])
   const [templates, setTemplates] = useState<readonly PresetTemplate[]>([])
+  /**
+   * 本部署有没有可编辑的 profile（宿主 `configEditor` 是否在场）。没有时面板
+   * 只读 —— 一个动作都不给，说明行会讲清原因。
+   */
+  const [writable, setWritable] = useState(true)
+  /**
+   * 旧版目录机制留下的 `~/.dsh/.agent-presets`（0.1.7 起没有任何代码读它）。
+   * 只作为"可以安全删除"的提示展示，不参与任何读写。
+   */
+  const [legacyRoot, setLegacyRoot] = useState<string | undefined>(undefined)
   const [presetId, setPresetId] = useState<string | undefined>(undefined)
   const [templateId, setTemplateId] = useState<string | undefined>(undefined)
   /** 用户手动挑过模板之后就不再自动跟随预设（否则他刚选的会被覆盖掉）。 */
@@ -138,7 +148,8 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   const [openPicker, setOpenPicker] = useState<OpenPicker>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [results, setResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  /** 待二次确认的动作（动作 + 目标预设）；`align` / `revert` 会动到已有内容。 */
+  const [confirming, setConfirming] = useState<{ id: string; action: PresetAction } | null>(null)
   /**
    * 悬浮说明：portal 到 body 的 fixed 浮层 + 按按钮实时矩形算出的坐标。
    * 位置不能像之前那样用绝对定位挂在卡片里：设置面板的滚动容器是 `overflow-y:auto`，
@@ -172,10 +183,12 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
         setPhase('unavailable')
         return
       }
-      // roster 由磁盘现状驱动：我们随包的两份缺席时补一行「未安装」，让用户
-      // 能就地把它装回来（宿主半的 reset 会按模板创建）。
-      setPresets(mergeBundledPresets(value.presets))
+      // 宿主已经把我们声明的两份（无论 roster 里有没有）按 ours 排在前面，
+      // 客户端不再合成"未安装"行：那种行现在写不了，只会误导。
+      setPresets(value.presets)
       setTemplates(Array.isArray(value.templates) ? value.templates : [])
+      setWritable(value.writable !== false)
+      setLegacyRoot(typeof value.legacyPresetRoot === 'string' && value.legacyPresetRoot.length > 0 ? value.legacyPresetRoot : undefined)
       setPhase('ready')
     } catch {
       setPhase('unavailable')
@@ -215,7 +228,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
 
   /** 执行一个动作；成功后重新拉状态与比较（结果行保留，直到下一次动作）。 */
   const runAction = useCallback((preset: PresetStatus, action: PresetAction): void => {
-    setConfirmingId(null)
+    setConfirming(null)
     setBusyId(preset.id)
     setResults(prev => ({ ...prev, [preset.id]: null }))
     void (async () => {
@@ -292,7 +305,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
             onClick={() => setOpenPicker(open => (open === key ? null : key))}
           >
             <span>{current}</span>
-            <IconChevronDownOutline14 className="tp-selectChevron" />
+            <IconChevronDownOutlineRegular className="tp-selectChevron" />
           </button>
         )}
       />
@@ -301,8 +314,8 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
 
   /** 选中那份的详情：名称/来源 → 动作 → 说明 → 待改 → 二次确认 → 结果。 */
   const detail = (preset: PresetStatus): ReactNode => {
-    const notes = presetNotes(t, preset)
-    const actions = presetActions(preset)
+    const notes = presetNotes(t, preset, writable)
+    const actions = presetActions(preset, writable)
     const pending = presetPendingText(t, preset)
     const result = results[preset.id] ?? null
     const running = busyId === preset.id
@@ -323,20 +336,21 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                   <button
                     key={action}
                     type="button"
-                    className={'tp-actionButton tpp-actionButton' + (action === 'reset' ? ' tpp-danger' : '')}
+                    className={'tp-actionButton tpp-actionButton' + (action === 'align' ? ' tpp-danger' : '')}
                     disabled={running}
                     {...{ 'aria-description': presetActionHint(t, action, preset, templateLabel) }}
                     onMouseEnter={event => showHint(action, event.currentTarget)}
                     onFocus={event => showHint(action, event.currentTarget)}
                     onBlur={() => setHinted(null)}
                     onClick={() => {
-                      // 重置是整份覆盖（已安装且有本地改动时会丢）→ 先原地二次确认。
-                      if (action === 'reset') setConfirmingId(preset.id)
+                      // 会动到已有内容的两个动作先原地二次确认：对齐会覆盖你改过的
+                      // 插件列表，恢复随包会删掉你的覆盖。最小更新是纯加法，直接执行。
+                      if (presetActionNeedsConfirm(action)) setConfirming({ id: preset.id, action })
                       else runAction(preset, action)
                     }}
                   >
                     <span>{running ? t('presetActionWorking') : presetActionText(t, action)}</span>
-                    <IconQuestionOutline14 className="tpp-helpIcon" aria-hidden="true" />
+                    <IconQuestionOutlineRegular className="tpp-helpIcon" />
                   </button>
                 ))}
               </div>
@@ -355,22 +369,22 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
           )
           : null}
         {result === null && pending !== null ? <p className="tpp-state">{pending}</p> : null}
-        {confirmingId === preset.id
+        {confirming !== null && confirming.id === preset.id
           ? (
-            <div className="tpp-confirm" role="group" aria-label={t('presetActionReset')}>
-              <p className="tpp-confirmText">{presetConfirmText(t, preset, selectedTemplateLabel)}</p>
+            <div className="tpp-confirm" role="group" aria-label={t('presetConfirmTitle')}>
+              <p className="tpp-confirmText">{presetConfirmText(t, preset, confirming.action, selectedTemplateLabel)}</p>
               <div className="tpp-confirmActions">
                 <button
                   type="button"
                   className="tp-actionButton tpp-danger"
-                  onClick={() => runAction(preset, 'reset')}
+                  onClick={() => runAction(preset, confirming.action)}
                 >
                   {t('presetConfirmYes')}
                 </button>
                 <button
                   type="button"
                   className="tp-actionButton"
-                  onClick={() => setConfirmingId(null)}
+                  onClick={() => setConfirming(null)}
                 >
                   {t('presetConfirmNo')}
                 </button>
@@ -420,7 +434,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                 presets.map(preset => ({ id: preset.id, label: presetOptionLabel(preset) })),
                 (id) => {
                   setPresetId(id)
-                  setConfirmingId(null)
+                  setConfirming(null)
                   setDiffOpen(false)
                 },
               )}
@@ -459,6 +473,9 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                   : null}
               </div>
               {selected !== undefined ? detail(selected) : null}
+              {legacyRoot !== undefined
+                ? <p className="tpp-state">{t('presetNoteLegacy').replace('{path}', legacyRoot)}</p>
+                : null}
             </>
           )
           : null}

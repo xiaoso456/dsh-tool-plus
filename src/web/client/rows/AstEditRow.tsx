@@ -14,7 +14,9 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowAstEditCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
-import { cardMeta, cardState, cardTitle, displayPath, isSubCall, parseCardArgs, resultText } from '../row-utils.ts'
+import {
+  cardMeta, cardState, cardTitle, displayPath, isErrorResult, isSubCall, parseCardArgs, resultText,
+} from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 import { astEditRuleLine } from './command-card-facts.ts'
 
@@ -49,7 +51,7 @@ function AstEditCard(props: RowProps & { title: string }) {
   const args = parseCardArgs(block)
   const meta = narrowAstEditCardMeta(cardMeta(block))
   // A Code Dispatch child's preview is drawn by its parent card's own body.
-  if (isSubCall(block) || block.isError === true || meta === null || meta.preview === '') {
+  if (isSubCall(block) || isErrorResult(block) || meta === null || meta.preview === '') {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const files = meta.files.length

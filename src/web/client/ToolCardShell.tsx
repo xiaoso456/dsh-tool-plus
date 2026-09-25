@@ -22,7 +22,8 @@
 
 import { Component, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import {
-  DisclosureRow, IconApiOutline14, IconBrowseOutline16, IconEditOutline16, IconSearchOutline16, IconSparkle16, StateDot,
+  DisclosureRow, IconApiOutlineRegular, IconBrowseOutlineRegular, IconEditOutlineRegular,
+  IconSearchOutlineRegular, IconSparkleRegular, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   cardArgsRaw, cardState, firstLine, resultText, stateStatus,
@@ -33,11 +34,11 @@ import { fallbackCardLink, fallbackCardSummary } from './rows/fallback-card-fact
 
 /** Leading glyphs (the shipped table): every glyph renders at 14 inside the 16px leading box. */
 const LEADING_GLYPHS: Record<CardLeadingGlyph, ReactNode> = {
-  bash: <IconApiOutline14 size={14} />,
-  read: <IconBrowseOutline16 size={14} />,
-  edit: <IconEditOutline16 size={14} />,
-  search: <IconSearchOutline16 size={14} />,
-  others: <IconSparkle16 size={14} />,
+  bash: <IconApiOutlineRegular size={14} />,
+  read: <IconBrowseOutlineRegular size={14} />,
+  edit: <IconEditOutlineRegular size={14} />,
+  search: <IconSearchOutlineRegular size={14} />,
+  others: <IconSparkleRegular size={14} />,
 }
 
 /**

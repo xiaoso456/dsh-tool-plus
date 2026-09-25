@@ -10,7 +10,7 @@
  *
  * The stub models exactly the four services the module touches — `effect`,
  * `locale.register`, `slots.{inject,register,entriesOfSlot}` and
- * `settingsScope.bind` — and keeps a live ledger so a registration can be seen
+ * `configForms.get` — and keeps a live ledger so a registration can be seen
  * to vanish when its disposer runs.
  * @module tests
  */
@@ -24,6 +24,12 @@ import { registerToolCards } from '../../src/web/client/registerToolCards.ts'
 // therefore cannot be loaded by the Node test runner at all. Nothing renders
 // here, so the primitives surface is replaced by inert stand-ins; the module
 // under test, the contract, the dictionaries and every row module stay real.
+//
+// The table mirrors every VALUE the reachable row modules import from the
+// package (an ESM named import of an absent export throws at link time, which
+// is how a host-side rename surfaces here). Type-only imports need no entry.
+// `vi.mock` factories must return a plain object — vitest wraps the result and
+// cannot take a Proxy — so this list is closed on purpose.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => {
   const StandIn = (): null => null
   return {
@@ -34,12 +40,15 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => {
     DiffBlock: StandIn,
     DisclosureRow: StandIn,
     StateDot: StandIn,
-    // The leading glyph table the shared shell draws from.
-    IconApiOutline14: StandIn,
-    IconBrowseOutline16: StandIn,
-    IconEditOutline16: StandIn,
-    IconSearchOutline16: StandIn,
-    IconSparkle16: StandIn,
+    // The leading glyph table the shared shell draws from (0.1.7 names:
+    // weight suffix Regular/Medium replaces the removed size suffix 14/16).
+    IconApiOutlineRegular: StandIn,
+    IconBrowseOutlineRegular: StandIn,
+    IconCloseOutlineRegular: StandIn,
+    IconEditOutlineRegular: StandIn,
+    IconSearchOutlineRegular: StandIn,
+    IconSparkleRegular: StandIn,
+    fileSizeText: () => '',
     diffTotals: () => ({ added: 0, removed: 0 }),
   }
 })
@@ -84,7 +93,7 @@ interface CardStub {
   localeCalls: Array<{ ns: string; dicts: Record<string, unknown> }>
   /** Labels the module passed to `effect`. */
   effectLabels: string[]
-  /** Namespaces `settingsScope.bind` was called with. */
+  /** Namespaces `configForms.get` was called with. */
   bindNamespaces: string[]
   /** Entries still live (registered and not yet disposed). */
   liveEntries(): SlotEntry[]
@@ -184,11 +193,11 @@ function createStub(): CardStub {
           return [...winners.values()]
         },
       },
-      settingsScope: {
-        bind: (options: { namespace: string }) => {
-          stub.bindNamespaces.push(options.namespace)
+      configForms: {
+        get: (entryId: string) => {
+          stub.bindNamespaces.push(entryId)
           return {
-            getSnapshot: () => ({ status: 'ready', namespace: options.namespace, value: settingsValue }),
+            getSnapshot: () => ({ status: 'ready', namespace: entryId, value: settingsValue }),
             subscribe: (fn: () => void) => {
               listeners.push(fn)
               let stopped = false
@@ -284,7 +293,7 @@ describe('registerToolCards', () => {
     expect(Object.keys(call.dicts.en as Record<string, unknown>).length).toBeGreaterThan(0)
   })
 
-  it('binds the plugin settings namespace once', () => {
+  it('binds the plugin settings entry once', () => {
     const stub = createStub()
     spyWarn()
 

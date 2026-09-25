@@ -24,6 +24,8 @@ export type ToolCardLocaleKey =
   | 'copy' | 'copied' | 'collapse' | 'expand'
   | 'collapseAria' | 'expandAria' | 'expandRest'
   | 'files.one' | 'files.other'
+  // Shared code-card toolbar chrome (the base locale's own `codeBlock.*` keys).
+  | 'codeBlock.title' | 'codeBlock.wrap' | 'codeBlock.unwrap'
   // Run state words used for the shell's assistive-technology status line.
   | 'running' | 'done' | 'failed' | 'stopped' | 'cancelled' | 'timedOut' | 'noOutput'
   // One title per tool key this plugin renders.
@@ -43,6 +45,9 @@ export type ToolCardLocaleKey =
   // terminal card chrome.
   | 'terminal.signal' | 'terminal.exitCode'
   | 'terminal.running' | 'terminal.failed' | 'terminal.done' | 'terminal.noOutput'
+  // A settled command with no exit status at all (killed by an unknown signal,
+  // or never started): the primitive's status pill, not a state word.
+  | 'terminal.noExitCode'
   // Background bash hand-off (generic shell).
   | 'bash.background'
   // Image card: loader states, the open affordance, and the lightbox chrome.
@@ -62,6 +67,9 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   expandRest: '… 其余 {count} 行',
   'files.one': '{count} 个文件',
   'files.other': '{count} 个文件',
+  'codeBlock.title': '代码块',
+  'codeBlock.wrap': '自动换行',
+  'codeBlock.unwrap': '取消自动换行',
   running: '运行中',
   done: '完成',
   failed: '失败',
@@ -106,6 +114,7 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   'terminal.failed': '失败',
   'terminal.done': '已完成',
   'terminal.noOutput': '无输出',
+  'terminal.noExitCode': '未正常退出',
   'bash.background': '后台任务 {jobId}',
   'image.loading': '加载中',
   'image.loadFailed': '加载失败',
@@ -131,6 +140,9 @@ export const en: Record<ToolCardLocaleKey, string> = {
   expandRest: '… {count} more lines',
   'files.one': '{count} file',
   'files.other': '{count} files',
+  'codeBlock.title': 'Code block',
+  'codeBlock.wrap': 'Wrap lines',
+  'codeBlock.unwrap': 'Do not wrap lines',
   running: 'Running',
   done: 'Done',
   failed: 'Failed',
@@ -172,6 +184,7 @@ export const en: Record<ToolCardLocaleKey, string> = {
   'terminal.failed': 'Failed',
   'terminal.done': 'Done',
   'terminal.noOutput': 'No output',
+  'terminal.noExitCode': 'no exit code',
   'bash.background': 'Background job {jobId}',
   'image.loading': 'Loading',
   'image.loadFailed': 'Load failed',

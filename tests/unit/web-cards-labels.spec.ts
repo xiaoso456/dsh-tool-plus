@@ -86,7 +86,8 @@ describe('card dictionary', () => {
       'title.bash', 'title.read', 'title.write', 'title.edit',
       'title.grep', 'title.glob', 'title.astGrep', 'title.astEdit',
       'copy', 'copied', 'collapse', 'expand', 'collapseAria', 'expandAria', 'expandRest',
-      'files.one', 'files.other', 'running', 'done', 'failed', 'cancelled', 'timedOut', 'noOutput',
+      'files.one', 'files.other', 'codeBlock.title', 'codeBlock.wrap', 'codeBlock.unwrap',
+      'running', 'done', 'failed', 'cancelled', 'timedOut', 'noOutput',
       'write.lines', 'write.madeExecutable',
       'astEdit.replacements', 'astEdit.files', 'astEdit.parseErrors',
       'astEdit.rules', 'astEdit.rulesRest',
@@ -94,7 +95,7 @@ describe('card dictionary', () => {
       'search.paths', 'search.paths.truncated', 'search.matches', 'search.matches.truncated',
       'search.noResults', 'search.scope', 'search.collapseAria', 'search.expandAria', 'search.expandRest',
       'terminal.signal', 'terminal.exitCode', 'terminal.running', 'terminal.failed',
-      'terminal.done', 'terminal.noOutput',
+      'terminal.done', 'terminal.noOutput', 'terminal.noExitCode',
       'bash.background', 'generic.params', 'generic.noDetail', 'inspect',
     ]) {
       expect(zh[key as keyof typeof zh], `zh.${key}`).toBeDefined()
@@ -111,18 +112,25 @@ describe('primitive label adapters', () => {
     expect(labels.collapseAria).toBe(zh.collapseAria)
     expect(labels.expandAria(3)).toBe('展开其余 3 行')
     expect(labels.expand(4)).toBe('… 其余 4 行')
-    expect(labels.files(1)).toBe('1 个文件')
-    expect(labels.files(2)).toBe('2 个文件')
-    expect(calls.some(call => call.key === 'files.one')).toBe(true)
-    expect(calls.some(call => call.key === 'files.other')).toBe(true)
+    // The shared code-card toolbar now rides the diff block: the host's own
+    // adapter reads its base locale, and this dictionary carries that wording.
+    expect(labels.codeLabel).toBe('代码块')
+    expect(labels.wrapLabel).toBe('自动换行')
+    expect(labels.unwrapLabel).toBe('取消自动换行')
+    expect(calls.map(call => call.key)).toContain('codeBlock.title')
+    expect(calls.map(call => call.key)).toContain('codeBlock.wrap')
+    expect(calls.map(call => call.key)).toContain('codeBlock.unwrap')
   })
 
-  it('binds the read chrome including the window note', () => {
+  it('binds the read chrome including the window note and the code toolbar', () => {
     const labels = readBlockLabels(translator(zh))
     expect(labels.window(2, 10)).toBe('显示 2 / 10 行')
     expect(labels.collapseAria).toBe(zh['read.collapseAria'])
     expect(labels.expandAria(5)).toBe('展开其余 5 行')
     expect(labels.expand(5)).toBe('… 其余 5 行')
+    expect(labels.codeLabel).toBe(zh['codeBlock.title'])
+    expect(labels.wrapLabel).toBe(zh['codeBlock.wrap'])
+    expect(labels.unwrapLabel).toBe(zh['codeBlock.unwrap'])
   })
 
   it('binds the search chrome for both shapes and the truncation variant', () => {
@@ -140,6 +148,7 @@ describe('primitive label adapters', () => {
     const labels = terminalBlockLabels(translator(en))
     expect(labels.signal('SIGTERM')).toBe('signal SIGTERM')
     expect(labels.exitCode(2)).toBe('exit code 2')
+    expect(labels.noExitCode).toBe(en['terminal.noExitCode'])
     expect(labels.running).toBe(en['terminal.running'])
     expect(labels.failed).toBe(en['terminal.failed'])
     expect(labels.done).toBe(en['terminal.done'])

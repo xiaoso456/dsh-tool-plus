@@ -15,7 +15,8 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { narrowWriteCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
-  argText, cardMeta, cardState, cardTitle, displayPath, lineCount, isSubCall, parseCardArgs, resultText,
+  argText, cardMeta, cardState, cardTitle, displayPath, isErrorResult, lineCount, isSubCall,
+  parseCardArgs, resultText,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
@@ -50,7 +51,7 @@ function WriteCard(props: RowProps & { title: string }) {
   const path = meta?.path ?? argText(args, 'path')
   // A Code Dispatch child's write preview is drawn by its parent card's own
   // body, so it stays on the generic path (as the shipped diff rows do).
-  if (isSubCall(block) || block.isError === true || content === null || path === null) {
+  if (isSubCall(block) || isErrorResult(block) || content === null || path === null) {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   const lines = t('write.lines', { count: lineCount(content) })

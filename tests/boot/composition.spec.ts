@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { JobEvent, JobId, JobRead } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -90,11 +90,20 @@ function textOf(result: { content: { type: string; text?: string }[] }): string 
 async function waitForJob(ctx: Context, id: string, agent: Agent, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const snapshot = ctx.jobs.get(id as JobId, agent)
+    // 0.1.7 fences owned-job access by SESSION id (`agent.id`), not the Agent instance.
+    const snapshot = ctx.jobs.get(id as JobId, agent.id)
     if (snapshot.status !== 'running' && snapshot.status !== 'stopping') return
     await new Promise(resolve => setTimeout(resolve, 50))
   }
   throw new Error(`job ${id} did not settle within ${timeoutMs}ms`)
+}
+
+/**
+ * The model-facing text of one consuming read: the registry hands out ring
+ * chunks, and `log` chunks are producer narration the model never sees.
+ */
+function readText(read: JobRead): string {
+  return read.chunks.filter(chunk => chunk.channel !== 'log').map(chunk => chunk.text).join('')
 }
 
 /** Foreground-semantics harness: auto-backgrounding disabled. */
@@ -177,8 +186,8 @@ describeBash('bash-plus composition', () => {
     const id = textOf(started).match(/job (bash-\d+)/)?.[1]
     expect(id).toBeTruthy()
     await waitForJob(ctx, id!, agent)
-    const read = ctx.jobs.read(id as JobId, agent)
-    expect(read.text).toContain('job-output-line')
+    const read = ctx.jobs.read(id as JobId, agent.id)
+    expect(readText(read)).toContain('job-output-line')
   })
 
   it('points the settled completion read at the spill file for large output', async () => {
@@ -193,12 +202,13 @@ describeBash('bash-plus composition', () => {
     const id = textOf(started).match(/job (bash-\d+)/)?.[1]
     expect(id).toBeTruthy()
     await waitForJob(ctx, id!, agent)
-    const read = ctx.jobs.read(id as JobId, agent)
-    // Regression guard: the settled wrapper must apply the configured
-    // truncation WITH the spill path — a lost `settled` flag silently degrades
-    // every background completion to raw preview tail.
-    expect(read.text).toContain('[Output truncated')
-    expect(read.text).toMatch(/Full output: .*dsh-bash-spill/)
+    const read = ctx.jobs.read(id as JobId, agent.id)
+    // Regression guard: the producer appends the settled completion message —
+    // the configured truncation WITH the spill path — before `done` settles, so
+    // it lands in the ring; a lost append silently degrades every background
+    // completion to its raw streamed output.
+    expect(readText(read)).toContain('[Output truncated')
+    expect(readText(read)).toMatch(/Full output: .*dsh-bash-spill/)
   })
 
   it('clamps tiny timeouts up to 1s instead of failing instantly', async () => {
@@ -295,5 +305,23 @@ describeBash('bash-plus auto-backgrounding', () => {
     expect(dir).toBeTruthy()
     const second = await call(ctx, 'bash', { command: 'pwd', description: 'show cwd' }, agent)
     expect(textOf(second)).toContain(dir!)
+  })
+
+  it('settles inside the window as an awaited job, so no completion notice follows', async () => {
+    // 0.1.7 dropped `JobHooks.readOutput` — the 0.1.5 way this plugin silenced
+    // the completion notice for a run whose id the model never saw. Its
+    // replacement is a live `jobs.wait`: the settlement that releases one is
+    // `awaited`, and `dsh-tool-jobs` reports only unawaited settlements.
+    const settled: JobEvent[] = []
+    const off = ctx.jobs.events.subscribe({ owners: 'all' }, (event) => { if (event.type === 'settled') settled.push(event) })
+    try {
+      const command = 'sleep 0.2 && echo windowed-inline'
+      const result = await call(ctx, 'bash', { command, description: 'quick' }, agent)
+      expect(textOf(result)).toContain('windowed-inline')
+      const event = settled.find(item => item.type === 'settled' && item.job.label === command)
+      expect(event?.type === 'settled' && event.awaited).toBe(true)
+    } finally {
+      off()
+    }
   })
 })

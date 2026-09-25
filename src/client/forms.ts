@@ -8,8 +8,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { CardShell } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolPlusField } from '../config/fields.ts'
 import { hasOwn, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 
@@ -26,7 +26,7 @@ export interface ToolFormGroup {
 
 /** The form state a settings surface renders. */
 export interface ToolForm {
-  shell: CardShell
+  shell: SettingsFormShell
   /** Controls grouped by `ToolPlusField.group`, in first-appearance order. */
   groups: ToolFormGroup[]
   actions: {
@@ -47,18 +47,18 @@ function defaultsOf(fields: readonly ToolPlusField[]): Record<string, number | b
 }
 
 /** Value a cleared field will revert to: the composition base when present, else the schema default. */
-function revertValue(snap: SettingsScopeSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>, field: string): number | boolean | string | undefined {
+function revertValue(snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>, field: string): number | boolean | string | undefined {
   if (hasOwn(snap.base, field)) return (snap.base as Record<string, unknown>)[field] as number | boolean | string
   return defaults[field]
 }
 
 /** Text of a staged (or resolved) value for the number controls. */
-function numberText(staged: string | undefined, hasStaged: boolean, resolved: number | boolean | string | undefined, snap: SettingsScopeSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>, field: string): string {
+function numberText(staged: string | undefined, hasStaged: boolean, resolved: number | boolean | string | undefined, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>, field: string): string {
   if (hasStaged) return (staged ?? '').trim() === '' ? String(revertValue(snap, defaults, field) ?? '') : (staged ?? '')
   return resolved === undefined || typeof resolved === 'boolean' ? '' : String(resolved)
 }
 
-function renderNumber(field: ToolPlusField, numbers: Record<string, string>, value: ToolSettingsValue, snap: SettingsScopeSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): NumberControl {
+function renderNumber(field: ToolPlusField, numbers: Record<string, string>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): NumberControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(numbers, field.name)
   const staged = numbers[field.name]
   const resolved = value[field.name]
@@ -87,7 +87,7 @@ function renderNumber(field: ToolPlusField, numbers: Record<string, string>, val
   return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, text, overridden, invalid }
 }
 
-function renderSelect(field: ToolPlusField, selects: Record<string, string | null>, value: ToolSettingsValue, snap: SettingsScopeSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): SelectControl {
+function renderSelect(field: ToolPlusField, selects: Record<string, string | null>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): SelectControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(selects, field.name)
   const staged = selects[field.name]
   const resolved = value[field.name]
@@ -113,7 +113,7 @@ function renderSelect(field: ToolPlusField, selects: Record<string, string | nul
   }
 }
 
-function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | null>, value: ToolSettingsValue, snap: SettingsScopeSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): ToggleControl {
+function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | null>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): ToggleControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(toggles, field.name)
   const staged = toggles[field.name]
   const baseVal = Boolean(revertValue(snap, defaults, field.name))
@@ -134,7 +134,7 @@ function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | nu
 
 /** Whether any staged edit would change the user document. */
 function isDirty(
-  snap: SettingsScopeSnapshot<ToolSettingsValue>,
+  snap: ConfigFormSnapshot<ToolSettingsValue>,
   defaults: Record<string, number | boolean | string>,
   selects: Record<string, string | null>,
   numbers: Record<string, string>,
@@ -188,14 +188,14 @@ function isDirty(
 }
 
 /**
- * Stage edits over the bound scope; only a Save writes the document.
- * @param scope - bound settings scope for the `tool-plus` namespace.
+ * Stage edits over the shared configuration form; only a Save writes the document.
+ * @param scope - the `tool-plus` entry's shared configuration form (`ctx.configForms`).
  * @param fields - the fields this surface edits (single-source table slice).
  * @returns the form state and its write actions.
  */
-export function useToolForm(scope: SettingsScope<ToolSettingsValue>, fields: readonly ToolPlusField[]): ToolForm {
+export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readonly ToolPlusField[]): ToolForm {
   const defaults = useMemo(() => defaultsOf(fields), [fields])
-  const [snap, setSnap] = useState<SettingsScopeSnapshot<ToolSettingsValue>>(() => scope.getSnapshot())
+  const [snap, setSnap] = useState<ConfigFormSnapshot<ToolSettingsValue>>(() => scope.getSnapshot())
   const [numbers, setNumbers] = useState<Record<string, string>>({})
   const [selects, setSelects] = useState<Record<string, string | null>>({})
   const [toggles, setToggles] = useState<Record<string, boolean | null>>({})
@@ -301,6 +301,6 @@ export function useToolForm(scope: SettingsScope<ToolSettingsValue>, fields: rea
     setToggles({})
   }, [])
 
-  const shell: CardShell = { available: snap.status === 'ready', writable, dirty, invalid, saving, failed }
+  const shell: SettingsFormShell = { available: snap.status === 'ready', writable, dirty, invalid, saving, failed }
   return { shell, groups, actions: { edit, resetField, save, discard }, editSelect, onToggle }
 }

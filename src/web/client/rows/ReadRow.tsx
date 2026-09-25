@@ -20,15 +20,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ReadBlock, IconCloseOutline16, fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ReadBlock, IconCloseOutlineRegular, fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { narrowReadCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
-  cardMeta, cardState, cardTitle, displayPath, isSubCall, parseCardArgs, readBlockLabels, resultText,
-  type CardBlockView, type CardOpenFileOptions, type CardTranslate,
+  cardMeta, cardState, cardTitle, displayPath, isErrorResult, isSubCall, parseCardArgs, readBlockLabels,
+  resultText, type CardBlockView, type CardOpenFileOptions, type CardTranslate,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 import { imageCardMaterial, imageFitBox, type CardImageMaterial } from './image-card.ts'
@@ -75,7 +75,7 @@ function ReadCard(props: RowProps & { title: string }) {
   // returns, and the derivation is cheap enough for the text path to pay it.
   const material = useMemo(() => imageCardMaterial(block, cwd), [block, cwd])
   // A Code Dispatch child's window is drawn by its parent card's own body.
-  if (isSubCall(block) || block.isError === true) {
+  if (isSubCall(block) || isErrorResult(block)) {
     return <GenericCard t={t} title={title} block={block} args={args} toolName={toolName} cwd={cwd} openFile={openFile} inspect={inspect} />
   }
   if (meta === null) {
@@ -415,7 +415,7 @@ function CardLightbox({ t, src, image, name, onClose, focusOpener }: CardLightbo
         aria-label={t('image.close')}
         onClick={onClose}
       >
-        <IconCloseOutline16 size={16} />
+        <IconCloseOutlineRegular size={16} />
       </button>
     </div>,
     document.body,

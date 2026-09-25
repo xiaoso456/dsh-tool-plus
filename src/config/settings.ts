@@ -1,20 +1,63 @@
 /**
- * Plugin-owned settings surface for the ported bash tool: the `bash-plus`
- * namespace, a FLAT settings schema (OMP `bash*`-style scalar keys — the
- * client scope writes scalar fields only), its defaults, the mapping onto the
- * nested {@link RuntimeConfig} the runtime consumes, and the optional-settings
- * consumer wiring. Keeping the whole config-export surface here lets the
- * ported OMP runtime stay pristine — the entry only calls
+ * Plugin-owned settings surface for the ported bash tool: the `tool-plus`
+ * namespace, a FLAT settings schema (OMP `bash*`-style scalar keys — the shared
+ * client configuration form writes scalar fields only), its defaults, the
+ * mapping onto the nested {@link RuntimeConfig} the runtime consumes, and the
+ * optional-settings consumer wiring. Keeping the whole config-export surface
+ * here lets the ported OMP runtime stay pristine — the entry only calls
  * {@link installBashPlusSettings} and re-exports this module's `Config`.
  * @module @xiaoso/dsh-tool-plus/settings
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: pulls the `ctx.settings` Context merge (SettingsProvider surface).
 import type {} from '@deepseek-ai/dsh-settings'
 import type { MinimizerConfig } from '../tools/bash/types.ts'
 import { TOOL_PLUS_FIELDS, toolPlusField, type ToolPlusFieldValue } from './fields.ts'
+
+/**
+ * The Loader commits a settings write into this plugin's live config
+ * references and announces the changed paths on the owning fiber
+ * (`@deepseek-ai/cordis-plugin-loader` declares this event). The declaration
+ * lives in the Loader package, which a business plugin does not depend on, so
+ * the one event this module consumes is spelled here — copied verbatim from the
+ * Loader's own declaration, so a future signature change fails loudly here
+ * instead of silently missing the notification.
+ */
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Volatile config values were committed into the running fiber without a remount; dispatched to the owning fiber only.
+     * @param paths - changed config paths as key arrays; every value is committed before dispatch.
+     * @mode emit
+     */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+  }
+}
+
+/**
+ * Protocol key `@deepseek-ai/cosmokit` stamps on a live config reference.
+ * `Symbol.for` keeps the check valid across copies of the shared library — the
+ * reason cosmokit's own `isVolatile` resolves the same key.
+ */
+const VOLATILE_WRITE = Symbol.for('cosmokit.volatile.write')
+
+/** Every field of this namespace is one of these scalars (or absent). */
+type FieldValue = boolean | number | string | undefined
+
+/**
+ * Whether a parsed value is one of the Loader's live config references.
+ *
+ * `@deepseek-ai/cordis` re-exports the `Volatile` TYPE only, and cosmokit —
+ * which owns the runtime check — is not a dependency of this package, so the
+ * protocol is read here instead of imported.
+ * @param value - a parsed config value.
+ * @returns whether the value is a live reference.
+ */
+function isLiveField(value: unknown): value is Volatile<FieldValue> {
+  return typeof value === 'object' && value !== null && VOLATILE_WRITE in value
+}
 
 /** Truncation strategy for background→foreground completion messages (OMP config parity). */
 export type OutputTruncateStrategy = 'bytes' | 'lines'
@@ -148,8 +191,9 @@ export const DEFAULT_MAX_BACKGROUND_JOBS = 15
 
 /**
  * Plugin settings, one scalar key per option — every field is writable through
- * the client `SettingsScope.set`/`unset`. Defaults live in the {@link Config}
- * schema and in {@link resolveConfig}.
+ * the shared client configuration form (`ctx.configForms.get('tool-plus')`
+ * `.set`/`.unset`). Defaults live in the {@link Config} schema and in
+ * {@link resolveConfig}.
  */
 export interface Config {
   enableRunInBackground?: boolean
@@ -224,86 +268,120 @@ function fieldDefault<T extends ToolPlusFieldValue>(name: string, fallback: T): 
 }
 
 /**
- * Runtime configuration schema for the plugin. The namespace resolves through
- * this flat surface; {@link resolveConfig} maps it onto {@link RuntimeConfig}.
+ * Runtime configuration schema for the plugin, in the dsh 0.1.7 settings shape:
+ * EVERY field is declared `.volatile()`, because a settings namespace is the
+ * plugin's own entry and `SettingsForms.describe()` serves exactly the fields
+ * whose schema declares them live. {@link resolveConfig} maps the flat surface
+ * onto {@link RuntimeConfig}.
+ *
+ * The annotation is deliberately inferred rather than written as `z<Config>`:
+ * the schema's parsed output is {@link LiveConfig} (one stable reference per
+ * field), while {@link Config} stays the plain settings DOCUMENT the browser
+ * edits and the specs pass in.
  */
-export const Config: z<Config> = z.object({
-  enableRunInBackground: z.boolean().default(fieldDefault('enableRunInBackground', true)),
-  autoBackgroundMs: z.number().default(fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS)),
-  defaultTimeoutMs: z.number().default(fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS)),
-  maxTimeoutMs: z.number().default(fieldDefault('maxTimeoutMs', DEFAULT_MAX_TIMEOUT_MS)),
-  outputMaxBytes: z.number().default(fieldDefault('outputMaxBytes', 51_200)),
-  outputSinkTailBytes: z.number().default(fieldDefault('outputSinkTailBytes', 51_200)),
-  outputSinkHeadBytes: z.number().default(fieldDefault('outputSinkHeadBytes', 20_480)),
-  minimizerEnabled: z.boolean().default(fieldDefault('minimizerEnabled', true)),
-  interceptorEnabled: z.boolean().default(fieldDefault('interceptorEnabled', true)),
-  nonInteractiveEnv: z.boolean().default(fieldDefault('nonInteractiveEnv', true)),
-  snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)),
-  rmSafe: z.boolean().default(fieldDefault('rmSafe', true)),
-  useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)),
-  webCards: z.boolean().default(fieldDefault('webCards', true)),
-  maxBackgroundJobs: z.number().default(fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS)),
-  outputTruncateStrategy: z.union(['bytes', 'lines'] as const).default(fieldDefault('outputTruncateStrategy', 'bytes')),
-  outputTruncateTriggerBytes: z.number().default(fieldDefault('outputTruncateTriggerBytes', 10_240)),
-  outputTruncateTriggerLines: z.number().default(fieldDefault('outputTruncateTriggerLines', 100)),
-  outputTruncateByteMode: z.union(['head', 'tail', 'middle'] as const).default(fieldDefault('outputTruncateByteMode', 'middle')),
-  outputTruncateByteHeadBytes: z.number().default(fieldDefault('outputTruncateByteHeadBytes', 4_096)),
-  outputTruncateByteTailBytes: z.number().default(fieldDefault('outputTruncateByteTailBytes', 4_096)),
-  outputTruncateLineMode: z.union(['head', 'tail', 'middle'] as const).default(fieldDefault('outputTruncateLineMode', 'middle')),
-  outputTruncateLineHeadLines: z.number().default(fieldDefault('outputTruncateLineHeadLines', 50)),
-  outputTruncateLineTailLines: z.number().default(fieldDefault('outputTruncateLineTailLines', 100)),
+export const Config = z.object({
+  enableRunInBackground: z.boolean().default(fieldDefault('enableRunInBackground', true)).volatile(),
+  autoBackgroundMs: z.number().default(fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS)).volatile(),
+  defaultTimeoutMs: z.number().default(fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS)).volatile(),
+  maxTimeoutMs: z.number().default(fieldDefault('maxTimeoutMs', DEFAULT_MAX_TIMEOUT_MS)).volatile(),
+  outputMaxBytes: z.number().default(fieldDefault('outputMaxBytes', 51_200)).volatile(),
+  outputSinkTailBytes: z.number().default(fieldDefault('outputSinkTailBytes', 51_200)).volatile(),
+  outputSinkHeadBytes: z.number().default(fieldDefault('outputSinkHeadBytes', 20_480)).volatile(),
+  minimizerEnabled: z.boolean().default(fieldDefault('minimizerEnabled', true)).volatile(),
+  interceptorEnabled: z.boolean().default(fieldDefault('interceptorEnabled', true)).volatile(),
+  nonInteractiveEnv: z.boolean().default(fieldDefault('nonInteractiveEnv', true)).volatile(),
+  snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)).volatile(),
+  rmSafe: z.boolean().default(fieldDefault('rmSafe', true)).volatile(),
+  useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)).volatile(),
+  webCards: z.boolean().default(fieldDefault('webCards', true)).volatile(),
+  maxBackgroundJobs: z.number().default(fieldDefault('maxBackgroundJobs', DEFAULT_MAX_BACKGROUND_JOBS)).volatile(),
+  outputTruncateStrategy: z.union(['bytes', 'lines'] as const).default(fieldDefault('outputTruncateStrategy', 'bytes')).volatile(),
+  outputTruncateTriggerBytes: z.number().default(fieldDefault('outputTruncateTriggerBytes', 10_240)).volatile(),
+  outputTruncateTriggerLines: z.number().default(fieldDefault('outputTruncateTriggerLines', 100)).volatile(),
+  outputTruncateByteMode: z.union(['head', 'tail', 'middle'] as const).default(fieldDefault('outputTruncateByteMode', 'middle')).volatile(),
+  outputTruncateByteHeadBytes: z.number().default(fieldDefault('outputTruncateByteHeadBytes', 4_096)).volatile(),
+  outputTruncateByteTailBytes: z.number().default(fieldDefault('outputTruncateByteTailBytes', 4_096)).volatile(),
+  outputTruncateLineMode: z.union(['head', 'tail', 'middle'] as const).default(fieldDefault('outputTruncateLineMode', 'middle')).volatile(),
+  outputTruncateLineHeadLines: z.number().default(fieldDefault('outputTruncateLineHeadLines', 50)).volatile(),
+  outputTruncateLineTailLines: z.number().default(fieldDefault('outputTruncateLineTailLines', 100)).volatile(),
   // File tools — OMP defaults (settings-schema.ts:3228/3290ff)
-  editBlockAutoGenerated: z.boolean().default(fieldDefault('editBlockAutoGenerated', true)),
-  readSummarizeEnabled: z.boolean().default(fieldDefault('readSummarizeEnabled', true)),
-  readSummarizeProse: z.boolean().default(fieldDefault('readSummarizeProse', false)),
-  readSummarizeMinBodyLines: z.number().default(fieldDefault('readSummarizeMinBodyLines', 4)),
-  readSummarizeMinCommentLines: z.number().default(fieldDefault('readSummarizeMinCommentLines', 6)),
-  readSummarizeMinTotalLines: z.number().default(fieldDefault('readSummarizeMinTotalLines', 100)),
-  readSummarizeUnfoldUntil: z.number().default(fieldDefault('readSummarizeUnfoldUntil', 50)),
-  readSummarizeUnfoldLimit: z.number().default(fieldDefault('readSummarizeUnfoldLimit', 100)),
+  editBlockAutoGenerated: z.boolean().default(fieldDefault('editBlockAutoGenerated', true)).volatile(),
+  readSummarizeEnabled: z.boolean().default(fieldDefault('readSummarizeEnabled', true)).volatile(),
+  readSummarizeProse: z.boolean().default(fieldDefault('readSummarizeProse', false)).volatile(),
+  readSummarizeMinBodyLines: z.number().default(fieldDefault('readSummarizeMinBodyLines', 4)).volatile(),
+  readSummarizeMinCommentLines: z.number().default(fieldDefault('readSummarizeMinCommentLines', 6)).volatile(),
+  readSummarizeMinTotalLines: z.number().default(fieldDefault('readSummarizeMinTotalLines', 100)).volatile(),
+  readSummarizeUnfoldUntil: z.number().default(fieldDefault('readSummarizeUnfoldUntil', 50)).volatile(),
+  readSummarizeUnfoldLimit: z.number().default(fieldDefault('readSummarizeUnfoldLimit', 100)).volatile(),
   // File tools — OMP 其余键（edit.mode/fuzzy/grep.* 等）
-  editMode: z.union(['replace', 'patch', 'hashline', 'apply_patch'] as const).default(fieldDefault('editMode', 'replace')),
-  editFuzzyMatch: z.boolean().default(fieldDefault('editFuzzyMatch', true)),
-  editFuzzyThreshold: z.number().default(fieldDefault('editFuzzyThreshold', 0.95)),
-  editEnforceSeenLines: z.boolean().default(fieldDefault('editEnforceSeenLines', false)),
-  readDefaultLimit: z.number().default(fieldDefault('readDefaultLimit', 300)),
-  readLineNumbers: z.boolean().default(fieldDefault('readLineNumbers', false)),
-  readRenderMarkdown: z.boolean().default(fieldDefault('readRenderMarkdown', false)),
-  readConcurrentSafe: z.boolean().default(fieldDefault('readConcurrentSafe', true)),
-  grepContextBefore: z.number().default(fieldDefault('grepContextBefore', 1)),
-  grepContextAfter: z.number().default(fieldDefault('grepContextAfter', 3)),
+  editMode: z.union(['replace', 'patch', 'hashline', 'apply_patch'] as const).default(fieldDefault('editMode', 'replace')).volatile(),
+  editFuzzyMatch: z.boolean().default(fieldDefault('editFuzzyMatch', true)).volatile(),
+  editFuzzyThreshold: z.number().default(fieldDefault('editFuzzyThreshold', 0.95)).volatile(),
+  editEnforceSeenLines: z.boolean().default(fieldDefault('editEnforceSeenLines', false)).volatile(),
+  readDefaultLimit: z.number().default(fieldDefault('readDefaultLimit', 300)).volatile(),
+  readLineNumbers: z.boolean().default(fieldDefault('readLineNumbers', false)).volatile(),
+  readRenderMarkdown: z.boolean().default(fieldDefault('readRenderMarkdown', false)).volatile(),
+  readConcurrentSafe: z.boolean().default(fieldDefault('readConcurrentSafe', true)).volatile(),
+  grepContextBefore: z.number().default(fieldDefault('grepContextBefore', 1)).volatile(),
+  grepContextAfter: z.number().default(fieldDefault('grepContextAfter', 3)).volatile(),
   // 搜索默认值开关（grep/glob 未显式传参时的默认；默认=上游硬编码 true）
-  grepCaseDefault: z.boolean().default(fieldDefault('grepCaseDefault', true)),
-  grepGitignoreDefault: z.boolean().default(fieldDefault('grepGitignoreDefault', true)),
-  globGitignoreDefault: z.boolean().default(fieldDefault('globGitignoreDefault', true)),
-  globHiddenDefault: z.boolean().default(fieldDefault('globHiddenDefault', true)),
+  grepCaseDefault: z.boolean().default(fieldDefault('grepCaseDefault', true)).volatile(),
+  grepGitignoreDefault: z.boolean().default(fieldDefault('grepGitignoreDefault', true)).volatile(),
+  globGitignoreDefault: z.boolean().default(fieldDefault('globGitignoreDefault', true)).volatile(),
+  globHiddenDefault: z.boolean().default(fieldDefault('globHiddenDefault', true)).volatile(),
   // AST 工具启用开关（OMP settings-schema.ts:3831/3842；astGrep 默认 false）
-  astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)),
-  astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)),
+  astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)).volatile(),
+  astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)).volatile(),
   // File tools — fetch（URL 抓取）与图片（拍板#22：read 图片路径已还原并入）
-  fetchEnabled: z.boolean().default(fieldDefault('fetchEnabled', true)),
-  fetchMaxTimeoutSeconds: z.number().default(fieldDefault('fetchMaxTimeoutSeconds', 0)),
-  fetchReader: z.union(['auto', 'native', 'trafilatura', 'lynx', 'parallel', 'jina', 'browser'] as const).default(fieldDefault('fetchReader', 'auto')),
-  browserReaderEnabled: z.boolean().default(fieldDefault('browserReaderEnabled', true)),
-  imagesAutoResize: z.boolean().default(fieldDefault('imagesAutoResize', true)),
-  imagesBlockImages: z.boolean().default(fieldDefault('imagesBlockImages', false)),
-  imagesExcludeWebp: z.boolean().default(fieldDefault('imagesExcludeWebp', false)),
-  imagesInputMaxBytes: z.number().default(fieldDefault('imagesInputMaxBytes', 20 * 1024 * 1024)),
-  imagesResizeMaxSide: z.number().default(fieldDefault('imagesResizeMaxSide', 1568)),
-  imagesResizeMaxBytes: z.number().default(fieldDefault('imagesResizeMaxBytes', 500 * 1024)),
-  imagesResizeMinSide: z.number().default(fieldDefault('imagesResizeMinSide', 200)),
-  imagesResizeJpegQuality: z.number().default(fieldDefault('imagesResizeJpegQuality', 80)),
+  fetchEnabled: z.boolean().default(fieldDefault('fetchEnabled', true)).volatile(),
+  fetchMaxTimeoutSeconds: z.number().default(fieldDefault('fetchMaxTimeoutSeconds', 0)).volatile(),
+  fetchReader: z.union(['auto', 'native', 'trafilatura', 'lynx', 'parallel', 'jina', 'browser'] as const).default(fieldDefault('fetchReader', 'auto')).volatile(),
+  browserReaderEnabled: z.boolean().default(fieldDefault('browserReaderEnabled', true)).volatile(),
+  imagesAutoResize: z.boolean().default(fieldDefault('imagesAutoResize', true)).volatile(),
+  imagesBlockImages: z.boolean().default(fieldDefault('imagesBlockImages', false)).volatile(),
+  imagesExcludeWebp: z.boolean().default(fieldDefault('imagesExcludeWebp', false)).volatile(),
+  imagesInputMaxBytes: z.number().default(fieldDefault('imagesInputMaxBytes', 20 * 1024 * 1024)).volatile(),
+  imagesResizeMaxSide: z.number().default(fieldDefault('imagesResizeMaxSide', 1568)).volatile(),
+  imagesResizeMaxBytes: z.number().default(fieldDefault('imagesResizeMaxBytes', 500 * 1024)).volatile(),
+  imagesResizeMinSide: z.number().default(fieldDefault('imagesResizeMinSide', 200)).volatile(),
+  imagesResizeJpegQuality: z.number().default(fieldDefault('imagesResizeJpegQuality', 80)).volatile(),
 })
+
+/**
+ * Live entry config: what the Loader hands `apply` for this entry, and what
+ * {@link installBashPlusSettings} re-reads after a settings write commits. One
+ * stable reference per schema field — read it through `.get()`, never as a
+ * plain value.
+ */
+export type LiveConfig = ReturnType<typeof Config>
+
+/**
+ * Unwrap the Loader's live field references into a plain settings document.
+ * @param input - the entry's live config, or an already-plain document.
+ * @returns a plain copy carrying the fields the input has.
+ */
+function plainFields(input: Config | LiveConfig): Config {
+  const out: Config = {}
+  for (const [field, value] of Object.entries(input)) {
+    Object.assign(out, { [field]: isLiveField(value) ? value.get() : value })
+  }
+  return out
+}
 
 /**
  * Resolve the flat settings (composition entry or the settings document) to
  * the nested runtime config the ported OMP runtime consumes. A direct mount
  * (`ctx.plugin`) skips the Loader's schema parse, so the `?? default` pass
  * mirrors the schema; the settings namespace resolution rides the same path.
- * @param config - flat settings, possibly partial and not schema-parsed.
+ * Accepts both shapes a caller can hold: the Loader's live entry config (one
+ * reference per field) and a plain settings document.
+ * @param input - the entry's live config, or a plain (possibly partial) document.
  * @returns the fully-defaulted nested runtime config.
  */
-export function resolveConfig(config: Config): RuntimeConfig {
+export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
+  // Every field of the live config is a stable reference; unwrap once so the
+  // `?? default` pass below reads plain values for both shapes.
+  const config = plainFields(input)
   const resolveMinimizer = (): MinimizerConfig => ({
     enabled: config.minimizerEnabled ?? fieldDefault('minimizerEnabled', true),
     only: [],
@@ -381,35 +459,55 @@ export function resolveConfig(config: Config): RuntimeConfig {
 }
 
 /**
- * Install the optional-settings consumer wiring for this plugin: while a
- * settings provider is mounted, resolve through the `tool-plus` namespace
- * (schema defaults → composition entry `base` → user document) and forward the
- * scope to `onSource`; when none is mounted, keep the composition entry, so
- * the tool keeps working exactly as composed. Mirrors the official bash-local
- * pattern so a committed change applies without a reload.
+ * Install the optional-settings consumer wiring for this plugin, in the dsh
+ * 0.1.7 shape.
+ *
+ * 0.1.7 deleted the namespace-registration API (`SettingsForms` no longer has
+ * `installSection`): a settings namespace is not something a plugin installs
+ * any more — it IS the plugin's own profile entry, and the service serves
+ * exactly the Config fields whose schema declares them live
+ * ({@link Config} declares every field `.volatile()`). The plugin therefore
+ * keeps one authoritative source, its own entry config:
+ *
+ *  - the Loader merges the composition layers and the profile override before
+ *    `apply` runs, so the entry already carries the effective settings;
+ *  - a settings write is committed INTO that entry's live references without a
+ *    remount, and the Loader then announces the changed paths on this fiber
+ *    (`loader/volatile-update`) — which is the signal for refreshing
+ *    registration facts (the `editMode`-sensitive descriptions and the AST
+ *    switches), exactly as the settings docs prescribe.
+ *
+ * The plugin ships its own settings pages in the browser half, so it owns its
+ * page policy: `configure({ auto: false })` tells the settings service not to
+ * auto-generate a schema page for this entry. That call rides an optional
+ * `ctx.inject(['settings'], ...)` child, so the plugin runs unchanged in a
+ * deployment that composes no settings service at all.
+ *
+ * Mirrors the official bash-local pattern (`packages/shell/bash-local`): the
+ * business plugin reads its own Config references and registers only its page
+ * policy; nothing re-registers the namespace.
  * @param ctx - plugin context owning the wiring.
- * @param entry - composition entry config declared by the caller.
+ * @param entry - the entry's config as the Loader resolved it (live references
+ * over the composition layers and the profile override), or a plain document.
  * @param onSource - receives a thunk of the currently authoritative runtime config.
  */
 export function installBashPlusSettings(
   ctx: Context,
-  entry: Config,
+  entry: Config | LiveConfig,
   onSource: (current: () => RuntimeConfig) => void,
 ): void {
-  // ctx.settings.installSection 只在注册时调 setSource；scope 变化时只调 onChange。
-  // 保存 setSource 的 thunk，onChange 时重新求值，否则 cfg 永不随设置更新
-  // （用户改 editMode 等字段后 read/edit 行为不变）。
-  let currentSource: (() => Config) | undefined
+  // The entry's references already carry composition + profile override, so the
+  // same thunk serves the first resolution and every later one.
+  const current = (): RuntimeConfig => resolveConfig(entry)
+  onSource(current)
+  // A committed settings write is folded into those references in place; the
+  // Loader dispatches this to the owning fiber only, so re-derive from the very
+  // same references the write just updated.
+  ctx.on('loader/volatile-update', () => { onSource(current) })
   ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, BASH_PLUS_SETTINGS_NS, Config, entry, {
-      setSource: (current) => {
-        currentSource = current
-        onSource(() => resolveConfig(current()))
-      },
-      onChange: () => {
-        const source = currentSource
-        if (source) onSource(() => resolveConfig(source()))
-      },
-    })
+    settingsCtx.effect(
+      () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+      'tool-plus: own settings pages',
+    )
   })
 }

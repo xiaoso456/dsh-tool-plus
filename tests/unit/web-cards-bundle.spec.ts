@@ -199,7 +199,7 @@ interface FabricatedCtx {
   readonly cards: SlotRegistration[]
   /** Every `ctx.locale.register` namespace. */
   readonly locales: string[]
-  /** Every `ctx.settingsScope.bind` namespace. */
+  /** Every `ctx.configForms.get` namespace. */
   readonly scopes: string[]
   /** The row the shipped composition owns for one key, or undefined. */
   readonly shippedRows: ReadonlyMap<string, unknown>
@@ -209,7 +209,7 @@ interface FabricatedCtx {
  * A browser plugin context shaped like the real composition's: a real
  * `SlotCore` behind `ctx.slots`, the three slots the shipped plugins declare,
  * the six shipped tool rows already registered at the default priority, and
- * inert locale / settings-scope services.
+ * inert locale / configuration-form services.
  *
  * `ctx.slots.inject` mirrors the renderer's contract (the callback runs
  * synchronously once the declaration exists, and its disposer is returned);
@@ -223,8 +223,8 @@ function fabricateCtx(): FabricatedCtx {
     name: 'root',
     children: {
       [TOOLVIEW_SLOT]: { kind: 'keyed', scope: 'session' },
-      'settings.plugin.item': { kind: 'keyed', scope: 'session' },
-      'settings.section': { kind: 'list', scope: 'session' },
+      'settings.plugins.tab': { kind: 'list', scope: 'root' },
+      'settings.section': { kind: 'list', scope: 'root' },
     },
   } as never, inertComponent('shipped-composition') as never)
 
@@ -251,7 +251,7 @@ function fabricateCtx(): FabricatedCtx {
   }
 
   const scope = {
-    getSnapshot: () => ({ value: {} }),
+    getSnapshot: () => ({ status: 'ready', value: {}, base: {}, user: {} }),
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener)
       return () => { listeners.delete(listener) }
@@ -280,11 +280,18 @@ function fabricateCtx(): FabricatedCtx {
       },
       bind: (): ((key: string) => string) => (key: string) => key,
     },
-    settingsScope: {
-      bind: ({ namespace }: { namespace: string }) => {
+    // The 0.1.7 replacement for the removed `ctx.settingsScope` binder: one
+    // shared form per namespace, and the gate that keeps a page unregistered
+    // while the Host serves no such namespace.
+    configForms: {
+      get: (namespace: string) => {
         scopes.push(namespace)
         return scope
       },
+      whileServed: (
+        _namespaces: readonly string[],
+        register: (served: ReadonlySet<string>) => () => void,
+      ): (() => void) => register(new Set([SETTINGS_NS])),
     },
     slots,
   }
@@ -337,7 +344,7 @@ describe('lib/client.js — exports and apply()', () => {
 
     expect(typeof exports.apply).toBe('function')
     expect(Array.isArray(exports.inject)).toBe(true)
-    expect([...(exports.inject as unknown[])]).toEqual(['slots', 'locale', 'settingsScope'])
+    expect([...(exports.inject as unknown[])]).toEqual(['slots', 'locale', 'configForms'])
     expect(exports.default).toBeUndefined()
     expect(exports.BASH_PLUS_CLIENT_NS).toBe(SETTINGS_NS)
   })
@@ -381,12 +388,12 @@ describe('lib/client.js — exports and apply()', () => {
     const fabricated = fabricateCtx()
     ;(exports.apply as (ctx: unknown) => void)(fabricated.ctx)
 
-    // One bound scope per surface: the tool-card switch, the settings card, the
-    // settings section — all bound on the plugin's single namespace.
+    // One shared form per surface: the tool-card switch, the settings card, the
+    // settings section — all resolved on the plugin's single namespace.
     expect(fabricated.scopes).toHaveLength(3)
     expect(fabricated.scopes.every(namespace => namespace === SETTINGS_NS)).toBe(true)
     expect(fabricated.locales).toContain(SETTINGS_NS)
-    expect(fabricated.core.entries('settings.plugin.item').map(entry => entry.options.key)).toEqual([SETTINGS_NS])
+    expect(fabricated.core.entries('settings.plugins.tab').map(entry => entry.options.id)).toEqual([SETTINGS_NS])
     expect(fabricated.core.entriesOfSlot('settings.section').map(entry => entry.options.id)).toEqual([SETTINGS_NS])
     // The winner self-check inside the plugin must not have stepped aside.
     expect(warnings.filter(message => message.includes('could not take over'))).toEqual([])

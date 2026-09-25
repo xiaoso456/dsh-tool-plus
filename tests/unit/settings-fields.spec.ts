@@ -1,10 +1,11 @@
 /**
  * Single-source-of-truth tests for the tool-plus configuration surface: the
  * field table (`src/config/fields.ts`) must cover exactly the schema keys of
- * the settings namespace, its defaults must match what `Config.parse({})` and
- * `resolveConfig({})` produce, tool grouping must be complete and
- * non-overlapping, and the deleted `bash-plus` back-compat namespace must not
- * be re-exported.
+ * the settings namespace, its defaults must match what the schema parse and
+ * `resolveConfig({})` produce, every schema field must parse to the live
+ * reference dsh 0.1.7 serves settings through, tool grouping must be complete
+ * and non-overlapping, and the deleted `bash-plus` back-compat namespace must
+ * not be re-exported.
  * @module tests
  */
 
@@ -29,6 +30,25 @@ function schemaKeys(): string[] {
   const dict = (Config as unknown as { dict?: Record<string, unknown> }).dict
   if (!dict) throw new Error('Config schema exposes no .dict')
   return Object.keys(dict)
+}
+
+/**
+ * A live config reference as the Loader hands it to the plugin: cosmokit's
+ * `Volatile` protocol, whose `Symbol.for` key is shared across copies. Spelled
+ * out here (not imported from the module under test) so the lock is independent
+ * of the implementation it checks.
+ */
+interface LiveField { get: () => unknown }
+
+/** Whether one parsed schema field is a live config reference. */
+function isLiveField(value: unknown): value is LiveField {
+  return typeof value === 'object' && value !== null && Symbol.for('cosmokit.volatile.write') in value
+}
+
+/** Effective value of one parsed schema field (unwrapping the live reference). */
+function parsedValue(parsed: Record<string, unknown>, field: string): unknown {
+  const value = parsed[field]
+  return isLiveField(value) ? value.get() : value
 }
 
 /**
@@ -89,8 +109,25 @@ describe('fields vs settings schema', () => {
   it('schema parse defaults equal the field table defaults', () => {
     const parsed = Config({}) as Record<string, unknown>
     for (const field of CONFIG_FIELDS) {
-      expect(parsed[field.name], field.name).toBe(field.default)
+      expect(parsedValue(parsed, field.name), field.name).toBe(field.default)
     }
+  })
+
+  it('every schema field parses to a live config reference (what dsh 0.1.7 serves)', () => {
+    // dsh 0.1.7 `SettingsForms` serves exactly the fields an entry's schema
+    // declares volatile, and refuses to write an entry that has none
+    // (`Plugin entry "…" has no volatile fields`). A field that parses to a
+    // plain value is therefore a field the settings UI can never show or save.
+    const parsed = Config({}) as Record<string, unknown>
+    for (const field of CONFIG_FIELDS) {
+      expect(isLiveField(parsed[field.name]), `${field.name} must be volatile`).toBe(true)
+    }
+  })
+
+  it('the live parse resolves to the same runtime config as a plain document', () => {
+    // The runtime keeps reading its own entry config: unwrapping the Loader's
+    // references must give exactly the defaults the plain path resolves.
+    expect(resolveConfig(Config({}))).toEqual(resolveConfig({}))
   })
 
   it('every boolean/number/select field kind maps to a schema-compatible default type', () => {

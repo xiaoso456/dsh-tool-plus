@@ -56,11 +56,18 @@ dsh plugin --profile web add link:<本仓库路径>
 | **Tool Plus 标准增强版** | 官方 standard | 官方标准模式全部能力 + 文件/Shell 工具集换成本插件 |
 | **Tool Plus PTC 增强版** | 官方 PTC（Code Mode） | 同上，但经 Code Mode 以 `run_code` 组合多步操作 |
 
-已有旧版预设想跟上当前版本，用设置页「Tool Plus → 预设」：
+两个预设**随插件声明**：安装插件（作为 profile bundle）时，插件的补丁层里就带着两条 `@deepseek-ai/dsh-agent-preset` 声明行，装上即可在预设列表里选。没有安装步骤，插件启动时也不写任何文件。
 
-- **最小更新**：只禁用冲突的工具行，保留其余本地改动
-- **重置为对比模板**：整份覆盖成所选模板，写前自动备份
+设置页「Tool Plus → 预设」是改它们的地方（dsh 0.1.7 起官方的预设页只读、也没有 `agent_preset` 工具，所以这里是唯一的图形入口）：
+
+- **最小更新**：只把这几个仍挂着的官方工具行关掉，其他内容一个字节都不动
+- **对齐模板**：用所选模板整份替换这一行的插件列表
+- **恢复随包**：删掉你写在 profile 配置（`<profile>/cordis.patch.yml`）里的覆盖，回落到随包声明
 - **查看差异**：先看差在哪几行，再决定动不动手
+
+写入通过宿主自己的 `ctx.configEditor` 完成，因此自带 profile 锁、并发保护、原子写与失败回滚。
+
+> 从 0.1.9 或更早升级过来的话：`~/.dsh/.agent-presets/` 目录**已经没有任何代码读它**（0.1.7 起预设改为补丁层声明），可以安全删除；设置页检测到它会给出提示。
 
 ## 配置
 
@@ -71,7 +78,7 @@ dsh plugin --profile web add link:<本仓库路径>
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 或 ≥ 24
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.1.5-rc.1（pre-release，接口可能变动）
+- 适用于 DeepSeek Harness `dsh` v0.1.7-rc.2（pre-release，接口可能变动）
 
 ## 注意事项
 

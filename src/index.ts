@@ -27,15 +27,13 @@ import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
-import { applyPresetAction, ensureDefaultPresets } from './presets/install.ts'
-import { listPresetStatuses } from './presets/status.ts'
-import { comparePresetFile, listTemplates } from './presets/compare.ts'
+import { applyPresetAction, comparePresetAgainstTemplate, listPresetStatuses } from './host/preset-host.ts'
 import { bashCardMeta } from './web/host/bash.ts'
 import { installBunShim } from './tools/shared/bun-shim.ts'
 import { applyConfiguredTruncation } from './config/truncate.ts'
 import { cleanupSnapshots } from './tools/bash/shell-snapshot.ts'
 import type { BashBackgroundOutput, BashForegroundOutput, BashToolArgs } from './tools/bash/types.ts'
-import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { JobHandle, JobHooks, JobId, JobSpec } from '@deepseek-ai/dsh-jobs'
 import { registerRead } from './tools/read/adapter/index.ts'
 import { registerWrite } from './tools/write/adapter/index.ts'
 import { registerEdit } from './tools/edit/adapter/index.ts'
@@ -140,34 +138,23 @@ export function apply(ctx: Context, config: Config = {}): void {
     registerModeSensitive()
   })
 
-  // Tool-plus RPC (`/tool-plus` channel: `browser/detect`, `rmSafe/status`,
-  // `presets/status`, `presets/apply`) served to the settings panel; teardown
-  // on plugin dispose. Best-effort: without a Connection service (CLI-only
-  // deployments) this is a no-op. One channel takes one handler, so every
-  // endpoint family rides this single registration.
+  // Tool-plus RPC (`/tool-plus` route: `browser/detect`, `rmSafe/status`,
+  // `presets/status`, `presets/apply`, `presets/compare`) served to the settings
+  // panel; teardown on plugin dispose. Best-effort: without a web server
+  // (CLI-only deployments) this is a no-op. One route takes one handler, so
+  // every endpoint family rides this single registration.
+  //
+  // The preset endpoints never touch the filesystem themselves: the write path
+  // is the harness's own `ctx.configEditor`, which owns the profile lock, the
+  // atomic write, the rollback and the precedence check.
   const disposeBrowserProbe = installBrowserProbeRpc(ctx, {
     getRmSafe: () => cfg.rmSafe,
     presets: {
-      listStatuses: (roster) => listPresetStatuses(roster),
-      applyAction: (id, action, templateId) => applyPresetAction(id, action, {}, templateId),
-      listTemplates: () => listTemplates(),
-      // 只读比较：读两份组合文件后交给纯函数；任一侧读不到都返回 unreadable
-      // （那是面板要渲染的状态，不是调用失败）。
-      comparePreset: (preset, templateId) => comparePresetFile(preset.path, templateId),
+      listPresets: (presetCtx) => listPresetStatuses(presetCtx),
+      applyAction: (presetCtx, id, action, templateId) => applyPresetAction(presetCtx, id, action, templateId),
+      comparePreset: (presetCtx, presetId, templateId) => comparePresetAgainstTemplate(presetCtx, presetId, templateId),
     },
   })
-
-  // Agent presets on startup: write our two shipped templates into the user
-  // root **only when a preset directory is missing**. An existing preset is
-  // never touched — every update/reset is user-initiated from the settings
-  // panel — and a failure here must never take the plugin down with it.
-  try {
-    const { created, failed } = ensureDefaultPresets()
-    if (created.length > 0) runtimeLogger().info(`preset templates installed: ${created.join(', ')}`)
-    for (const item of failed) runtimeLogger().warn(`preset template ${item.id} not installed: ${item.reason}`)
-  } catch (error) {
-    runtimeLogger().warn(`preset bootstrap skipped: ${error instanceof Error ? error.message : String(error)}`)
-  }
 
   ctx.systemPrompt.section({
     name: 'tool:bash',
@@ -252,53 +239,59 @@ export function apply(ctx: Context, config: Config = {}): void {
       const dshEnv = ctx.shellEnv.collect(exec)
       const env = { ...dshEnv, ...commandEnv }
       const jobs = ctx.get('jobs')
+      // Owned-job access is fenced by the owner's SESSION id (0.1.7): the job's
+      // owner is `exec.agent.id`, and every registry read/kill/wait/list is
+      // checked against that same id.
+      const owner = exec.agent?.id
       const backgroundSlotsAvailable = (): boolean => {
         if (jobs === undefined || cfg.maxBackgroundJobs <= 0) return true
-        const live = jobs.list(exec.agent).filter(j => j.status === 'running' || j.status === 'stopping').length
+        const live = jobs.list(owner).filter(j => j.status === 'running' || j.status === 'stopping').length
         return live < cfg.maxBackgroundJobs
       }
-      const startManagedJob = (): ManagedBashJob => {
+      const startManagedJob = (job?: JobHandle): ManagedBashJob =>
         // Background jobs: unset timeout = no deadline (upstream bash.ts
         // `timeout: options.timeoutMs ?? 0`), not the foreground default.
-        const managed = startBashJob({ sessionId, command, cwd: commandCwd, timeoutMs: args.timeoutMs ?? 0, env, config: cfg })
-        let settled = false
-        let settledSpillPath: string | undefined
-        void managed.completion.then(
-          (value) => { settled = true; settledSpillPath = value.output.spillPath },
-          () => { settled = true; settledSpillPath = undefined },
-        )
-        return {
-          hooks: {
-            ...managed.hooks,
-            readOutput: () => {
-              const text = managed.hooks.readOutput?.() ?? ''
-              // The settled completion text is the bounded preview tail; point
-              // its truncation notice at the job's spill file so the elided
-              // middle stays recoverable.
-              return settled ? applyConfiguredTruncation(text, settledSpillPath, cfg.outputTruncate) : text
-            },
-          },
-          completion: managed.completion,
-        }
-      }
+        startBashJob({
+          sessionId,
+          command,
+          cwd: commandCwd,
+          timeoutMs: args.timeoutMs ?? 0,
+          env,
+          config: cfg,
+          ...job !== undefined ? { job } : {},
+          // The settled completion message follows the plugin's truncation
+          // policy and names the job's spill file, so the elided middle stays
+          // recoverable.
+          formatCompletion: (text, spillPath) => applyConfiguredTruncation(text, spillPath, cfg.outputTruncate),
+        })
+      // One registry job spec: identity, owner, per-read bound, and the
+      // producer starter. `outputLimitBytes` is the host's cap for each
+      // model-facing read, so the plugin's `outputMaxBytes` tail budget bounds
+      // `job_output` exactly like the foreground preview.
+      const jobSpec = (run: (job: JobHandle) => JobHooks): JobSpec => ({
+        kind: 'bash' as const,
+        label: command,
+        ...owner !== undefined ? { owner } : {},
+        ...Number.isSafeInteger(cfg.outputMaxBytes) && cfg.outputMaxBytes > 0 ? { outputLimitBytes: cfg.outputMaxBytes } : {},
+        run,
+      })
       const backgroundRequested = args.run_in_background === true
       if (backgroundRequested) {
         if (!cfg.enableRunInBackground) throw new Error('run_in_background is disabled for this deployment (enableRunInBackground: false)')
         if (jobs === undefined) throw new Error('background jobs unavailable: load @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs')
         if (!backgroundSlotsAvailable()) throw new Error(`background jobs at capacity (maxBackgroundJobs: ${cfg.maxBackgroundJobs})`)
         if (exec.signal.aborted) throw abortError()
-        let managed: ManagedBashJob
-        const id = jobs.start({ kind: 'bash', label: command, ...exec.agent !== undefined ? { owner: exec.agent } : {}, run: () => { managed = startManagedJob(); return managed.hooks } })
+        const id = jobs.start(jobSpec((job) => startManagedJob(job).hooks))
         return { kind: 'background', jobId: id } satisfies BashBackgroundOutput
       }
       if (cfg.autoBackgroundMs > 0 && jobs !== undefined && backgroundSlotsAvailable() && !exec.signal.aborted) {
         // timeoutMs 0 (deadline disabled) waits like the no-deadline case:
         // the full autoBackgroundMs window, not an instant hand-off.
-        const autoBgWaitMs = timeoutMs === 0 ? cfg.autoBackgroundMs : Math.max(0, Math.min(cfg.autoBackgroundMs, timeoutMs - 1_000))
+        const autoBgWaitMs = Math.max(1, timeoutMs === 0 ? cfg.autoBackgroundMs : Math.min(cfg.autoBackgroundMs, timeoutMs - 1_000))
         let managed: ManagedBashJob
         let id: JobId
         try {
-          id = jobs.start({ kind: 'bash', label: command, ...exec.agent !== undefined ? { owner: exec.agent } : {}, run: () => { managed = startManagedJob(); return managed.hooks } })
+          id = jobs.start(jobSpec((job) => { managed = startManagedJob(job); return managed.hooks }))
         } catch {
           const startedAt = performance.now()
           const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
@@ -306,17 +299,31 @@ export function apply(ctx: Context, config: Config = {}): void {
           if (result.workingDir !== undefined) state.cwd = result.workingDir
           return buildForeground(result, performance.now() - startedAt, timeoutMs)
         }
-        const completion = managed!.completion
-        const window = await Promise.race([
-          completion.then(value => ({ kind: 'completed' as const, value })),
-          new Promise<{ kind: 'window' }>(resolve => { const timer = setTimeout(() => resolve({ kind: 'window' }), autoBgWaitMs); timer.unref?.() }),
-          new Promise<{ kind: 'aborted' }>((_, reject) => { if (exec.signal.aborted) { reject(abortError()); return } exec.signal.addEventListener('abort', () => reject(abortError()), { once: true }) }),
-        ])
-        if (window.kind === 'window') return { kind: 'background', jobId: id } satisfies BashBackgroundOutput
-        if (window.kind === 'aborted') { jobs.kill(id, exec.agent, 'tool call aborted'); throw abortError() }
-        jobs.read(id, exec.agent)
-        if (window.value.workingDir !== undefined) state.cwd = window.value.workingDir
-        return window.value
+        // The registry wait IS the window (0.1.7): a live wait released by the
+        // settlement marks it `awaited`, so a run that finishes inside the
+        // window — whose id the model never saw — produces no completion
+        // notice; a timed-out wait leaves the job running and hands the id over
+        // to `job_output`/`job_kill` instead.
+        let settled = false
+        try {
+          const view = await jobs.wait(id, autoBgWaitMs, owner, exec.signal)
+          settled = view.status !== 'running' && view.status !== 'stopping'
+        } catch {
+          // A wait on this call's own live job rejects only for the call's
+          // abort: the model's call is over, so the command goes with it. The
+          // second, live wait keeps the kill's settlement from notifying a
+          // model that never saw the id.
+          jobs.kill(id, owner, 'tool call aborted')
+          await jobs.wait(id, Math.max(1_000, timeoutMs), owner)
+          throw abortError()
+        }
+        if (!settled) return { kind: 'background', jobId: id } satisfies BashBackgroundOutput
+        // Settled while this call waited: the model never saw the id, so the
+        // record leaves the registry with this result and no notice follows it.
+        const value = await managed!.completion
+        jobs.remove(id, owner)
+        if (value.workingDir !== undefined) state.cwd = value.workingDir
+        return value
       }
       const startedAt = performance.now()
       const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })

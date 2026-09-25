@@ -34,7 +34,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the `ctx.locale` Context merge (dictionary registration).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls the `ctx.settingsScope` Context merge (the scope binder).
+// Type-only: pulls the `ctx.configForms` Context merge (the shared configuration
+// form that replaced the removed `ctx.settingsScope` binder in dsh 0.1.7).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CARD_TAKEOVER_PRIORITY, CARD_TOOL_KEYS } from '../contract.ts'
 import { CARD_LOCALE_NS, cardLocales } from './labels.ts'
@@ -110,13 +111,13 @@ export function registerToolCards(ctx: ClientContext): void {
     disposeEntries = undefined
   }
 
-  const scope = ctx.settingsScope.bind<CardSettings>({ namespace: SETTINGS_NS })
+  const form = ctx.configForms.get<CardSettings>(SETTINGS_NS)
   ctx.effect(() => {
     const sync = (): void => {
-      if (cardsEnabled(scope.getSnapshot().value)) install()
+      if (cardsEnabled(form.getSnapshot().value)) install()
       else uninstall()
     }
-    const stop = scope.subscribe(sync)
+    const stop = form.subscribe(sync)
     sync()
     return stop
   }, 'tool-plus: web card switch')

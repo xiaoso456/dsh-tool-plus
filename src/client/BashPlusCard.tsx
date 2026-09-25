@@ -8,7 +8,7 @@
  * (`locale: 'tool-plus'`), which re-renders on a locale switch.
  *
  * The card edits the FLAT settings surface (OMP `bash*`-style scalar keys) —
- * the client scope only writes scalar fields — grouped as timeouts,
+ * the client form only writes scalar fields — grouped as timeouts,
  * backgrounding, output, completion truncation (subdivided into byte and line
  * settings), and behavior. Field definitions, defaults, and copy keys come
  * from the single-source field table (`src/config/fields.ts`), shared with
@@ -18,8 +18,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { CardShell } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, toolPlusFieldsOf, toolPlusField, type ToolPlusField } from '../config/fields.ts'
 import {
   injectSettingsRowsCss,
@@ -60,14 +60,14 @@ export interface BashPlusSettings {
   outputTruncateLineTailLines?: number
 }
 
-/** Business face the slot registration injects: the bound scope. */
+/** Business face the slot registration injects: the `tool-plus` entry's shared configuration form. */
 export interface BashPlusCardFace {
-  scope: SettingsScope<BashPlusSettings>
+  form: ConfigForm<BashPlusSettings>
 }
 
-/** Props the renderer binds: runtime seat, the `t` locale seat, and the scope face. */
+/** Props the renderer binds: the Plugins page runtime seat, the `t` locale seat, and the form face. */
 export type BashPlusCardProps =
-  PropsRuntime<'settings.plugin.item'>
+  PropsRuntime<'settings.plugins.tab'>
   & PropsLocale<'tool-plus'>
   & BashPlusCardFace
 
@@ -143,7 +143,7 @@ const SCHEMA_DEFAULTS: Record<string, number | boolean | string> = Object.fromEn
 )
 
 /** Value a cleared field will revert to: the composition base when present, else the schema default. */
-function revertValue(snap: SettingsScopeSnapshot<BashPlusSettings>, field: string): number | boolean | string | undefined {
+function revertValue(snap: ConfigFormSnapshot<BashPlusSettings>, field: string): number | boolean | string | undefined {
   if (hasOwn(snap.base, field)) return (snap.base as Record<string, unknown>)[field] as number | boolean | string
   return SCHEMA_DEFAULTS[field]
 }
@@ -203,14 +203,14 @@ function injectCardCss(): void {
 }
 
 /** Text of a staged (or resolved) value for the number controls. */
-function numberText(staged: string | undefined, hasStaged: boolean, resolved: number | boolean | string | undefined, snap: SettingsScopeSnapshot<BashPlusSettings>, field: string): string {
+function numberText(staged: string | undefined, hasStaged: boolean, resolved: number | boolean | string | undefined, snap: ConfigFormSnapshot<BashPlusSettings>, field: string): string {
   if (hasStaged) return (staged ?? '').trim() === '' ? String(revertValue(snap, field) ?? '') : (staged ?? '')
   return resolved === undefined || typeof resolved === 'boolean' ? '' : String(resolved)
 }
 
-/** Stage card edits over the bound scope; only a Save writes the document. */
-function useBashPlusForm(scope: SettingsScope<BashPlusSettings>) {
-  const [snap, setSnap] = useState<SettingsScopeSnapshot<BashPlusSettings>>(() => scope.getSnapshot())
+/** Stage card edits over the shared configuration form; only a Save writes the document. */
+function useBashPlusForm(scope: ConfigForm<BashPlusSettings>) {
+  const [snap, setSnap] = useState<ConfigFormSnapshot<BashPlusSettings>>(() => scope.getSnapshot())
   const [numbers, setNumbers] = useState<Record<string, string>>({})
   const [selects, setSelects] = useState<Record<string, string | null>>({})
   const [toggles, setToggles] = useState<Record<string, boolean | null>>({})
@@ -376,7 +376,7 @@ function useBashPlusForm(scope: SettingsScope<BashPlusSettings>) {
     setToggles({})
   }, [])
 
-  const shell: CardShell = { available: snap.status === 'ready', writable, dirty: isDirty, invalid, saving, failed }
+  const shell: SettingsFormShell = { available: snap.status === 'ready', writable, dirty: isDirty, invalid, saving, failed }
   return {
     shell,
     timing,
@@ -393,7 +393,7 @@ function useBashPlusForm(scope: SettingsScope<BashPlusSettings>) {
   }
 }
 
-function renderNumber(def: NumberFieldDef, numbers: Record<string, string>, value: BashPlusSettings, snap: SettingsScopeSnapshot<BashPlusSettings>): NumberControl {
+function renderNumber(def: NumberFieldDef, numbers: Record<string, string>, value: BashPlusSettings, snap: ConfigFormSnapshot<BashPlusSettings>): NumberControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(numbers, def.field)
   const staged = numbers[def.field]
   const resolved = value[def.field as keyof BashPlusSettings]
@@ -422,7 +422,7 @@ function renderNumber(def: NumberFieldDef, numbers: Record<string, string>, valu
   return { field: def.field, labelKey: def.labelKey, hintKey: def.hintKey, text, overridden, invalid }
 }
 
-function renderSelect(def: SelectFieldDef, selects: Record<string, string | null>, value: BashPlusSettings, snap: SettingsScopeSnapshot<BashPlusSettings>): SelectControl {
+function renderSelect(def: SelectFieldDef, selects: Record<string, string | null>, value: BashPlusSettings, snap: ConfigFormSnapshot<BashPlusSettings>): SelectControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(selects, def.field)
   const staged = selects[def.field as string]
   const resolved = value[def.field as keyof BashPlusSettings]
@@ -449,8 +449,8 @@ function renderSelect(def: SelectFieldDef, selects: Record<string, string | null
 }
 
 export function BashPlusCard(props: BashPlusCardProps): ReactNode {
-  const { t, scope } = props
-  const form = useBashPlusForm(scope)
+  const { t, form: configForm } = props
+  const form = useBashPlusForm(configForm)
   const [open, setOpen] = useState(false)
   const [openSelect, setOpenSelect] = useState<string | null>(null)
 
@@ -458,8 +458,12 @@ export function BashPlusCard(props: BashPlusCardProps): ReactNode {
 
   if (!form.shell.available) return null
   const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
+  // 0.1.7 renders a Plugins tab inside the section's own tab panel (a plain
+  // div), so the card is no longer a list item inside the shipped `<ul>` —
+  // it is a block of its own. The class keeps every visual rule; the outer
+  // spacing was always the card's own `margin`.
   return (
-    <li data-plugin-settings="tool-plus" className={'tp-card' + (open ? ' tp-open' : '')}>
+    <div data-plugin-settings="tool-plus" className={'tp-card' + (open ? ' tp-open' : '')}>
       <button
         type="button"
         className="tp-header"
@@ -645,6 +649,6 @@ export function BashPlusCard(props: BashPlusCardProps): ReactNode {
           </div>
         </div>
       </div>
-    </li>
+    </div>
   )
 }
