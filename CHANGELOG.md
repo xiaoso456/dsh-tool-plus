@@ -1,104 +1,43 @@
 # Changelog
 
-本文件记录 `@xiaoso/dsh-tool-plus` 的版本更新。（`@xiaoso/dsh-tool-plus-presets` 已于 2026-09-20 退役：预设改为随主包交付，该包不再发新版。0.1.10 起随主包交付的形式从"首次启动写目录"改为"bundle patch 里的声明行"。）
+本文件记录 `@xiaoso/dsh-tool-plus` 的版本更新。（`@xiaoso/dsh-tool-plus-presets` 已于 2026-09-20 退役，不再发新版。）
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-> **发版注意**：本版 peer 精确 pin `0.1.7-rc.2`。0.1.7 起宿主在启动时按插件
-> `peerDependencies` 里的 `@deepseek-ai/dsh*` 与运行版本比对（`includePrerelease`），
-> 不满足即**拒绝加载**该插件（可用 `dsh plugin allow-version` 精确豁免）。而 npm
-> `latest` 仍停在 `0.1.5-rc.3`，因此本版**只能发到 `next` / `beta` 标签** —— 发
-> `latest` 会拒绝所有默认安装的用户。**本版（0.1.10-beta.1）发在 `beta` 标签**，
-> `latest` 仍是 0.1.9 —— 等 npm 上 `@deepseek-ai/dsh` 的 `latest` 也追到 0.1.7 系
-> 之后，才谈得上把插件发回 `latest`。
-
 ## [0.1.10-beta.1] - 2026-09-25
 
-### Changed
-
-- **预设改为随包声明，启动零写入**：agent preset 不再以
-  `$DSH_HOME/.agent-presets/<id>/{preset.yml,agent.cordis.yml}` 目录交付，而是作为
-  `dsh.bundle.patch` 数组里的两个补丁文件（`presets/tool-plus-standard.patch.yml`、
-  `presets/tool-plus-ptc.patch.yml`）各插入一条
-  `@deepseek-ai/dsh-agent-preset` 声明行。装上插件即声明两个预设，没有"安装"动作、
-  没有文件复制、启动时不再触碰磁盘。
-- **预设内容重新基线到 0.1.7**：两个预设由 `scripts/build-preset-patches.mjs` 从
-  `presets/baseline/{standard,ptc}.patch.yml`（官方随附预设的快照）加一段显式 delta
-  生成 —— 只删 `tool-bash`/`tool-fs`/`tool-fs-search`（宿主面已接管）、强制
-  `tool-pwsh` 关闭、插一行文档用 `tool-plus` 行，其余逐项等于官方。顺带跟随官方
-  0.1.7 的默认收窄：`tool-ralph` 关闭、`tool-web.config.fetch` 恢复为 `true`、
-  补上 `tool-plugin-manager` 行。
-- **预设面板改为三个动作**：`最小更新`（只禁用仍挂着的官方工具行）、
-  `对齐模板`（用所选模板整份替换这一行的插件列表）、`恢复随包`（删掉 profile 配置
-  里的覆盖，回落到随包声明）。写入一律委托宿主自己的 `ctx.configEditor.edit()`，
-  因此自带 profile 锁、HMR 串行、配置校验、原子写、失败回滚与更高优先级覆盖检查；
-  插件不再自己实现原子写与备份。
-- **面板状态口径随之更新**：`已安装/未安装` 换成 `随包默认/已自定义`；来源只剩
-  "本插件声明"与"别处声明"（0.1.7 的 registry 不再提供 `trust`/`path`）；别人的
-  预设只给"最小更新"，不替它重写内容。
-- **dsh 依赖对齐 `0.1.7-rc.2`**（npm `next`；`latest` 仍为 `0.1.5-rc.3`）：42 处
-  `@deepseek-ai/*` pin 从 `0.1.5-rc.1` 升到 `0.1.7-rc.2`；`@deepseek-ai/cordis` 改
-  `~4.0.4`、`@deepseek-ai/schemastery` 改 `~3.18.4`（0.1.7 全部宿主包的 peer 范围，
-  插件即时配置依赖的 `.volatile()` 自 3.18.4 起）。
-- **后台作业契约迁移到 0.1.7**：宿主删除 `JobHooks.readOutput`、`JobHooks` 收窄为
-  `{ cancel, done }`，作业输出改由 `JobSpec.output`（拉取源）与
-  `JobHandle.append/updateProgress`（推送）承载，`JobSpec.owner` 由 `Agent` 改为
-  `SessionId`。后台 bash 作业按新契约重新接线，行为不变（作业 id、完成通知、spill
-  指向、`timeoutMs: 0` 无期限语义、后台并发上限全部保留）。
-- **设置面迁移到 0.1.7**：宿主删除 `ctx.settings.installSection`、客户端删除
-  `SettingsScope` / `SettingsScopeSnapshot` / `ctx.settingsScope` /
-  `settings.plugin.item` slot / `CardShell`；配置页改注册到 `settings.plugins.tab`，
-  插件设置面板按新契约重接，交互形态不变（下拉选择器、状态点、差异弹窗、portal 说明浮层）。
-- **Web 工具卡片适配 0.1.7 原语**：图标按宿主新命名重映射；工具调用错误态改由
-  「先按 `kind` 判定已定型、再看 `isError`」表达（`isErrorResult`），判据不变；补齐
-  宿主新增的共享代码块工具条文案 `codeBlock.*` 与终端 `noExitLabel`；
-  `DiffBlockLabels.files` 随宿主删除而移除（多文件摘要仍用 `files.*` 自行渲染）。
-- 清单声明补 `dsh.manifestVersion: 1`。
-- 设计 token 全量复核：0.1.5 → 0.1.7 **未删除任何** `--dsw-alias-*`（163 → 178，
-  仅新增），插件用到的 token 全部有效，token 快照无需变更。
-- `cordis.patch.yml` 的四个目标行 id 在 0.1.7 base bundle 中仍然存在，补丁无需改动。
+> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
 
 ### Added
 
-- `presets/baseline/`（官方随附 `standard` / `ptc` 预设补丁的逐字节快照）与
-  `scripts/build-preset-patches.mjs`（基线 + delta → 生成两个补丁文件），以及
-  `tests/unit/preset-patches.spec.ts`：钉住"生成物与生成器一致"、"delta 恰好只有
-  声明的那几项"、"行名集合只来自基线"三件事 —— 官方下次改包名时，漂移会随基线继承，
-  而不是留在我们这份里。
-- npm 脚本 `presets:build` / `presets:check`。
-- 设置页在检测到旧版 `$DSH_HOME/.agent-presets` 目录时给出一句"可以安全删除"的提示。
-- **改动前的内容会落一份备份**：任何会写 profile 配置的动作用前先把
-  `<profile>/cordis.patch.yml` 复制成 `cordis.patch.yml.bak-<插件版本>`（同名不覆盖，
-  所以永远留着最早那份"改动前"）。这是从旧目录机制原样搬回来的能力——宿主的
-  `configEditor` 只给原子性与失败回滚，不给"改动前长什么样"这个留痕。
+- 预设改动前落一份备份：`<profile>/cordis.patch.yml.bak-<插件版本>`，同名不覆盖
+- 设置页检测到旧版 `$DSH_HOME/.agent-presets` 目录时提示可安全删除
+- `presets/baseline/`（官方随附 preset 补丁的逐字节快照）、`scripts/build-preset-patches.mjs`（基线加 delta 生成两个补丁文件）、`tests/unit/preset-patches.spec.ts`
+- npm 脚本 `presets:build` / `presets:check`
 
-### Removed
+### Changed
 
-- 目录机制的整套实现：`src/presets/paths.ts`、`src/presets/install.ts`、
-  `src/presets/rewrite.ts`（YAML 文本改写引擎）、`presets/<id>/` 模板目录、
-  `presets/install-presets.mjs`、`presets/package.json`，以及 `presets:install`
-  两个 npm 脚本。相应的 `.bak-<版本>` 备份、临时文件原子写、目录存在性幂等判定
-  一并删除：现在由宿主的配置编辑器负责这些。
+- 预设改为随包声明：`dsh.bundle.patch` 增加 `presets/tool-plus-{standard,ptc}.patch.yml`，各插入一条 `@deepseek-ai/dsh-agent-preset` 行；不再写 `$DSH_HOME/.agent-presets`，启动不再写盘
+- 预设内容重新基线到 dsh 0.1.7，`order` 改为 20 / 21；跟随官方的 `workflow-ptc`、`tool-plugin-manager`、`tool-ralph` 关闭、`tool-web.config.fetch: true`
+- 预设面板改为三个动作：最小更新、对齐模板、恢复随包；写入委托 `ctx.configEditor`（profile 锁、配置校验、原子写、失败回滚）
+- 面板状态改为「随包默认 / 已自定义」；来源只区分本插件声明与别处声明，别人的预设只提供最小更新
+- dsh 依赖对齐 `0.1.7-rc.2`：42 处 `@deepseek-ai/*` pin 由 `0.1.5-rc.1` 升级，`@deepseek-ai/cordis` 改 `~4.0.4`、`@deepseek-ai/schemastery` 改 `~3.18.4`
+- 后台作业契约迁移到 0.1.7：`JobHooks` 收窄为 `{ cancel, done }`，输出改由 `JobSpec.output` 与 `JobHandle.append/updateProgress` 承载，`JobSpec.owner` 由 `Agent` 改为 `SessionId`
+- 设置面迁移到 0.1.7：移除 `ctx.settings.installSection`、`SettingsScope`、`ctx.settingsScope`、`settings.plugin.item` slot、`CardShell`，改注册到 `settings.plugins.tab`
+- Web 工具卡片适配 0.1.7 原语：图标改名、错误态判据、补 `codeBlock.*` 与 `noExitLabel` 文案、移除 `DiffBlockLabels.files`
+- 清单声明补 `dsh.manifestVersion: 1`
 
 ### Fixed
 
-- **预设激活失败**：两个预设的 `delegation` group 里一直挂着
-  `@deepseek-ai/dsh-workflow-worker-thread`，而 dsh 0.1.7 已把它改名为
-  `@deepseek-ai/dsh-workflow-ptc`（npm 上该包最新只到 `0.1.5-rc.3`，没有 0.1.7
-  版本）。后果是整份预设挂载失败、选不动。现在行名随官方基线走，并有测试看住。
-- **旧机制在 0.1.7 上是僵尸路径**：0.1.7 起"声明行只能来自补丁层"，registry
-  「既不扫目录也不接受 preset 路径」，`list()` 也不再返回 `path`/`trust`。
-  原实现据此写的目录、roster 映射与文件比较全部失效（`path: ''` 会让比较恒报
-  "读不到"）。
-- **测试会写开发机真实 `~/.dsh`**：`apply()` 调 `ensureDefaultPresets()` 时不传注入
-  路径，而 boot 测试会 apply 插件且没有任何测试设置 `DSH_HOME`，于是跑一次测试就往
-  真实 home 写预设目录。该调用已随目录机制一起删除。
-- **类型解析串味**：0.1.7 的 `dsh-client-ui-tool/client` 新引入
-  `@deepseek-ai/dsh-client-ui-conversation`、`dsh-api-remotes` 等宿主包；未安装时
-  TypeScript 会回退到工作区之外的 `node_modules`，导致同一
-  `Branded<'AttachmentId'>` 的两个声明点被判为不兼容。补 5 个 devDependency 把解析
-  固定在插件自己的工作区内。
+- 预设无法挂载：`delegation` 组内挂着的 `@deepseek-ai/dsh-workflow-worker-thread` 在 dsh 0.1.7 已改名为 `dsh-workflow-ptc`
+- 预设的目录机制在 0.1.7 上失效（registry 不再扫目录，`list()` 不再返回 `path`/`trust`）
+- 跑测试会写入开发机真实的 `~/.dsh`
+- 类型解析回退到工作区外的 `node_modules`，导致 `Branded<'AttachmentId'>` 的两个声明点被判为不兼容
+
+### Removed
+
+- 目录机制实现：`src/presets/paths.ts`、`src/presets/install.ts`、`src/presets/rewrite.ts`、`presets/<id>/`、`presets/install-presets.mjs`、`presets/package.json`，以及 `presets:install` 脚本
 
 [对比 0.1.9](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.9...tool-plus-v0.1.10-beta.1)
 
