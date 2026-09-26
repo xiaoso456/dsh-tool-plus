@@ -239,7 +239,6 @@ describe('read 截断提示（T02）', () => {
 
     const out = await executeReadTool(execForCwd(dir), {} as never, { path: file }, null as never)
 
-    // 截断本身发生（尾部省略号）
     expect(out.text).toContain('…')
     // 提示在 notice 字段，render 拼接后模型可见
     expect(out.notice).toMatch(/Some lines truncated to \d+ chars/)

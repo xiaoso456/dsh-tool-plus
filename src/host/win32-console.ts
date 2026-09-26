@@ -1,34 +1,18 @@
 /**
- * Windows：让宿主进程自己持有一个「不可见控制台」。
+ * Windows：给宿主进程补一个**不可见**控制台，让它的 console 子进程去继承。
  *
- * 为什么需要（2026-09-25 实测）：桌面端宿主是 GUI 子系统镜像
- * （`DeepSeek Harness.exe` + `ELECTRON_RUN_AS_NODE=1`），Windows 永远不会给它
- * 分配控制台；于是它的每个 console 子进程（pi-shell 的 `where git` 探测、快照
- * `bash.exe`、任何插件 spawn 的 CLI）都要**新建**一个控制台，而默认终端应用是
- * Windows Terminal → 每条命令闪一个窗口。
+ * 宿主是 GUI 子系统镜像（`DeepSeek Harness.exe` + `ELECTRON_RUN_AS_NODE=1`），
+ * Windows 从不给它分配控制台；父进程没有控制台时子进程会**新建**一个，而默认
+ * 终端是 Windows Terminal → 每条命令闪一个窗口。宿主自己 `AllocConsole()` +
+ * `SW_HIDE` 之后，子进程就只是继承它，不再新建。
  *
- * 控制台是「父进程有 → 子进程默认继承；父进程没有 → 子进程新建」：宿主自己先
- * `AllocConsole()` 再立刻 `SW_HIDE`，之后所有 console 子进程都继承它，不再新建
- * 窗口。实测（无控制台宿主里 spawn 一个 `where.exe`）：不装 → 新开一个可见 WT
- * 窗口（窗口里的进程正是那个 where.exe）；装了 → 子进程报「继承了我的控制台」、
- * 零新窗口。代价：分配那一刻会出现一个 WT 窗口、可见约 1.8s —— 默认终端是 WT 时
- * `ShowWindow(GetConsoleWindow())` 只藏得住 conhost 侧那个窗口对象，藏不住
- * wt.exe 宿主窗口。这一次性的窗口只能在源头消除（上游给 `where` 探测加
- * `CREATE_NO_WINDOW`，或让宿主从 console 子系统父进程继承一个 CREATE_NO_WINDOW
- * 的控制台）。
- *
- * 三条硬约束（都有测试钉住）：
- *  - 只在 win32 生效；宿主**已经有**控制台（CLI 在终端里跑）时什么都不做，否则会
- *    凭空多出一个控制台；
- *  - `AllocConsole` 会重指 STD_INPUT/OUTPUT/ERROR，而宿主的 stdio 是启动方给的
- *    pipe → 必须先存后还，否则可能污染宿主输出、弄断 shell 的管道；
- *  - 任何失败（没有 koffi、句柄取不到、`AllocConsole` 失败）都只降级，不抛。
+ * 三条硬约束（都有测试钉住）：只在 win32 生效、宿主已有控制台时零副作用；
+ * `AllocConsole` 会重指标准句柄，必须先存后还（宿主 stdio 是启动方给的 pipe）；
+ * 任何失败只降级不抛。FFI 只从本包自己的依赖取，拿不到就降级。
  * @module @xiaoso/dsh-tool-plus/host/win32-console
  */
 
 import { createRequire } from 'node:module'
-import * as path from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 /** Win32 调用集合；真实实现走 koffi，测试注入 fake。 */
 export interface Win32ConsoleBindings {
@@ -101,42 +85,27 @@ function asCall<T>(value: unknown): T {
   return value as T
 }
 
-/** 从「宿主入口所在目录」解析依赖：打包运行时的 koffi 装在宿主 node_modules 里。 */
-function hostRequire(): NodeRequire | undefined {
-  const entry = process.argv[1]
-  if (entry === undefined || entry.length === 0) return undefined
+/**
+ * 真实加载：只从**本包自己的依赖**解析 koffi（`optionalDependencies`）。
+ *
+ * 刻意不去宿主运行时的 node_modules 里找：宿主的内部布局不是契约，跨包按路径解析
+ * 是耦合。拿不到（没装、平台没有预编译包）就返回 undefined，功能降级。
+ */
+function loadKoffiBindings(): Win32ConsoleBindings | undefined {
   try {
-    // 传一个该目录下的虚构文件名，让解析从这里往上走：
-    // 桌面端 → app.asar/dsh/node_modules/koffi，CLI → @deepseek-ai/dsh/node_modules/koffi。
-    return createRequire(pathToFileURL(path.join(path.dirname(entry), 'tool-plus-host-console.js')))
+    const koffi = createRequire(import.meta.url)('koffi') as KoffiLike
+    const kernel32 = koffi.load('kernel32.dll')
+    const user32 = koffi.load('user32.dll')
+    return {
+      getConsoleWindow: asCall<Win32ConsoleBindings['getConsoleWindow']>(kernel32.func('void *GetConsoleWindow()')),
+      allocConsole: asCall<Win32ConsoleBindings['allocConsole']>(kernel32.func('bool AllocConsole()')),
+      showWindow: asCall<Win32ConsoleBindings['showWindow']>(user32.func('bool ShowWindow(void *hWnd, int nCmdShow)')),
+      getStdHandle: asCall<Win32ConsoleBindings['getStdHandle']>(kernel32.func('void *GetStdHandle(int nStdHandle)')),
+      setStdHandle: asCall<Win32ConsoleBindings['setStdHandle']>(kernel32.func('bool SetStdHandle(int nStdHandle, void *h)')),
+    }
   } catch {
     return undefined
   }
-}
-
-/** 真实加载：先本包依赖的 koffi，再宿主运行时自带的 koffi。 */
-function loadKoffiBindings(): Win32ConsoleBindings | undefined {
-  const requires: NodeRequire[] = [createRequire(import.meta.url)]
-  const host = hostRequire()
-  if (host !== undefined) requires.push(host)
-
-  for (const requireKoffi of requires) {
-    try {
-      const koffi = requireKoffi('koffi') as KoffiLike
-      const kernel32 = koffi.load('kernel32.dll')
-      const user32 = koffi.load('user32.dll')
-      return {
-        getConsoleWindow: asCall<Win32ConsoleBindings['getConsoleWindow']>(kernel32.func('void *GetConsoleWindow()')),
-        allocConsole: asCall<Win32ConsoleBindings['allocConsole']>(kernel32.func('bool AllocConsole()')),
-        showWindow: asCall<Win32ConsoleBindings['showWindow']>(user32.func('bool ShowWindow(void *hWnd, int nCmdShow)')),
-        getStdHandle: asCall<Win32ConsoleBindings['getStdHandle']>(kernel32.func('void *GetStdHandle(int nStdHandle)')),
-        setStdHandle: asCall<Win32ConsoleBindings['setStdHandle']>(kernel32.func('bool SetStdHandle(int nStdHandle, void *h)')),
-      }
-    } catch {
-      // 换下一个候选；都拿不到就是 ffi-unavailable（插件照常工作）。
-    }
-  }
-  return undefined
 }
 
 /**

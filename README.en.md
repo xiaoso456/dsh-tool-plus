@@ -30,18 +30,27 @@ Settings panel (Bash tab):
 
 ## Installation
 
-- **Agent presets**: two companion templates — Standard enhanced and PTC (Code Mode)
-
 ### Install from npm (recommended)
 
+#### Web
+
 ```sh
-dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-tool-plus
+dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
 ```
 
-`--allow-build` lets this package's install script run; it requires pnpm ≥ 10.4, and on pnpm 11+ omitting it fails the install with `ERR_PNPM_IGNORED_BUILDS`. If your pnpm is too old for the flag, allow the script first and re-run:
+`--allow-build` lets install scripts run (once for this package, once for `koffi`); it requires pnpm ≥ 10.4, and on pnpm 11+ omitting it fails the install with `ERR_PNPM_IGNORED_BUILDS`. If your pnpm is too old for the flag, allow the scripts first and re-run:
 
-- Append to `~/.dsh/profiles/web/pnpm-workspace.yaml`: `allowBuilds:` and `  '@xiaoso/dsh-tool-plus': true`
+- Append to `~/.dsh/profiles/web/pnpm-workspace.yaml`: `allowBuilds:`, `  '@xiaoso/dsh-tool-plus': true` and `  koffi: true`
 - Or run `cd ~/.dsh/profiles/web && pnpm approve-builds --all` (pnpm ≥ 10.32)
+
+#### Desktop
+
+The profile is owned by the desktop app, so `dsh plugin --profile desktop` is refused; install inside the profile directory instead:
+
+```sh
+cd ~/.dsh/profiles/desktop
+pnpm add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+```
 
 ### Local development
 

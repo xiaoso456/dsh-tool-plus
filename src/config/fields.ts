@@ -100,10 +100,10 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
  * single source; settings.ts reads from here.
  */
 export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
-  // ---- 全局 tab · 对话卡片分组：本插件的浏览器行组件接管全部八个工具的卡片（关掉回到官方行）----
+  // 全局 tab · 对话卡片分组：本插件的浏览器行组件接管全部八个工具的卡片（关掉回到官方行）
   { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'cards', tool: 'web' },
 
-  // ---- Bash: behavior -------------------------------------------------
+  // Bash: behavior
   { name: 'enableRunInBackground', kind: 'boolean', default: true, labelKey: 'enableRunInBackground', hintKey: 'enableRunInBackgroundHint', group: 'behavior', tool: 'bash' },
   { name: 'minimizerEnabled', kind: 'boolean', default: true, labelKey: 'minimizerEnabled', hintKey: 'minimizerEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'interceptorEnabled', kind: 'boolean', default: true, labelKey: 'interceptorEnabled', hintKey: 'interceptorEnabledHint', group: 'behavior', tool: 'bash' },
@@ -111,16 +111,16 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'rmSafe', kind: 'boolean', default: true, labelKey: 'rmSafe', hintKey: 'rmSafeHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },
-  // ---- Bash: timing & backgrounding -----------------------------------
+  // Bash: timing & backgrounding
   { name: 'autoBackgroundMs', kind: 'number', default: 60_000, labelKey: 'autoBackgroundMs', hintKey: 'autoBackgroundMsHint', group: 'timing', tool: 'bash' },
   { name: 'defaultTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'defaultTimeoutMs', hintKey: 'defaultTimeoutMsHint', group: 'timing', tool: 'bash' },
   { name: 'maxTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'maxTimeoutMs', hintKey: 'maxTimeoutMsHint', group: 'timing', tool: 'bash' },
   { name: 'maxBackgroundJobs', kind: 'number', default: 15, labelKey: 'maxBackgroundJobs', hintKey: 'maxBackgroundJobsHint', group: 'timing', tool: 'bash' },
-  // ---- Bash (output) --------------------------------------------------
+  // Bash (output)
   { name: 'outputMaxBytes', kind: 'number', default: 51_200, labelKey: 'outputMaxBytes', hintKey: 'outputMaxBytesHint', group: 'output', tool: 'bash' },
   { name: 'outputSinkTailBytes', kind: 'number', default: 51_200, labelKey: 'outputSinkTailBytes', hintKey: 'outputSinkTailBytesHint', group: 'output', tool: 'bash' },
   { name: 'outputSinkHeadBytes', kind: 'number', default: 20_480, labelKey: 'outputSinkHeadBytes', hintKey: 'outputSinkHeadBytesHint', group: 'output', tool: 'bash' },
-  // ---- Bash: completion truncation -----------------------------------
+  // Bash: completion truncation
   { name: 'outputTruncateStrategy', kind: 'select', default: 'bytes', labelKey: 'outputTruncateStrategy', hintKey: 'outputTruncateStrategyHint', group: 'truncation', tool: 'bash', options: [
     { value: 'bytes', labelKey: 'optBytes' },
     { value: 'lines', labelKey: 'optLines' },
@@ -141,12 +141,12 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   ] },
   { name: 'outputTruncateLineHeadLines', kind: 'number', default: 50, labelKey: 'outputTruncateLineHeadLines', hintKey: 'outputTruncateLineHeadLinesHint', group: 'truncation', tool: 'bash', visibility: { requiresSelect: { field: 'outputTruncateStrategy', value: 'lines' }, hideWhenSelect: { field: 'outputTruncateLineMode', value: 'tail' } } },
   { name: 'outputTruncateLineTailLines', kind: 'number', default: 100, labelKey: 'outputTruncateLineTailLines', hintKey: 'outputTruncateLineTailLinesHint', group: 'truncation', tool: 'bash', visibility: { requiresSelect: { field: 'outputTruncateStrategy', value: 'lines' }, hideWhenSelect: { field: 'outputTruncateLineMode', value: 'head' } } },
-  // ---- Read: 读取基础（OMP readLineNumbers/read.defaultLimit/read.renderMarkdown） --
+  // Read: 读取基础（OMP readLineNumbers/read.defaultLimit/read.renderMarkdown）
   { name: 'readDefaultLimit', kind: 'number', default: 300, labelKey: 'readDefaultLimit', hintKey: 'readDefaultLimitHint', group: 'reading', tool: 'read' },
   { name: 'readLineNumbers', kind: 'boolean', default: false, labelKey: 'readLineNumbers', hintKey: 'readLineNumbersHint', group: 'reading', tool: 'read' },
   { name: 'readRenderMarkdown', kind: 'boolean', default: false, labelKey: 'readRenderMarkdown', hintKey: 'readRenderMarkdownHint', group: 'reading', tool: 'read' },
   { name: 'readConcurrentSafe', kind: 'boolean', default: true, labelKey: 'readConcurrentSafe', hintKey: 'readConcurrentSafeHint', group: 'reading', tool: 'read' },
-  // ---- Read: 代码摘要（readSummarizeEnabled 主开关 + 从属字段） -------
+  // Read: 代码摘要（readSummarizeEnabled 主开关 + 从属字段）
   { name: 'readSummarizeEnabled', kind: 'boolean', default: true, labelKey: 'readSummarizeEnabled', hintKey: 'readSummarizeEnabledHint', group: 'summary', tool: 'read' },
   { name: 'readSummarizeProse', kind: 'boolean', default: false, labelKey: 'readSummarizeProse', hintKey: 'readSummarizeProseHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
   { name: 'readSummarizeMinBodyLines', kind: 'number', default: 4, labelKey: 'readSummarizeMinBodyLines', hintKey: 'readSummarizeMinBodyLinesHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
@@ -154,7 +154,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'readSummarizeMinTotalLines', kind: 'number', default: 100, labelKey: 'readSummarizeMinTotalLines', hintKey: 'readSummarizeMinTotalLinesHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
   { name: 'readSummarizeUnfoldUntil', kind: 'number', default: 50, labelKey: 'readSummarizeUnfoldUntil', hintKey: 'readSummarizeUnfoldUntilHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
   { name: 'readSummarizeUnfoldLimit', kind: 'number', default: 100, labelKey: 'readSummarizeUnfoldLimit', hintKey: 'readSummarizeUnfoldLimitHint', group: 'summary', tool: 'read', visibility: { requiresEnabled: 'readSummarizeEnabled' } },
-  // ---- Read: 抓取（fetchEnabled 主开关 + 超时联动） -------------------
+  // Read: 抓取（fetchEnabled 主开关 + 超时联动）
   { name: 'fetchEnabled', kind: 'boolean', default: true, labelKey: 'fetchEnabled', hintKey: 'fetchEnabledHint', group: 'fetch', tool: 'read' },
   { name: 'fetchMaxTimeoutSeconds', kind: 'number', default: 0, labelKey: 'fetchMaxTimeoutSeconds', hintKey: 'fetchMaxTimeoutSecondsHint', group: 'fetch', tool: 'read', visibility: { requiresEnabled: 'fetchEnabled' } },
   { name: 'fetchReader', kind: 'select', default: 'auto', labelKey: 'fetchReader', hintKey: 'fetchReaderHint', group: 'fetch', tool: 'read', options: [
@@ -168,7 +168,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   ] },
   { name: 'browserReaderEnabled', kind: 'boolean', default: true, labelKey: 'browserReaderEnabled', hintKey: 'browserReaderEnabledHint', group: 'fetch', tool: 'read' },
   { name: 'browserProbe', kind: 'action', default: '', labelKey: 'browserProbe', hintKey: 'browserProbeHint', group: 'fetch', tool: 'read', actionKey: 'browser/detect' },
-  // ---- Read: 图片（拍板#22 融合 + 2026-08-28 配置扩充：新键默认全=上游常量，不配零行为变化） --
+  // Read: 图片（拍板#22 融合 + 2026-08-28 配置扩充：新键默认全=上游常量，不配零行为变化）
   { name: 'imagesBlockImages', kind: 'boolean', default: false, labelKey: 'imagesBlockImages', hintKey: 'imagesBlockImagesHint', group: 'images', tool: 'read' },
   { name: 'imagesAutoResize', kind: 'boolean', default: true, labelKey: 'imagesAutoResize', hintKey: 'imagesAutoResizeHint', group: 'images', tool: 'read' },
   { name: 'imagesResizeMaxSide', kind: 'number', default: 1568, labelKey: 'imagesResizeMaxSide', hintKey: 'imagesResizeMaxSideHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
@@ -177,7 +177,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'imagesResizeJpegQuality', kind: 'number', default: 80, labelKey: 'imagesResizeJpegQuality', hintKey: 'imagesResizeJpegQualityHint', group: 'images', tool: 'read', visibility: { requiresEnabled: 'imagesAutoResize' } },
   { name: 'imagesExcludeWebp', kind: 'boolean', default: false, labelKey: 'imagesExcludeWebp', hintKey: 'imagesExcludeWebpHint', group: 'images', tool: 'read' },
   { name: 'imagesInputMaxBytes', kind: 'number', default: 20 * 1024 * 1024, labelKey: 'imagesInputMaxBytes', hintKey: 'imagesInputMaxBytesHint', group: 'images', tool: 'read' },
-  // ---- Write / Edit: 编辑模式（editMode 主控 + fuzzy/enforceSeen 关联）--
+  // Write / Edit: 编辑模式（editMode 主控 + fuzzy/enforceSeen 关联）
   { name: 'editMode', kind: 'select', default: 'replace', labelKey: 'editMode', hintKey: 'editModeHint', group: 'editMode', tool: 'writeEdit', options: [
     { value: 'replace', labelKey: 'optReplace' },
     { value: 'patch', labelKey: 'optPatch' },
@@ -187,19 +187,19 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'editFuzzyMatch', kind: 'boolean', default: true, labelKey: 'editFuzzyMatch', hintKey: 'editFuzzyMatchHint', group: 'editMode', tool: 'writeEdit' },
   { name: 'editFuzzyThreshold', kind: 'number', default: 0.95, labelKey: 'editFuzzyThreshold', hintKey: 'editFuzzyThresholdHint', group: 'editMode', tool: 'writeEdit', visibility: { requiresEnabled: 'editFuzzyMatch' } },
   { name: 'editEnforceSeenLines', kind: 'boolean', default: false, labelKey: 'editEnforceSeenLines', hintKey: 'editEnforceSeenLinesHint', group: 'editMode', tool: 'writeEdit', visibility: { requiresSelect: { field: 'editMode', value: 'hashline' } } },
-  // ---- Write / Edit: 文件守卫（全模式通用） ----------------------------
+  // Write / Edit: 文件守卫（全模式通用）
   { name: 'editBlockAutoGenerated', kind: 'boolean', default: true, labelKey: 'editBlockAutoGenerated', hintKey: 'editBlockAutoGeneratedHint', group: 'guard', tool: 'writeEdit' },
-  // ---- Grep（grep.* 键） ----------------------------------------------
+  // Grep（grep.* 键）
   { name: 'grepContextBefore', kind: 'number', default: 1, labelKey: 'grepContextBefore', hintKey: 'grepContextBeforeHint', group: 'grep', tool: 'grep' },
   { name: 'grepContextAfter', kind: 'number', default: 3, labelKey: 'grepContextAfter', hintKey: 'grepContextAfterHint', group: 'grep', tool: 'grep' },
-  // ---- 搜索默认值开关（grep/glob 未显式传参时的默认；默认=现状硬编码 true，
-  //      不配零行为变化；显式传参始终优先） --------------------------------
+  // 搜索默认值开关（grep/glob 未显式传参时的默认；默认=现状硬编码 true，
+  //      不配零行为变化；显式传参始终优先）
   { name: 'grepCaseDefault', kind: 'boolean', default: true, labelKey: 'grepCaseDefault', hintKey: 'grepCaseDefaultHint', group: 'searchDefaults', tool: 'grep' },
   { name: 'grepGitignoreDefault', kind: 'boolean', default: true, labelKey: 'grepGitignoreDefault', hintKey: 'grepGitignoreDefaultHint', group: 'searchDefaults', tool: 'grep' },
-  // ---- Glob（glob tab 随搜索默认值开关恢复；此前因无配置项被拍板#19 移除）--
+  // Glob（glob tab 随搜索默认值开关恢复；此前因无配置项被拍板#19 移除）
   { name: 'globGitignoreDefault', kind: 'boolean', default: true, labelKey: 'globGitignoreDefault', hintKey: 'globGitignoreDefaultHint', group: 'searchDefaults', tool: 'glob' },
   { name: 'globHiddenDefault', kind: 'boolean', default: true, labelKey: 'globHiddenDefault', hintKey: 'globHiddenDefaultHint', group: 'searchDefaults', tool: 'glob' },
-  // ---- AST 工具启用开关（OMP settings-schema "Available Tools" 组） ----
+  // AST 工具启用开关（OMP settings-schema "Available Tools" 组）
   // astGrep.enabled 默认 false（OMP 原版：ast_grep 默认禁用，需手动开启）；
   // astEdit.enabled 默认 true。glob/grep 不设开关，默认开启（用户拍板 2026-08-25）。
   { name: 'astGrepEnabled', kind: 'boolean', default: false, labelKey: 'astGrepEnabled', hintKey: 'astGrepEnabledHint', group: 'ast', tool: 'astGrep' },

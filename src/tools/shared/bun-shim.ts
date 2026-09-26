@@ -29,9 +29,7 @@ import JSON5 from 'json5'
 // only imports node:fs / node:path, so this adds no cycle.
 import { findOnPath } from '../bash/which.ts'
 
-// ---------------------------------------------------------------------------
 // Buffer / Uint8Array Bun extensions (runtime patch; types in bun-compat.d.ts)
-// ---------------------------------------------------------------------------
 function patchBase64(): void {
   const bufProto = Buffer.prototype as unknown as Record<string, unknown>
   const u8Proto = Uint8Array.prototype as unknown as Record<string, unknown>
@@ -57,9 +55,7 @@ function patchBase64(): void {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Bun.file / BunFile
-// ---------------------------------------------------------------------------
 export class BunFileShim {
   readonly path: string
 
@@ -206,9 +202,7 @@ export class BunFileSliceShim extends BunFileShim {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Bun.FileSink
-// ---------------------------------------------------------------------------
 export class FileSinkShim {
   #fd: number | null = null
   #filePath: string
@@ -244,9 +238,7 @@ export class FileSinkShim {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Bun.write / Bun.env / Bun.sleep / Bun.randomUUIDv7 / Bun.JSON / Bun.JSON5
-// ---------------------------------------------------------------------------
 async function bunWrite(dest: string, data: string | Uint8Array | Blob | ArrayBuffer): Promise<void> {
   await fsp.mkdir(path.dirname(dest), { recursive: true })
   if (typeof data === 'string') {
@@ -268,9 +260,7 @@ function bunRandomUUIDv7(): string {
   return randomUUID()
 }
 
-// ---------------------------------------------------------------------------
 // xxHash64 (standard algorithm; Bun's Bun.hash.xxHash64)
-// ---------------------------------------------------------------------------
 const PRIME64_1 = 0x9e3779b185ebca87n
 const PRIME64_2 = 0xc2b2ae3d27d4eb4fn
 const PRIME64_3 = 0x165667b19e3779f9n
@@ -408,9 +398,7 @@ function seedToBasis(seed: number | bigint | undefined): number {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 0x811c9dc5
 }
 
-// ---------------------------------------------------------------------------
 // Bun.stringWidth — east-asian width approximation (Bun's unicode width)
-// ---------------------------------------------------------------------------
 function isWideChar(c: number): boolean {
   return (
     c >= 0x1100 &&
@@ -438,9 +426,7 @@ function bunStringWidth(s: string): number {
   return width
 }
 
-// ---------------------------------------------------------------------------
 // Bun.Glob
-// ---------------------------------------------------------------------------
 export class GlobShim {
   #re: RegExp
 
@@ -496,9 +482,7 @@ async function* walkFiles(dir: string, onlyFiles: boolean): AsyncGenerator<strin
   }
 }
 
-// ---------------------------------------------------------------------------
 // Bun.CryptoHasher
-// ---------------------------------------------------------------------------
 class CryptoHasherShim {
   #hash: ReturnType<typeof createHash>
 
@@ -517,9 +501,7 @@ class CryptoHasherShim {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Bun.color — minimal ANSI (TUI-only; DSH has no TUI)
-// ---------------------------------------------------------------------------
 function bunColor(color: string, format?: string): string {
   const hex = /^#?([0-9a-f]{6})$/i.exec(color)
   if (!hex) return ''
@@ -537,7 +519,6 @@ function bunColor(color: string, format?: string): string {
   return `\x1b[38;2;${r};${g};${b}m`
 }
 
-// ---------------------------------------------------------------------------
 // Bun.Image — sharp-backed chainable pipeline (拍板#22)
 //
 // Implements the subset of the Bun.Image API that OMP's image-resize.ts (and
@@ -558,7 +539,6 @@ function bunColor(color: string, format?: string): string {
 //      `@deepseek-ai/dsh/node_modules/sharp` sibling of the running app.
 // Failures throw a guidance error; callers' try/catch degrade honestly
 // (resizeImage returns the original bytes with decodeFailed metadata).
-// ---------------------------------------------------------------------------
 
 type SharpLike = {
   (input: Uint8Array, opts?: Record<string, unknown>): SharpLikeInstance
@@ -722,9 +702,7 @@ export class BunImageShim {
 }
 
 
-// ---------------------------------------------------------------------------
 // Bun.Archive.write — tar / tar.gz writing (zip is framed in memory by zip.ts)
-// ---------------------------------------------------------------------------
 type ArchiveMemberContent = string | Uint8Array | Blob
 
 async function memberToBytes(content: ArchiveMemberContent): Promise<Uint8Array> {
@@ -776,9 +754,7 @@ async function archiveWrite(
   await fsp.writeFile(destPath, buf)
 }
 
-// ---------------------------------------------------------------------------
 // Bun.stripANSI — strip ANSI escape sequences (S-2, ECMA-48 state machine S-8)
-// ---------------------------------------------------------------------------
 // pi-utils sanitizeText calls `Bun.stripANSI` on ESC-bearing text
 // (@oh-my-pi/pi-utils src/sanitize-text.ts:35). The verbatim
 // src/tools/omp/session/streaming-output.ts OutputSink instantiated on the
@@ -843,9 +819,7 @@ export function bunStripANSI(text: string): string {
   return out
 }
 
-// ---------------------------------------------------------------------------
 // Bun.which — delegate to the single PATH/PATHEXT resolver
-// ---------------------------------------------------------------------------
 // pi-utils' `$which` resolves through `Bun.which` off darwin
 // (@oh-my-pi/pi-utils src/which.ts:201,238), so on Node the shim must provide
 // it or every `$which` call throws. Delegating to `findOnPath` keeps exactly one
@@ -864,9 +838,7 @@ function bunWhich(command: string, options?: { PATH?: string; cwd?: string }): s
   return findOnPath(target, env) ?? null
 }
 
-// ---------------------------------------------------------------------------
 // Global installation
-// ---------------------------------------------------------------------------
 export interface BunShimSurface {
   file(path: string): BunFileShim
   write(path: string, data: string | Uint8Array | Blob | ArrayBuffer): Promise<void>

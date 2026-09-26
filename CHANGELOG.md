@@ -5,44 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [0.1.10-beta.3] - 2026-09-25
+## [0.1.10] - 2026-09-26
 
-> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
-
-### Added
-
-- Windows：挂载时给宿主进程分配一个不可见控制台，宿主的所有 console 子进程改为继承它 —— 上游 pi-shell 的 `where git` 探测不再**每条命令**新建一个可见窗口；代价是宿主启动时会出现一次终端窗口（默认终端为 Windows Terminal 时约 2 秒，`ShowWindow(GetConsoleWindow())` 藏不住 wt 宿主窗口）
-
-### Changed
-
-- 新增可选依赖 `koffi@^3.3.1`（原生 FFI，无安装脚本）：宿主运行时自带 koffi 时本包不重复安装，两者都取不到时该功能自动降级
-
-[对比 0.1.10-beta.2](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.10-beta.2...tool-plus-v0.1.10-beta.3)
-
-## [0.1.10-beta.2] - 2026-09-25
-
-> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
-
-### Changed
-
-- 设置面只保留左侧独立的 Tool Plus 页：不再向官方「内置插件」页注册 tab，同一份配置不再有两个入口
-
-### Fixed
-
-- 在桌面端这类没有控制台的宿主里，生成 shell 快照、探测「安全 rm」这两条一次性 shell 不再闪出控制台窗口（两处 `spawn` 补 `windowsHide`）
-
-### Removed
-
-- 设置卡片组件 `src/client/BashPlusCard.tsx` 与 `settings.plugins.tab` 注册（随去 tab 一并移除）
-
-[对比 0.1.10-beta.1](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.10-beta.1...tool-plus-v0.1.10-beta.2)
-
-## [0.1.10-beta.1] - 2026-09-25
-
-> 预发布，发布在 `beta` 标签（`latest` 仍是 0.1.9）。
+> 正式版。原先分列的 `0.1.10-beta.1` ~ `0.1.10-beta.3` 三节已并入本节。
 
 ### Added
 
+- Windows：挂载时给宿主进程分配一个不可见控制台，宿主的所有 console 子进程改为继承它 —— 上游 pi-shell 的 `where git` 探测不再**每条命令**新建一个可见窗口（桌面端宿主是 GUI 子系统镜像，分配出的控制台没有可见窗口，启动过程不闪窗）
 - 预设改动前落一份备份：`<profile>/cordis.patch.yml.bak-<插件版本>`，同名不覆盖
 - 设置页检测到旧版 `$DSH_HOME/.agent-presets` 目录时提示可安全删除
 - `presets/baseline/`（官方随附 preset 补丁的逐字节快照）、`scripts/build-preset-patches.mjs`（基线加 delta 生成两个补丁文件）、`tests/unit/preset-patches.spec.ts`
@@ -54,24 +23,31 @@
 - 预设内容重新基线到 dsh 0.1.7，`order` 改为 20 / 21；跟随官方的 `workflow-ptc`、`tool-plugin-manager`、`tool-ralph` 关闭、`tool-web.config.fetch: true`
 - 预设面板改为三个动作：最小更新、对齐模板、恢复随包；写入委托 `ctx.configEditor`（profile 锁、配置校验、原子写、失败回滚）
 - 面板状态改为「随包默认 / 已自定义」；来源只区分本插件声明与别处声明，别人的预设只提供最小更新
+- 设置面只保留左侧独立的 Tool Plus 页：不再向官方「内置插件」页注册 tab，同一份配置不再有两个入口
 - dsh 依赖对齐 `0.1.7-rc.2`：42 处 `@deepseek-ai/*` pin 由 `0.1.5-rc.1` 升级，`@deepseek-ai/cordis` 改 `~4.0.4`、`@deepseek-ai/schemastery` 改 `~3.18.4`
 - 后台作业契约迁移到 0.1.7：`JobHooks` 收窄为 `{ cancel, done }`，输出改由 `JobSpec.output` 与 `JobHandle.append/updateProgress` 承载，`JobSpec.owner` 由 `Agent` 改为 `SessionId`
 - 设置面迁移到 0.1.7：移除 `ctx.settings.installSection`、`SettingsScope`、`ctx.settingsScope`、`settings.plugin.item` slot、`CardShell`，改注册到 `settings.plugins.tab`
 - Web 工具卡片适配 0.1.7 原语：图标改名、错误态判据、补 `codeBlock.*` 与 `noExitLabel` 文案、移除 `DiffBlockLabels.files`
 - 清单声明补 `dsh.manifestVersion: 1`
+- 新增可选依赖 `koffi@^3.3.1`（原生 FFI，含 `cnoke` 预编译安装脚本，pnpm 需放行构建；放行方式见 README「从 npm 安装」）
+- 隐藏控制台用的 FFI 只从本包自己的 `optionalDependencies` 解析（运行时 `createRequire`），不再去宿主运行时的 `node_modules` 里按路径查找
+- 安装说明拆成「Web 端 / 桌面端」两节，两条安装命令都补 `--allow-build=koffi`
+- 注释清理：删掉 41 行纯装饰（横幅横线）与复述代码的注释，涉及 11 个文件；代码字节未变
 
 ### Fixed
 
 - 预设无法挂载：`delegation` 组内挂着的 `@deepseek-ai/dsh-workflow-worker-thread` 在 dsh 0.1.7 已改名为 `dsh-workflow-ptc`
 - 预设的目录机制在 0.1.7 上失效（registry 不再扫目录，`list()` 不再返回 `path`/`trust`）
+- 在桌面端这类没有控制台的宿主里，生成 shell 快照、探测「安全 rm」这两条一次性 shell 不再闪出控制台窗口（两处 `spawn` 补 `windowsHide`）
 - 跑测试会写入开发机真实的 `~/.dsh`
 - 类型解析回退到工作区外的 `node_modules`，导致 `Branded<'AttachmentId'>` 的两个声明点被判为不兼容
 
 ### Removed
 
 - 目录机制实现：`src/presets/paths.ts`、`src/presets/install.ts`、`src/presets/rewrite.ts`、`presets/<id>/`、`presets/install-presets.mjs`、`presets/package.json`，以及 `presets:install` 脚本
+- 设置卡片组件 `src/client/BashPlusCard.tsx` 与 `settings.plugins.tab` 注册（随去 tab 一并移除）
 
-[对比 0.1.9](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.9...tool-plus-v0.1.10-beta.1)
+[对比 0.1.9](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.9...tool-plus-v0.1.10)
 
 ## [0.1.9] - 2026-09-20
 

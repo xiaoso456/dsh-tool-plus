@@ -34,7 +34,7 @@ for (const ws of fs.readdirSync(ROOT)) {
   for (const s of fs.readdirSync(wsd)) {
     const file = path.join(wsd, s, 'session.jsonl.zstd')
     let st; try { st = fs.statSync(file) } catch { continue }
-    if (st.size < 80 * 1024) continue // skip trivial sessions
+    if (st.size < 80 * 1024) continue
     const era = st.mtimeMs < DEPLOY_AT ? 'before' : 'after'
     const lines = decompress(file).split('\n').filter(l => l.startsWith('{'))
     const callName = {}
@@ -61,7 +61,7 @@ for (const ws of fs.readdirSync(ROOT)) {
         for (const b of d.content || []) if (b.type === 'text') userChars += (b.text || '').length
       }
     }
-    if (calls < 10) continue // skip near-empty sessions without meaningful tool use
+    if (calls < 10) continue
     const target = agg[era]
     sessionMeta.push({ era, calls, resultTotal, asstText, userChars, mins: Math.round((lastT - firstT) / 60000), ws: ws.slice(3, 40) })
     for (const [name, t] of Object.entries(perTool)) {

@@ -227,7 +227,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
   const fuzzyThreshold = resolveFuzzyThreshold(session.settings.get('edit.fuzzyThreshold'))
 
   try {
-    // ---- hashline / apply_patch mode ------------------------------------
+    // hashline / apply_patch mode
     // (OMP-faithful: these modes carry their paths inside `input` — the
     // `[PATH#TAG]` section headers / `*** <File|Move>:` envelope markers —
     // so no top-level file_path is required.)
@@ -295,7 +295,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
       throw new Error('file_path must be a non-empty string')
     }
 
-    // ---- patch mode (unified diff) ---------------------------------------
+    // patch mode (unified diff)
     if (typeof args.patch === 'string' && args.patch.trim().length > 0) {
       // A-8 后继：执行前与 replace/apply_patch 同款走 resolveEditPath 路径纠错
       // （refs tools/edit/index.ts:556-560 三模式统一；本模式恒 op:update，
@@ -316,7 +316,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
       return withEditCard(result, toText(result))
     }
 
-    // ---- replace mode (single or multi-segment) -------------------------
+    // replace mode (single or multi-segment)
     const editsInput: { oldText: string; newText: string }[] =
       Array.isArray(args.edits) && args.edits.length > 0
         ? args.edits

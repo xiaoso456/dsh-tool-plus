@@ -30,18 +30,27 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 
 ## 安装
 
-- **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板
-
 ### 从 npm 安装（推荐）
 
+#### Web 端
+
 ```sh
-dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus @xiaoso/dsh-tool-plus
+dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
 ```
 
-`--allow-build` 放行本包的安装脚本，需要 pnpm ≥ 10.4；pnpm 11 起不加会直接报 `ERR_PNPM_IGNORED_BUILDS` 装不上。用不了该参数（pnpm 版本过低）时，先任选一种放行方式，再重跑安装命令：
+`--allow-build` 放行安装脚本（本包和 `koffi` 各一次），需要 pnpm ≥ 10.4；pnpm 11 起不加会直接报 `ERR_PNPM_IGNORED_BUILDS` 装不上。用不了该参数（pnpm 版本过低）时，先任选一种放行方式，再重跑安装命令：
 
-- 往 `~/.dsh/profiles/web/pnpm-workspace.yaml` 追加两行：`allowBuilds:` 与 `  '@xiaoso/dsh-tool-plus': true`
+- 往 `~/.dsh/profiles/web/pnpm-workspace.yaml` 追加三行：`allowBuilds:`、`  '@xiaoso/dsh-tool-plus': true`、`  koffi: true`
 - 或执行 `cd ~/.dsh/profiles/web && pnpm approve-builds --all`（需 pnpm ≥ 10.32）
+
+#### 桌面端
+
+profile 由桌面应用独占，`dsh plugin --profile desktop` 会被拒；要装新版就进它自己的目录：
+
+```sh
+cd ~/.dsh/profiles/desktop
+pnpm add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+```
 
 ### 本地开发
 

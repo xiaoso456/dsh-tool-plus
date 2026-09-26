@@ -81,7 +81,7 @@ describe('fields vs settings schema', () => {
 
   it('tool tab fields are disjoint and complete', () => {
     const all = TOOL_PLUS_TABS.flatMap(tab => [...tab.fields])
-    expect(new Set(all).size).toBe(all.length) // no duplicates
+    expect(new Set(all).size).toBe(all.length)
     expect([...all].sort()).toEqual([...TOOL_PLUS_FIELD_NAMES].sort())
   })
 

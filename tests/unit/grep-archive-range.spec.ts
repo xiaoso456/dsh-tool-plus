@@ -49,7 +49,7 @@ describe('grep 归档行区间（T13-9）', () => {
       .map((b: any) => b.text)
       .join('\n')
 
-    // 匹配行以 `*` 标记；区间过滤后应只剩 22/23/24 三行
+    // 匹配行以 `*` 标记
     const matchedLines = text
       .split('\n')
       .filter(l => l.startsWith('*'))

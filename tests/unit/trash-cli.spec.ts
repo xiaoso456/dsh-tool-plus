@@ -587,7 +587,6 @@ describe('coreutils tests/rm 移植（原 trash-cli-coreutils.spec.ts）', () =>
       await runTrashCli(['-rf', b], deps)
       expect(code()).toBe(1)
       expect(err.join('\n')).toContain('cannot remove')
-      // 目录未被 fake 移动，仍在原处
       expect(fs.existsSync(path.join(b, 'a', 'p'))).toBe(true)
     })
   })

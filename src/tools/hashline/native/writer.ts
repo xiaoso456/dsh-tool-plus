@@ -145,7 +145,6 @@ export function createHashlineWriter(options: HashlineWriterOptions): HashlineWr
 			return { written: finalContent };
 		}
 
-		// `create` | `update`.
 		enforcePlanModeWrite(session, request.path, { op: request.op === "create" ? "create" : "update" });
 		// Missing files are editable (the guard returns "no marker" for ENOENT),
 		// so this is a no-op for a create and the real guard for an update.

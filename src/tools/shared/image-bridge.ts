@@ -23,9 +23,7 @@
  * hands them, keeping the omp/ copies upstream-shaped.
  */
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 
@@ -67,9 +65,7 @@ export interface ImageBridge {
   routeImageSupport: () => Promise<'supported' | 'unsupported' | 'unknown'>
 }
 
-// ---------------------------------------------------------------------------
 // Extension → media type (official dsh-tool-fs IMAGE_EXTENSIONS)
-// ---------------------------------------------------------------------------
 
 export const IMAGE_EXTENSIONS: Readonly<Record<string, ImageMediaType>> = {
   '.png': 'image/png',
@@ -92,9 +88,7 @@ export function imageByteCap(bridge: ImageBridge, fallback = 20 * 1024 * 1024): 
   return caps.length > 0 ? Math.min(...caps) : fallback
 }
 
-// ---------------------------------------------------------------------------
 // saveImage + official error mapping
-// ---------------------------------------------------------------------------
 
 /** Commit bytes to the attachment store, mapping AttachmentErrors to the
  * official read_image recoverable messages. `displayPath` is only used for
@@ -163,9 +157,7 @@ function isDimsRecord(v: unknown): v is { width: number; height: number } {
   )
 }
 
-// ---------------------------------------------------------------------------
 // Official envelope (formatImageReadOutput, verbatim wording)
-// ---------------------------------------------------------------------------
 
 export function formatImageEnvelope(displayPath: string, image: SavedImageRef): string {
   let scaled = ''
@@ -193,10 +185,8 @@ export function imageContentBlocks(displayPath: string, image: SavedImageRef): A
   ]
 }
 
-// ---------------------------------------------------------------------------
 // Soft refusal: metadata-only text when the route/model cannot see images
 // (用户拍板 2026-08-28: 返回错误文本说明不支持，而不是程序抛错)
-// ---------------------------------------------------------------------------
 
 export function formatImageUnsupportedNote(
   displayPath: string,
