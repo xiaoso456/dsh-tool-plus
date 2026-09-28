@@ -58,7 +58,37 @@ npm publish                        # 主包（含 cordis.patch.yml 与 presets/*
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
-版本对齐：插件 peer 精确 pin 与 dsh 同版号。**注意 0.1.7 起宿主按 peer 拒绝加载不匹配的插件**，而 npm `latest` 上 `@deepseek-ai/dsh` 还停在 `0.1.5-rc.3`——pin `0.1.7-rc.2` 的插件版本**只能发 `next`/`beta`**，发 `latest` 会拒绝所有默认安装的用户。README 只描述当前对应关系，不保留历史 dsh 版本号。
+版本对齐：插件 peer 精确 pin 与 dsh 同版号，**跟 `next` 通道**。README 只描述当前对应关系，不保留历史 dsh 版本号。
+
+宿主如何对待版本不匹配的插件：`dsh.bundle` 的 peer 对不上运行版本时，profile 加载**静默跳过**该 bundle（只记进 `skippedBundles`，不打印、不报错、不改清单）——症状是"插件提供的工具突然消失、补丁层不生效"，而不是启动失败。排查时看 `<profile>/cordis.yml`（合成结果）里有没有自己的行、自己的 `disabled` 有没有生效。
+
+发布标签：dsh npm `latest` 与 `next` 经常错开，桌面端 app 自带的 dsh 还可能领先两者。pin 到非 `latest` 版本的插件版本只能发 `next`/`beta`——发 `latest` 会让所有默认安装的用户静默失去这个插件。
+
+## 端到端测试（真宿主 + 假供应商）
+
+两层，照 pi 的 `packages/gateway/test/support/{harness,mock-openai}` 分层：
+
+```
+tests/support/mock-openai/   假 LLM 服务（套件本体）
+  protocol.ts                纯函数帧构造，零 IO；格式事实来源是 pi-ai 的 openai-completions
+  scenario.ts                场景模型：轮次由 match 谓词选、按会话分桶
+  server.ts                  node:http 薄 IO 层 + 请求记录 + /__mock/requests 调试端点 + reset()
+  cli.ts                     pnpm mock:llm 独立起服务
+  scenarios/*.json           场景数据（<scratch> 占位符由调用方替换）
+  mock-openai.spec.ts        自己的自检（进 pnpm test）
+tests/support/harness/       驱动（把真 dsh 拉起来跑）
+  support.ts                 路径、测试 profile 搭建、dsh 起停
+  dsh-e2e.ts                 pnpm e2e      —— headless 跑完硬断言，退出码即结论
+  capture-web.ts             pnpm e2e:web  —— 起真 web 实例，把对话与轨迹拍下来
+```
+
+**为什么轮次用 `match` 谓词而不是计数器**：宿主会并发发**会话标题请求**，计数器会被它带偏。谓词看的是这次请求长什么样（`requestIndex` / `messageCount` / `toolResultContains` / `firstUserMessageContains`），再按 `bucketBy: firstUserMessage` 分桶——标题请求的"首条 user 消息"是那段标题生成提示词，天然和主对话分在两个队列，互不消耗。场景里另设一条 `match: { messageContains: "concise title" }` 的 `00-title` 轮次接住它。
+
+**思考与工具卡片都要能看见**：推理走 OpenAI 的 `reasoning_content` 字段（`protocol.ts::reasoningChunk`）——pi-ai 只在这个字段非空时才产 `thinking_delta`，不发它界面上永远没有思考块；工具调用则要在 profile 补丁层里设 `ui-chat: { transcriptView: verbose }`，否则整轮会被折进「用时 N 秒」那一层。
+
+断言从**假供应商侧收到的请求记录**里取（每一步的工具结果都在下一次请求的 `role: "tool"` 消息里），比解析 dsh 的 stdout 可靠。场景本身也带断言：最后一条轮次要求 `toolResultContains: "name + GREETING"`——读回的文件里没有这句就匹配不上，脚本耗尽直接 500。
+
+前置：全局装了 dsh、本仓库已 `pnpm build`（profile 是指向仓库根的 junction，宿主直接加载 `lib/`）。测试 profile 落在 `$DSH_HOME/profiles/tool-plus-e2e{,-web}`，由脚本幂等重建；`DSH_BIN` / `E2E_TIMEOUT_MS` / `E2E_WEB_PORT` 可覆盖。这套东西不进 npm 包（不在 `files` 里）。
 
 ## 改动守则
 

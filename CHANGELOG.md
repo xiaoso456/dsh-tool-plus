@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.11] - 2026-09-28
+
+### Added
+
+- 端到端测试支持套件（随仓库走，不进 npm 包）：`tests/support/mock-openai/` 是一个脚本化的**假 LLM 服务**（协议帧构造 / 场景模型 / HTTP 服务 / CLI / 场景 JSON / 自检），`tests/support/harness/` 是把它接到**真 dsh** 上的驱动
+- npm 脚本 `e2e`（headless 跑完 8 个工具并硬断言）、`e2e:web`（起真 web 实例并把对话与轨迹截图）、`mock:llm`（单独起假供应商）
+
+### Changed
+
+- dsh 依赖对齐 `0.2.0-rc.1`：44 处 `@deepseek-ai/dsh-*` pin 由 `0.1.7-rc.2` 升级（`@deepseek-ai/cordis` 仍 `~4.0.4`、`@deepseek-ai/schemastery` 仍 `~3.18.4`，两者未变）
+- 预设基线重新核对：官方 `packages/bundle/web-app/presets/{standard,ptc}.patch.yml` 在 0.2.0-rc.1 与 0.1.7-rc.2 **逐字节相同**，随包的两个预设内容不变
+- README 与仓库须知把 dsh 版本口径更新到 `0.2.0-rc.1`，并写明宿主对 peer 不匹配的 bundle 是**静默跳过**（症状是插件工具消失、补丁层不生效，而非启动报错）
+- `scripts/tool-result-aggregate.mjs` 不再硬编码本机会话目录，改从 `$TOOL_RESULT_SESSIONS` / `$DSH_HOME` 解析
+
+[对比 0.1.10](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.10...tool-plus-v0.1.11)
+
 ## [0.1.10] - 2026-09-26
 
 > 正式版。原先分列的 `0.1.10-beta.1` ~ `0.1.10-beta.3` 三节已并入本节。

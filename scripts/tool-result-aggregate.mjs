@@ -4,9 +4,12 @@
  */
 import { zstdDecompressSync } from 'node:zlib'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-const ROOT = 'C:/Users/xiaoso456/.dsh/sessions'
+/** 会话目录：`$TOOL_RESULT_SESSIONS` > `$DSH_HOME/sessions` > `~/.dsh/sessions`。 */
+const ROOT = process.env.TOOL_RESULT_SESSIONS
+  ?? path.join(process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh'), 'sessions')
 const DEPLOY_AT = new Date('2026-08-26T16:00:00Z').getTime() // tool-plus 真实部署完成（用户批准）
 
 function decompress(file) {

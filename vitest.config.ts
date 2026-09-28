@@ -41,6 +41,8 @@ export default defineConfig({
     include: [
       'tests/unit/**/*.spec.ts',
       'tests/boot/**/*.spec.ts',
+      // 测试支持件（假 LLM 服务、harness）自己的自检。
+      'tests/support/**/*.spec.ts',
       // OMP's own hashline test suite (verbatim, run unmodified via bun:test shim).
       'src/tools/hashline/test/*.test.ts',
     ],

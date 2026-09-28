@@ -1,0 +1,125 @@
+{
+  "name": "tool-plus-all-tools",
+  "models": ["mock-model"],
+  "bucketBy": "firstUserMessage",
+  "defaults": { "chunkSize": 24 },
+  "turns": [
+    {
+      "name": "00-title",
+      "match": { "firstUserMessageContains": "Generate the session title" },
+      "reasoning": "这是会话标题请求，不是主对话，回个短标题就行。",
+      "text": "E2E 全工具验证"
+    },
+    {
+      "name": "01-bash",
+      "match": { "requestIndex": 0, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "先确认 shell 通了：跑一条 echo，把标记打出来。",
+      "toolCalls": [
+        {
+          "id": "call_bash",
+          "name": "bash",
+          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK\",\"description\":\"Echo the mock marker\"}",
+          "argumentChunks": 3
+        }
+      ]
+    },
+    {
+      "name": "02-write",
+      "match": { "requestIndex": 1, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "shell 通了，接下来写一个夹具文件给后面的读写与 AST 工具用。",
+      "toolCalls": [
+        {
+          "id": "call_write",
+          "name": "write",
+          "arguments": "{\"path\":\"<scratch>/fixture.ts\",\"content\":\"export const GREETING = 'hello'; export function greet(name: string) { return GREETING + name }\"}"
+        }
+      ]
+    },
+    {
+      "name": "03-read",
+      "match": { "requestIndex": 2, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "写完了读回来，确认落盘的内容就是我要的。",
+      "toolCalls": [
+        { "id": "call_read_1", "name": "read", "arguments": "{\"path\":\"<scratch>/fixture.ts\"}" }
+      ]
+    },
+    {
+      "name": "04-edit",
+      "match": { "requestIndex": 3, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "把字面量 hello 改成 HELLO，验证字面量替换这条路。",
+      "toolCalls": [
+        {
+          "id": "call_edit",
+          "name": "edit",
+          "arguments": "{\"file_path\":\"<scratch>/fixture.ts\",\"old_string\":\"'hello'\",\"new_string\":\"'HELLO'\"}"
+        }
+      ]
+    },
+    {
+      "name": "05-read-after-edit",
+      "match": { "requestIndex": 4, "firstUserMessageContains": "E2E-RUN", "toolResultContains": "Successfully" },
+      "reasoning": "读回来确认 edit 真的落了盘。",
+      "toolCalls": [
+        { "id": "call_read_2", "name": "read", "arguments": "{\"path\":\"<scratch>/fixture.ts\"}" }
+      ]
+    },
+    {
+      "name": "06-grep",
+      "match": { "requestIndex": 5, "firstUserMessageContains": "E2E-RUN", "toolResultContains": "'HELLO'" },
+      "reasoning": "字面量替换生效了。换个工具：在目录里搜这个符号，验证 grep。",
+      "toolCalls": [
+        { "id": "call_grep", "name": "grep", "arguments": "{\"pattern\":\"GREETING\",\"path\":\"<scratch>\"}" }
+      ]
+    },
+    {
+      "name": "07-glob",
+      "match": { "requestIndex": 6, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "再验证 glob 能不能把这个目录下的 ts 文件列出来。",
+      "toolCalls": [
+        { "id": "call_glob", "name": "glob", "arguments": "{\"path\":\"<scratch>/*.ts\"}" }
+      ]
+    },
+    {
+      "name": "08-ast-grep",
+      "match": { "requestIndex": 7, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "文件工具都通了，转到 AST：按语法结构匹配这个函数声明。",
+      "toolCalls": [
+        {
+          "id": "call_ast_grep",
+          "name": "ast_grep",
+          "arguments": "{\"pat\":\"export function $NAME($$$ARGS) { $$$BODY }\",\"path\":\"<scratch>\"}"
+        }
+      ]
+    },
+    {
+      "name": "09-ast-edit",
+      "match": { "requestIndex": 8, "firstUserMessageContains": "E2E-RUN", "toolResultContains": "greet" },
+      "reasoning": "结构匹配到了。用 ast_edit 把加法两边换个顺序，验证结构化改写。",
+      "toolCalls": [
+        {
+          "id": "call_ast_edit",
+          "name": "ast_edit",
+          "arguments": "{\"ops\":[{\"pat\":\"GREETING + name\",\"out\":\"name + GREETING\"}],\"paths\":[\"<scratch>/fixture.ts\"]}"
+        }
+      ]
+    },
+    {
+      "name": "10-read-after-ast-edit",
+      "match": { "requestIndex": 9, "firstUserMessageContains": "E2E-RUN" },
+      "reasoning": "ast_edit 的回执只说改了几处，读回文件才是「真的改了」的证据。",
+      "toolCalls": [
+        { "id": "call_read_3", "name": "read", "arguments": "{\"path\":\"<scratch>/fixture.ts\"}" }
+      ]
+    },
+    {
+      "name": "11-final",
+      "match": { "requestIndex": 10, "firstUserMessageContains": "E2E-RUN", "toolResultContains": "name + GREETING" },
+      "reasoning": "八条路都走完了，而且读回的文件里确实是改写后的写法，收尾。",
+      "text": "MOCK_E2E_FINAL"
+    }
+  ],
+  "fallback": {
+    "name": "unexpected-extra-request",
+    "text": "MOCK_E2E_FINAL"
+  }
+}
