@@ -87,7 +87,7 @@ dsh plugin --profile web add link:<本仓库路径>
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 22.19 或 ≥ 24
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.2.0-rc.1（pre-release，接口可能变动）
+- 适用于 DeepSeek Harness `dsh` v0.2.0-rc.2（pre-release，接口可能变动）
 
 ## 注意事项
 

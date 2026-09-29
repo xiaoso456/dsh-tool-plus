@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.12] - 2026-09-29
+
+### Changed
+
+- dsh 依赖对齐 `0.2.0-rc.2`：44 处 `@deepseek-ai/dsh-*` pin 由 `0.2.0-rc.1` 升级（`@deepseek-ai/cordis` 仍 `~4.0.4`、`@deepseek-ai/schemastery` 仍 `~3.18.4`，两者未变）
+- 预设基线复核：官方 `packages/bundle/web-app/presets/{standard,ptc}.patch.yml` 在 rc.2 与 rc.1 **逐字节相同**，随包的两个预设内容不变
+- README 的 dsh 版本口径更新到 `0.2.0-rc.2`
+
+[对比 0.1.11](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.11...tool-plus-v0.1.12)
+
 ## [0.1.11] - 2026-09-28
 
 ### Added
