@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.13] - 2026-10-06
+
+### Added
+
+- 插件页元信息：`locale/zh.json`、`locale/en.json` 提供标题与描述（「Oh My Pi 工具增强」/「Oh My Pi Tools」），`assets/icon.png` 提供图标（384×384、圆角按 8 倍超采样抗锯齿）
+- `package.json` 顶层 `icon` 字段指向图标：宿主 0.2.0-rc.2 只读「导出的 package.json」里的顶层 `icon`，不认 `./icon` 导出（后者是 0.2.1-alpha.1 才有的解析路径）
+- README 头部改为居中图标 + 艺术字词标（`assets/wordmark.png`，逐词纯色；由 Jua 渲染，字体 SIL OFL 1.1，只随包出图、不分发字体文件）；仓库内保留源图 `assets/icon-source.png`（不进 npm 包）
+
+### Changed
+
+- `peerDependencies` 15 条由逐条精确 `0.2.0-rc.2` 改为三位数范围 `>=0.2.0-0 <0.2.1-0`：0.2.0 线内的 rc 与正式版都不再被静默跳过，0.2.1 线（含 alpha）仍不放行
+- `devDependencies` 补齐 peer 缺失的 5 条镜像（`dsh-agent-preset`、`dsh-agent-preset-registry`、`dsh-attachment`、`dsh-fs`、`dsh-sandbox`），依据 harness `docs/cookbook/adding-a-package` 的「每个 dsh peer 都要在 devDependencies 里镜像」；`pnpm-lock.yaml` 随之重算
+
+### Removed
+
+- 不再往仓库里放 `.release-notes-*.md`（含 0.1.6 遗留文件一并删除），`.gitignore` 忽略该模式；GitHub Release 正文改为按需从本节生成
+
+[对比 0.1.12](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.12...tool-plus-v0.1.13)
+
 ## [0.1.12] - 2026-09-29
 
 ### Changed
