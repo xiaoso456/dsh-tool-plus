@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Oh My Pi Tools",
+    "description": "Persistent bash, structured read, multi-mode edit, atomic write and safe delete — one plugin that takes over the stock file and shell tools."
+  }
+}

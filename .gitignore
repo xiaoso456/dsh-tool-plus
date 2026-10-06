@@ -12,6 +12,9 @@ coverage/
 # Local logs
 debug.log
 *.log
+
+# Release notes are generated on demand for `gh release create`; never in the tree
+.release-notes-*.md
 # Root-only: the archived copy under docs/archive/ is tracked
 /ORIGIN.md
 

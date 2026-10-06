@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Oh My Pi 工具增强",
+    "description": "持久 bash、结构化 read、多模式 edit、原子 write、安全删除，一套插件接管官方基础工具。"
+  }
+}

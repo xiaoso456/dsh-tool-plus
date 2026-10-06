@@ -37,6 +37,7 @@
   },
   "main": "lib/index.mjs",
   "types": "lib/types/index.d.ts",
+  "icon": "./assets/icon.png",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -48,6 +49,7 @@
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./presets/*.patch.yml": "./presets/*.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -59,7 +61,10 @@
     "src/bash-runtime/shell-snapshot-fn-env.sh",
     "README.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "locale/*.json",
+    "assets/icon.png",
+    "assets/wordmark.png"
   ],
   "dsh": {
     "manifestVersion": 1,

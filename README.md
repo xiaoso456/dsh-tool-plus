@@ -1,4 +1,7 @@
-# dsh-tool-plus — DeepSeek Harness 基础工具增强
+<div align="center">
+  <img width="160" src="assets/icon.png" alt="dsh tool plus icon"><br>
+  <img width="240" src="assets/wordmark.png" alt="dsh tool plus">
+</div>
 
 简体中文 | [English](./README.en.md)
 
