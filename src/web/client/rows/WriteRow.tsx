@@ -64,7 +64,7 @@ function WriteCard(props: RowProps & { title: string }) {
       title={title}
       tool={toolName}
       summary={displayPath(path, cwd)}
-      summarySuffix={lines + skip}
+      summarySuffix={`· ${lines + skip}`}
       filePath={path}
       openFile={openFile}
       inspect={inspect}

@@ -43,7 +43,7 @@ export type ToolCardLocaleKey =
   | 'search.matches' | 'search.matches.truncated' | 'search.noResults' | 'search.scope'
   | 'search.collapseAria' | 'search.expandAria' | 'search.expandRest'
   // terminal card chrome.
-  | 'terminal.signal' | 'terminal.exitCode'
+  | 'terminal.commandLine' | 'terminal.signal' | 'terminal.exitCode'
   | 'terminal.running' | 'terminal.failed' | 'terminal.done' | 'terminal.noOutput'
   // A settled command with no exit status at all (killed by an unknown signal,
   // or never started): the primitive's status pill, not a state word.
@@ -108,6 +108,7 @@ export const zh: Record<ToolCardLocaleKey, string> = {
   'search.collapseAria': '收起结果',
   'search.expandAria': '展开其余 {count} 行结果',
   'search.expandRest': '… 其余 {count} 行',
+  'terminal.commandLine': '命令第 {n} 行',
   'terminal.signal': '信号 {signal}',
   'terminal.exitCode': '退出码 {code}',
   'terminal.running': '运行中',
@@ -178,6 +179,7 @@ export const en: Record<ToolCardLocaleKey, string> = {
   'search.collapseAria': 'Collapse results',
   'search.expandAria': 'Expand {count} more result lines',
   'search.expandRest': '… {count} more lines',
+  'terminal.commandLine': 'Command line {n}',
   'terminal.signal': 'signal {signal}',
   'terminal.exitCode': 'exit code {code}',
   'terminal.running': 'Running',

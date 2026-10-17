@@ -68,7 +68,7 @@ function FileMutationCard(props: RowProps & { title: string }) {
       title={title}
       tool={toolName}
       summary={summary}
-      summarySuffix={`+${totals.added} -${totals.removed}`}
+      summarySuffix={`· +${totals.added} -${totals.removed}`}
       filePath={single}
       openFile={openFile}
       inspect={inspect}

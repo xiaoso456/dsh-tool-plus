@@ -183,7 +183,9 @@ describeBash('bash-plus composition', () => {
       run_in_background: true,
     }, agent)
     expect(started.isError).toBe(false)
-    const id = textOf(started).match(/job (bash-\d+)/)?.[1]
+    // dsh 0.2.1 replaced the `bash-<counter>` identity with the short-UUID
+    // `bash-<16 hex>` one, so the whole suffix has to survive extraction.
+    const id = textOf(started).match(/job (bash-[0-9a-z]+)/)?.[1]
     expect(id).toBeTruthy()
     await waitForJob(ctx, id!, agent)
     const read = ctx.jobs.read(id as JobId, agent.id)
@@ -199,7 +201,7 @@ describeBash('bash-plus composition', () => {
       run_in_background: true,
     }, agent)
     expect(started.isError).toBe(false)
-    const id = textOf(started).match(/job (bash-\d+)/)?.[1]
+    const id = textOf(started).match(/job (bash-[0-9a-z]+)/)?.[1]
     expect(id).toBeTruthy()
     await waitForJob(ctx, id!, agent)
     const read = ctx.jobs.read(id as JobId, agent.id)
@@ -261,7 +263,7 @@ describeBash('bash-plus background capacity', () => {
     }, agent)
     expect(second.isError).toBe(true)
     expect(textOf(second)).toContain('at capacity (maxBackgroundJobs: 1)')
-    const id = textOf(first).match(/job (bash-\d+)/)?.[1]
+    const id = textOf(first).match(/job (bash-[0-9a-z]+)/)?.[1]
     if (id !== undefined) await waitForJob(ctx, id, agent)
   })
 })

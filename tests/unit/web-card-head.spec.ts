@@ -227,6 +227,27 @@ describe('web card head', () => {
           .toBe('· 范围 src/a.ts; src/b.ts · 3 处匹配 · 2 个文件')
       })
 
+      it('bounds an over-long scope so it cannot squeeze the subject out', () => {
+        // The fragment rides outside the summary's ellipsis and never shrinks
+        // (`flex:none`), so an unbounded target path takes the row and leaves the
+        // pattern — the one thing the head is for — at `exp…`. The tail is the
+        // end worth keeping: `scratch` says which tree, `C:/Users` does not.
+        expect(searchCardSuffix(
+          {
+            pattern: 'export function $NAME($$$ARGS) { $$$BODY }',
+            path: 'C:/Users/XIAOSO~1/AppData/Local/Temp/dsh-tool-plus-e2e/scratch',
+          },
+          matches,
+          undefined,
+          t.zh,
+        )).toBe('· 范围 …/dsh-tool-plus-e2e/scratch · 3 处匹配 · 2 个文件')
+      })
+
+      it('bounds a scope that is inside the budget by nothing at all', () => {
+        expect(searchCardSuffix({ pattern: 'foo', path: 'src/tools/deep' }, matches, undefined, t.zh))
+          .toBe('· 范围 src/tools/deep · 3 处匹配 · 2 个文件')
+      })
+
       it('says the search was empty instead of showing zero counts', () => {
         const empty: SearchCardMeta = { kind: 'search', shape: 'matches', files: [], truncated: false, total: 0 }
         expect(searchCardSuffix({ pattern: 'zzz', path: 'src/tools' }, empty, '/w/app', t.zh))
@@ -304,12 +325,23 @@ describe('web card head', () => {
 
       it('leaves the write and edit card heads alone: they already state their facts', () => {
         // Both heads show the path and the size of the change, and both were
-        // audited as complete; a change here would be a regression by definition.
+        // audited as complete fact-carriers; a facts helper here would be a
+        // regression by definition.
         // The assertion names the helper they actually use — `not.toContain` on a
         // module name would stay green even if a head called the count instead.
         for (const file of ['WriteRow.tsx', 'FileMutationRow.tsx']) {
           expect(rowSource(file), file).not.toContain('card-facts')
           expect(rowSource(file), file).toMatch(/displayPath\(/)
+        }
+      })
+
+      it('opens every hand-written trailing fragment with the row\'s own dot', () => {
+        // The fragment rides outside the summary's ellipsis (`ToolCardShell`), and a
+        // row that drops the dot runs the path straight into the count:
+        // `…/fixture.ts 1 行` reads as if the count were part of the file name. The
+        // search row's dot lives in its facts module, pinned by the suffix tests above.
+        for (const file of ['WriteRow.tsx', 'FileMutationRow.tsx', 'AstEditRow.tsx']) {
+          expect(rowSource(file), file).toMatch(/summarySuffix=\{`· /)
         }
       })
 

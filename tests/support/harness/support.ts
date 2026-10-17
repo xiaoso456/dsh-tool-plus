@@ -7,7 +7,7 @@
  * @module tests/support/harness
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -92,6 +92,9 @@ ${preset}${chat}- id: tool-plus
             contextWindow: 100000
             input:
               - text
+              # 图片模态：read 的图像路径会先探这条路由能不能看图，声明了才走附件入库；
+              # 只写 text 会被判成非视觉路由，soft-refuse 成一段 metadata 文本。
+              - image
 
 - id: agent-default-model
   name: '@deepseek-ai/dsh-agent-default-model'
@@ -162,47 +165,6 @@ export function runDsh(profile: string, task: string, timeoutMs: number): Promis
       resolve({ code, stdout, stderr, timedOut: false })
     })
   })
-}
-
-/** 起一个 web 实例，等它打印出带 token 的地址。 */
-export function startDshWeb(profile: string, port: number, timeoutMs = 180_000): Promise<{
-  child: ChildProcess
-  url: string
-  output: () => string
-}> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(DSH_BIN, [profile, '--port', String(port), '--no-open'], {
-      cwd: REPO_ROOT,
-      shell: true,
-      windowsHide: true,
-      env: { ...process.env, MOCK_LLM_KEY: 'mock-key' },
-    })
-    let output = ''
-    const timer = setTimeout(() => {
-      reject(new Error(`web 实例 ${String(timeoutMs)}ms 内没给出地址；输出：\n${output}`))
-    }, timeoutMs)
-    const onData = (chunk: Buffer): void => {
-      output += chunk.toString()
-      const match = /http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+/u.exec(output)
-      if (match !== null) {
-        clearTimeout(timer)
-        resolve({ child, url: match[0], output: () => output })
-      }
-    }
-    child.stdout?.on('data', onData)
-    child.stderr?.on('data', onData)
-    child.on('error', (error) => { clearTimeout(timer); reject(error) })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      reject(new Error(`web 实例提前退出（code=${String(code)}）；输出：\n${output}`))
-    })
-  })
-}
-
-/** 关掉 dsh 进程树（Windows 上必须整棵树，否则端口不放）。 */
-export function killTree(child: ChildProcess | undefined): void {
-  if (child?.pid === undefined) return
-  spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
 }
 
 /** 取一行文本的首个非空行，用于日志与失败诊断。 */

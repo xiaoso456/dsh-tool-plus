@@ -447,6 +447,7 @@ export function searchBlockLabels(t: CardTranslate): SearchBlockLabels {
 /** Bind the card dictionary to the terminal primitive's chrome labels. */
 export function terminalBlockLabels(t: CardTranslate): TerminalBlockLabels {
   return {
+    commandLine: line => t('terminal.commandLine', { n: line }),
     signal: signal => t('terminal.signal', { signal }),
     exitCode: exitCode => t('terminal.exitCode', { code: exitCode }),
     noExitCode: t('terminal.noExitCode'),

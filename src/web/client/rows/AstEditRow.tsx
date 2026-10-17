@@ -69,7 +69,7 @@ function AstEditCard(props: RowProps & { title: string }) {
       title={title}
       tool={toolName}
       summary={summary}
-      summarySuffix={`${t('astEdit.replacements', { count: meta.replacements })} · ${t('astEdit.files', { count: files })}`}
+      summarySuffix={`· ${t('astEdit.replacements', { count: meta.replacements })} · ${t('astEdit.files', { count: files })}`}
       filePath={single}
       openFile={openFile}
       inspect={inspect}

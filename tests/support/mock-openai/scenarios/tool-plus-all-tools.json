@@ -116,6 +116,46 @@
       "match": { "requestIndex": 10, "firstUserMessageContains": "E2E-RUN", "toolResultContains": "name + GREETING" },
       "reasoning": "八条路都走完了，而且读回的文件里确实是改写后的写法，收尾。",
       "text": "MOCK_E2E_FINAL"
+    },
+    {
+      "name": "err-01-bash-fails",
+      "match": { "requestIndex": 0, "firstUserMessageContains": "E2E-ERR" },
+      "reasoning": "跑一条不可能存在的命令：看工具把失败如实交回来，以及这一轮还能不能往下走。",
+      "toolCalls": [
+        {
+          "id": "call_bash_err",
+          "name": "bash",
+          "arguments": "{\"command\":\"definitely-not-a-command-e2e\",\"description\":\"Run a command that cannot exist\"}"
+        }
+      ]
+    },
+    {
+      "name": "err-02-final",
+      "match": {
+        "requestIndex": 1,
+        "firstUserMessageContains": "E2E-ERR",
+        "toolResultContains": "definitely-not-a-command-e2e"
+      },
+      "reasoning": "失败原文回到了这一轮。收尾——失败被如实交回、会话没被打断，这一条就算验到了。",
+      "text": "MOCK_E2E_ERR_FINAL"
+    },
+    {
+      "name": "img-01-read",
+      "match": { "requestIndex": 0, "firstUserMessageContains": "E2E-IMG" },
+      "reasoning": "读一张真图，走附件入库那条路。",
+      "toolCalls": [
+        { "id": "call_read_img", "name": "read", "arguments": "{\"path\":\"<fixtures>/tiny.png\"}" }
+      ]
+    },
+    {
+      "name": "img-02-final",
+      "match": {
+        "requestIndex": 1,
+        "firstUserMessageContains": "E2E-IMG",
+        "toolResultContains": "tiny.png"
+      },
+      "reasoning": "图像信封回到了这一轮：说明这条路由被当成能看图，没有降级成 metadata 文本。",
+      "text": "MOCK_E2E_IMG_FINAL"
     }
   ],
   "fallback": {

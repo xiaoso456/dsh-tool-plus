@@ -18,6 +18,11 @@
  *  - the count, or "no results" instead of a zero count (a zero count is what
  *    the empty-state failure reads as, not what it says).
  *
+ * The fragment's own box never shrinks (`.twc-summarySuffix` is `flex:none`),
+ * so the scope it carries is bounded by {@link clipScope}: an unbounded target
+ * path would not clip the fragment, it would take the row and squeeze the
+ * subject — the pattern, the one thing the head is for — down to `exp…`.
+ *
  * The counting labels are the {@link searchBlockLabels} adapter the block body
  * already uses, so the head and the body say the same thing in the same words,
  * including the "showing N of M" wording of a capped payload.
@@ -45,6 +50,30 @@ function displayScope(scope: string, cwd: string | undefined): string {
   return scope.split(';').map(entry => displayPath(entry.trim(), cwd)).join('; ')
 }
 
+/** Longest scope the collapsed head shows, in characters. */
+const SCOPE_MAX = 28
+
+/**
+ * Bound an over-long scope to a row-sized maximum, keeping its tail and
+ * starting at a path boundary.
+ *
+ * The fragment sits outside the summary's ellipsis and never shrinks, so an
+ * unbounded target — an absolute path outside the workspace, the common case
+ * in a temp tree — would consume the row and leave the subject at `exp…`. The
+ * tail is the end worth keeping: the leaf names the tree, the drive letter and
+ * the user name do not.
+ * @param scope - the already workspace-shortened scope.
+ * @returns the scope, or its tail behind a leading ellipsis.
+ */
+function clipScope(scope: string): string {
+  if (scope.length <= SCOPE_MAX) return scope
+  // One character of the budget is the ellipsis itself.
+  const tail = scope.slice(scope.length - SCOPE_MAX + 1)
+  // Drop the segment the cut landed inside: a half name reads as a typo.
+  const boundary = tail.search(/[\\/]/)
+  return boundary <= 0 ? `…${tail}` : `…${tail.slice(boundary)}`
+}
+
 /**
  * The search card's collapsed trailing fragment: the scope the call searched,
  * then what the search found.
@@ -64,7 +93,7 @@ export function searchCardSuffix(
 
   if (meta.shape === 'matches') {
     const scope = argText(args, 'path')
-    if (scope !== null) facts.push(t('search.scope', { path: displayScope(scope, cwd) }))
+    if (scope !== null) facts.push(t('search.scope', { path: clipScope(displayScope(scope, cwd)) }))
   }
 
   if (meta.total === 0) {

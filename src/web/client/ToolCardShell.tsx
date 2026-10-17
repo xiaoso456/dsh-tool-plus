@@ -174,7 +174,7 @@ export interface ToolCardShellProps {
   title: string
   /** Collapsed summary after the separator; empty renders no separator. */
   summary?: string | null | undefined
-  /** Trailing fragment kept outside the summary's ellipsis (e.g. `+3 -1`). */
+  /** Trailing fragment kept outside the summary's ellipsis; the row opens it with `· ` (e.g. `· +3 -1`). */
   summarySuffix?: string | null | undefined
   /** Render the summary in the error tone (a failure line, not a description). */
   summaryTone?: 'default' | 'error' | undefined

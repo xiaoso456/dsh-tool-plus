@@ -27,9 +27,22 @@ refs/
 # Local memory store
 .dsh-meow/
 
+# 框架自带 skill 的逐字副本（源在 node_modules/e2e/skills/e2e）：本地参考，不进仓库
+.agents/skills/
+
 # Python bytecode left behind by one-off tooling
 __pycache__/
 *.pyc
+
+# e2e 通道：本地密钥。两个名字都挡——用户实际建的是哪个不由我们决定，漏一个就会把真 key 提交上去。
+.env
+.env.local
+
+# e2e 通道：框架的运行产物（报告、trace、视频、缓存、app 日志）。
+.e2e/
+
+# e2e 通道：本次适配流程自己的记录目录（台账、现状记录、报告）。
+e2e-adopt/
 
 # Docs stay local (archives/plans/audits, not committed)
 docs/*

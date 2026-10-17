@@ -5,7 +5,8 @@
  * 每一步的工具结果都在下一次请求的 `role: "tool"` 消息里。
  *
  * 用法：`pnpm e2e`（`DSH_BIN` 覆盖 dsh 命令，`E2E_TIMEOUT_MS` 覆盖超时）。
- * 需要 GUI 截图的同一套场景见 `capture-web.ts`（`pnpm e2e:web`）。
+ * 需要浏览器交互（点设置页、切主题、看卡片渲染）的同一套场景见 `pnpm e2e:browser`
+ * （`e2e/` 下的 e2e 框架通道；老的 `pnpm e2e:web` 已于 2026-10-13 退役，能力被它吸收）。
  *
  * 前置：全局装了 dsh；本仓库已 `pnpm build`——profile 是指向仓库根的 junction，宿主直接加载 `lib/`。
  *

@@ -58,11 +58,11 @@ npm publish                        # 主包（含 cordis.patch.yml 与 presets/*
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
-版本对齐：插件 peer 精确 pin 与 dsh 同版号，**跟 `next` 通道**。README 只描述当前对应关系，不保留历史 dsh 版本号。
+版本对齐：兼容性以 `engines.dsh` 为准，写**官方口径**的一条范围——覆盖整条 minor 线，如 `>=0.2.1-0 <0.3.0-0`。两个 `-0` 都有用：宿主匹配时预发布参与，下界不带 `-0`（写成 `>=0.2.1` 或 `^0.2.1`）会把同代的 rc/alpha 挡在外面；上界不带 `-0`（官方示例的 `<0.3.0`）会把下一代的 `0.3.0-rc.1` 也放进来。宿主优先按它判，0.2.1-alpha.5 起声明了它 peer 就不参与判定；`peerDependencies` 里 15 条 `@deepseek-ai/dsh*` 同步写**同一串**、`devDependencies` 精确 pin 同版号——peer 是留给不认识新字段的老宿主与 pnpm 的镜像，两处必须逐字一致。同一 minor 线内升级**范围不动**（只挪 devDeps 的 pin）；跨线时按实际还支持的版本追加 `||` 并集或整段替换。**跟 `next` 通道**。README 只描述当前对应关系，不保留历史 dsh 版本号。
 
-宿主如何对待版本不匹配的插件：`dsh.bundle` 的 peer 对不上运行版本时，profile 加载**静默跳过**该 bundle（只记进 `skippedBundles`，不打印、不报错、不改清单）——症状是"插件提供的工具突然消失、补丁层不生效"，而不是启动失败。排查时看 `<profile>/cordis.yml`（合成结果）里有没有自己的行、自己的 `disabled` 有没有生效。
+宿主如何对待版本不匹配的插件：组合每个 profile 时按 `packages/boot/app-boot/src/plugin-compatibility.ts` 逐个插件核对 DSH 版本要求——**声明了 `engines.dsh` 就只比这一段**（必须是字符串、合法 SemVer 范围；空串、写坏的范围、`workspace:*` 之类判「不满足」，非字符串直接抛错），否则要求 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` 的**每一条** peer 范围都匹配运行时（预发布版本参与匹配）。不匹配的插件模块不会被导入，普通行在启动器自己那份组合里变成游离的 `disabled: true` 行（profile 的 patch 层、依赖清单与组合包列表都不改），并带 `incompatible-version`（含 `name`/`version`/`runtimeVersion`/`requirements`）；CLI 会打印 `dsh plugin --profile <profile> allow-version <pkg>@<ver> --dsh-version <ver> --accept-risk` 这条豁免命令（`version-exemptions` 查看、`revoke-version` 撤销，只对精确的包@版本+运行时版本生效）。症状仍是「插件工具突然消失、补丁层不生效」而不是启动失败；排查时看 `<profile>/cordis.yml`（合成结果）里有没有自己的行、自己的 `disabled` 有没有生效。
 
-发布标签：dsh npm `latest` 与 `next` 经常错开，桌面端 app 自带的 dsh 还可能领先两者。pin 到非 `latest` 版本的插件版本只能发 `next`/`beta`——发 `latest` 会让所有默认安装的用户静默失去这个插件。
+发布标签：dsh npm `latest` 与 `next` 经常错开，桌面端 app 自带的 dsh 还可能领先两者。pin 到非 `latest` 版本的插件版本只能发 `next`/`beta`——发 `latest` 会让所有默认安装的用户失去这个插件（0.2.1 起宿主会显式报 `incompatible-version` 并提示豁免命令，不再是无声跳过）。
 
 ## 端到端测试（真宿主 + 假供应商）
 
@@ -79,7 +79,6 @@ tests/support/mock-openai/   假 LLM 服务（套件本体）
 tests/support/harness/       驱动（把真 dsh 拉起来跑）
   support.ts                 路径、测试 profile 搭建、dsh 起停
   dsh-e2e.ts                 pnpm e2e      —— headless 跑完硬断言，退出码即结论
-  capture-web.ts             pnpm e2e:web  —— 起真 web 实例，把对话与轨迹拍下来
 ```
 
 **为什么轮次用 `match` 谓词而不是计数器**：宿主会并发发**会话标题请求**，计数器会被它带偏。谓词看的是这次请求长什么样（`requestIndex` / `messageCount` / `toolResultContains` / `firstUserMessageContains`），再按 `bucketBy: firstUserMessage` 分桶——标题请求的"首条 user 消息"是那段标题生成提示词，天然和主对话分在两个队列，互不消耗。场景里另设一条 `match: { messageContains: "concise title" }` 的 `00-title` 轮次接住它。
@@ -88,7 +87,32 @@ tests/support/harness/       驱动（把真 dsh 拉起来跑）
 
 断言从**假供应商侧收到的请求记录**里取（每一步的工具结果都在下一次请求的 `role: "tool"` 消息里），比解析 dsh 的 stdout 可靠。场景本身也带断言：最后一条轮次要求 `toolResultContains: "name + GREETING"`——读回的文件里没有这句就匹配不上，脚本耗尽直接 500。
 
-前置：全局装了 dsh、本仓库已 `pnpm build`（profile 是指向仓库根的 junction，宿主直接加载 `lib/`）。测试 profile 落在 `$DSH_HOME/profiles/tool-plus-e2e{,-web}`，由脚本幂等重建；`DSH_BIN` / `E2E_TIMEOUT_MS` / `E2E_WEB_PORT` 可覆盖。这套东西不进 npm 包（不在 `files` 里）。
+前置：全局装了 dsh、本仓库已 `pnpm build`（profile 是指向仓库根的 junction，宿主直接加载 `lib/`）。测试 profile 落在 `$DSH_HOME/profiles/tool-plus-e2e`，由脚本幂等重建；`DSH_BIN` / `E2E_TIMEOUT_MS` 可覆盖。这套东西不进 npm 包（不在 `files` 里）。
+
+### 浏览器通道（`e2e` 框架）
+
+上面那套是仓库自带的驱动；这套把同一个假供应商接到 `e2e`（tester-army 的 e2e 框架）上，用真浏览器点真界面：`pnpm e2e:browser`（整个通道），`pnpm e2e:browser --grep-invert agent` 跳过唯一需要模型密钥的那条。**转发过滤参数不要写 `--`**——pnpm 会把 `--` 本身也塞给 e2e，框架直接报错；等价写法是 `pnpm exec e2e run --config e2e/e2e.config.ts --grep <pattern>`（配置在子目录，直接跑 CLI 必须显式给 `--config`，框架只会往**上层**目录找配置）。
+
+```
+e2e/e2e.config.ts            主配置；**配置所在目录即框架认定的项目根**，测试 glob、output、启动命令 cwd 全在 e2e/ 下
+e2e/support/start-app.mjs    启动接线：隔离 DSH_HOME + 借开发者 profiles/node_modules 的 junction + 建测试 profile + 进程内假供应商 + 起 dsh web
+e2e/support/app-endpoint.mjs 读启动接线发布的 JSON（带令牌地址 + 假供应商根）
+e2e/tests/support/dsh-web.ts 管道：进到可输入状态、读假供应商请求记录、切主题
+e2e/tests/*.e2e.ts           用例（`*.e2e.ts` 不在 `pnpm test` 的 include 里）
+e2e/fixtures/tiny.png        图像用例的夹具，由启动接线的 `<fixtures>` 占位符替换
+e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主配置是产出配置：rootDir + declaration）
+.agents/skills/e2e/          框架自带技能的逐字副本（源在 node_modules/e2e/skills/e2e/）：写用例前读它，别凭记忆
+```
+
+**带令牌地址只能运行时发布**：dsh web 每次启动生成**进程级随机**令牌放在 `?token=` 上（换一枚签名 cookie），配置期无从得知。所以 `app.url` 只写 `http://127.0.0.1:0` 让框架挑端口，`readyUrl` 打**不带令牌**的根（宿主对未认证索引请求回 401，落在框架认可的 200-499 里即就绪），带令牌的地址由启动接线写进 `%TEMP%/dsh-tool-plus-e2e/app-endpoint-<端口>.txt` 供测试读。认证走注入令牌，**不填任何凭据表单**——填了框架会扣留截图与模型视觉输入。
+
+**多套剧本共用一个场景文件**：场景按 `bucketBy: firstUserMessage` 分桶、各桶 `requestIndex` 独立计数，所以不同用例只要首条消息带不同标记（`E2E-RUN` / `E2E-ERR` / `E2E-IMG`）就能共用 `tool-plus-all-tools.json` 而互不消耗。假供应商的 `mock-model` 声明了 `image` 模态——不声明的话 read 会判成非视觉路由、把图片 soft-refuse 成一段说明文字，图像路径根本走不到。
+
+**设置页的开关真的会改会话工具面**（插件按配置热更新重注册工具），所以「关掉 `ast_grep` → 工具名从假供应商侧消失」是可断言的；保存落在测试 profile 的 `cordis.patch.yml`，而启动接线每轮重写那份文件，留不下跨轮脏状态。
+
+产物落在 `e2e/.e2e/`（整体 gitignore，每次 run 重写）：`results/<用例>-<hash>/attempt-1/{screenshots,video,trace.md}` 加全局 `report.json` 与被测应用自己的 `logs/app.log`。截图标签一律用 ASCII——中文标签会被产物命名规则折成一串下划线，认不出是哪张。另用配置里的 `artifacts.store` 把**每个产物同时写一份**到 `docs/e2e-evidence/`（同样 gitignore，路径与 `.e2e` 下一一对应）：`.e2e/` 那份每次重写，这份是留给人回看的稳定副本。
+
+**分工**（别以为一条通道能全替）：整页长转录（拉高视口再拍）、轨迹页、录像、页面报错计失败都在这条通道；**宿主进程退出码**与 **headless 宿主形态**只在 `pnpm e2e` 里。老的 `pnpm e2e:web` 已于 2026-10-13 退役，它的能力（整页截图、轨迹页、欢迎层兜底、显式切预设、页面报错计失败、稳定产物目录）已全部被这条通道吸收。
 
 ## 改动守则
 
