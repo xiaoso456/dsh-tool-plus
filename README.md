@@ -87,8 +87,6 @@ dsh plugin --profile web add link:<本仓库路径>
 
 写入通过宿主自己的 `ctx.configEditor` 完成，因此自带 profile 锁、并发保护、原子写与失败回滚。
 
-> 从 0.1.9 或更早升级过来的话：`~/.dsh/.agent-presets/` 目录**已经没有任何代码读它**（0.1.7 起预设改为补丁层声明），可以安全删除；设置页检测到它会给出提示。
-
 ## 配置
 
 开箱即用，无需配置。需要微调时常用项有：后台阈值（`autoBackgroundMs`）、超时（`defaultTimeoutMs` / `maxTimeoutMs`）、输出截断窗口、编辑默认模式（`editMode`，默认 `replace`）、结构化摘要开关（`readSummarizeEnabled`）。抓取相关：可切换网页转 Markdown 的后端（`fetchReader`，含浏览器 JS 渲染——SPA 页面），设置面板里可一键「探测浏览器」查看本机可用的 Chrome/Edge。
