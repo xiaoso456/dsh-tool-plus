@@ -5,7 +5,9 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [0.1.14-beta.0] - 2026-10-17
+## [0.1.14] - 2026-10-17
+
+> 正式版。先发过一版内容相同的 `0.1.14-beta.0` 到 `beta` 通道，本版是它的正式版。
 
 ### Added
 
@@ -33,7 +35,7 @@
 
 - `tests/support/harness/capture-web.ts` 与 npm 脚本 `e2e:web`（2026-10-13 退役，整页截图、轨迹页、录屏等能力已被 e2e 浏览器通道吸收）
 
-[对比 0.1.13](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.13...tool-plus-v0.1.14-beta.0)
+[对比 0.1.13](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.13...tool-plus-v0.1.14)
 
 ## [0.1.13] - 2026-10-06
 
