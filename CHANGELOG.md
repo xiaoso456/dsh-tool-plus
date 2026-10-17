@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.14-beta.0] - 2026-10-17
+
+### Added
+
+- **兼容性声明改用官方口径**：新增 `engines.dsh: ">=0.2.1-0 <0.3.0-0"`。dsh 0.2.1-alpha.5 起宿主优先按它判定（声明了它就不再参与 peer 判定），peer 只留给不认识该字段的老宿主与 pnpm 做镜像，两处写的是同一串
+- **e2e 浏览器验收通道**：`e2e/` 装真浏览器点真界面——配置、启动接线（隔离 `DSH_HOME`、进程内假供应商、带令牌地址运行时发布）、6 条用例（会话工具面、agent 发送、亮暗双主题、工具失败如实交回、read 真图、设置页开关改工具面）；npm 脚本 `e2e:browser`
+- 验收产物双写：`e2e/.e2e/`（每轮重写）与 `docs/e2e-evidence/`（留给人回看的稳定副本），两者都不入库
+
+### Changed
+
+- **dsh 依赖升到 `0.2.1-rc.1`**：15 条 peer 由 `>=0.2.0-0 <0.2.1-0` 整段重写为 `>=0.2.1-0 <0.3.0-0`（本轮有源码适配，故不追加并集），`devDependencies` 精确钉 `0.2.1-rc.1`，镜像检查无缺失
+- `@deepseek-ai/dsh-invariants` 移除：0.2.1 线官方不再发布该包，且 `src/` 零导入
+- 预设基线重拷自 `@deepseek-ai/dsh-web-app@0.2.1-rc.1` 并重新生成（与 alpha.5 的 presets 逐字节相同）；官方 delta 复核为：persona 去掉 cwd 后缀、新增 time-context 与 tool-schedule 两行、plan 提示词改述、删三条 disabled 行、新增 disabled 行 tool-plugin-market——我们自己的四项 delta 未动
+- `typecheck` 现在同时检查 `tsconfig.json` 与 `e2e/tsconfig.json`；README 的 dsh 版本口径更新为 `v0.2.1-rc.1`
+- README 头部语言切换与徽标重排（两组居中）
+
+### Fixed
+
+- 工具卡片适配 rc.1 新增的必填 `commandLine` 标签（`terminalBlockLabels` + `locale` 字典 zh/en）
+- 搜索类卡片折叠头不再被超长 `scope` 挤扁：新增 `clipScope`，超过 28 字符时保尾段、切在路径边界（此前 AST Grep 的主体会被挤成 `exp…`）
+- 写入 / 编辑 / AST Edit 三行的 meta 补上 `·` 分隔符，与 Bash/Grep/Glob 行一致
+- 单测里后台作业 id 的断言适配上游行为变更（`bash-<计数>` → `bash-<短 UUID>`）
+- e2e 设置入口改走真实路径「账号菜单 → 设置菜单项」（宿主把 `settings.launcher` 槽位交给了账号菜单）
+
+### Removed
+
+- `tests/support/harness/capture-web.ts` 与 npm 脚本 `e2e:web`（2026-10-13 退役，整页截图、轨迹页、录屏等能力已被 e2e 浏览器通道吸收）
+
+[对比 0.1.13](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.13...tool-plus-v0.1.14-beta.0)
+
 ## [0.1.13] - 2026-10-06
 
 ### Added
