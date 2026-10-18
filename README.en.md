@@ -22,7 +22,7 @@ Essential tools enhancement for DeepSeek Harness: persistent bash, structured re
 
 ## Features
 
-- **bash**: persistent shell; `cd` and `export` keep state across calls; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools
+- **bash**: persistent shell; `cd` and `export` keep state across calls; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools (off by default)
 - **Safe delete**: `rm` moves files to the system trash by default instead of deleting permanently, so accidental deletes are recoverable; use `command rm` for a real delete
 - **read**: precise line-range reading (supports `:N-M`, `:raw`, and multiple ranges); large code files return a structural summary by default, with details expanded on demand; zip/tar archives, SQLite, notebooks, and PDFs read directly; PNG / JPEG / WebP / GIF images read directly, oversized ones scaled down automatically; can fetch web content (including images embedded in the page); SPA sites (content rendered dynamically by JS, e.g. excalidraw.com) are automatically fetched via local browser rendering
 - **write**: atomic writes that return a diff of the changes; supports patch-style writing, and can write directly into zip/tar archive members and SQLite data
@@ -92,6 +92,40 @@ Writes go through the harness's own `ctx.configEditor`, so they inherit the prof
 ## Configuration
 
 Works out of the box, no configuration needed. Common tweaks: background threshold (`autoBackgroundMs`), timeouts (`defaultTimeoutMs` / `maxTimeoutMs`), the output truncation window, the default edit mode (`editMode`, default `replace`), and the structured summary toggle (`readSummarizeEnabled`).
+
+## Performance
+
+On Linux, comparing the official standard mode with this plugin's Standard enhanced preset (SWE-bench Multilingual, 20 tasks × 3 rounds):
+
+| Metric | Official tool surface | This plugin (command interception on) | This plugin (command interception off, default) |
+|---|---|---|---|
+| Resolve rate | 83.3% | **83.3%** | 81.7% (1 task lower, within normal variance) |
+| Steps / task | 24.4 | 29.7 (+21.7%) | 25.3 (+3.8%) |
+| Total tokens / task | **729,434** | 954,100 (+30.8%) | 779,799 (+6.9%) |
+| System prompt / step (incl. tool definitions) | **4,642** | 6,305 (+35.8%) | 6,305 (+35.8%) |
+| System prompt total / task (per step × steps) | **113,265** | 187,259 (+65.3%) | 159,622 (+40.9%) |
+| Net tokens / task (excl. system prompt) | **616,169** | 766,841 (+24.5%) | 620,177 (+0.7%) |
+| Average context length at task end (tokens) | **42,817** | 48,645 (+13.6%) | 44,781 (+4.6%) |
+| `read` calls | 225 | 459 | **198** |
+| `bash` time per call | 3,140 ms | **2,391 ms** | 2,045 ms |
+| `bash` tokens returned per call | 790 tok | **343 tok** | 638 tok |
+| Average time / task (excludes token-rate and network-speed fluctuation) | **123 s** | 135 s | 151 s |
+
+Notes:
+
+1. The average time is an end-to-end measurement that does not account for token-rate or network-speed fluctuation; use the absolute values for horizontal comparison only.
+2. The figures above describe this benchmark only (its tasks use little context, so they do not represent large tasks).
+
+Conclusions:
+
+1. The resolve rate matches the official tools (the interception-off group is 1 task lower, within normal variance).
+2. `bash` itself is leaner, and the tokens it saves roughly offset the extra system prompt from thicker tool definitions (the plugin adds capabilities, so its definitions are thicker than the official preset's).
+3. `bash` is faster, but the gain is cancelled out by side effects from `bash` itself and the other enhanced tools.
+4. On Linux the combined performance is on par with the official standard-mode tools, with a richer feature set.
+
+So on Linux this plugin cannot promise lower token usage or better performance; Windows is not suitable for running the standard benchmark, so the only claim there is a **personal impression** that it is more pleasant to use than PowerShell.
+
+Full data and the per-task matrix: [docs/benchmark/sbml-compare-ops.md](docs/benchmark/sbml-compare-ops.md) (Chinese).
 
 ## Requirements
 

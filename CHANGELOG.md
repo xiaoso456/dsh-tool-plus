@@ -5,6 +5,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.15] - 2026-10-18
+
+### Added
+
+- `docs/benchmark/sbml-compare-ops.md`：四种 harness（官方标准模式 / dsh-ops / 本插件 / 本插件关闭命令拦截）的完整基准报告，含逐题矩阵；README 的「性能」一节直接链到它（`.gitignore` 为此加了 `!docs/benchmark/` 例外）
+
+### Changed
+
+- **命令拦截默认改为关闭**（`interceptorEnabled` 默认 `false`）：SWE-bench Multilingual 实测中，拦截 `grep` 会让模型放弃 shell 搜索、改用 `read` 碎读（`read` 调用 459 次 vs 官方 225 次），步数与 token 随之上升；关闭后二者明显回落。需要主动引导模型改用专用工具时，在设置页打开该开关即可
+- README（中英）新增「性能」一节：与官方标准模式的对比表（解题率、步数、总/净 token、系统提示词、`read` 调用次数、`bash` 每次调用耗时与返回 token、结束后上下文长度、平均耗时），并附测量口径与结论
+
+[对比 0.1.14](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.14...tool-plus-v0.1.15)
+
 ## [0.1.14] - 2026-10-17
 
 > 正式版。先发过一版内容相同的 `0.1.14-beta.0` 到 `beta` 通道，本版是它的正式版。

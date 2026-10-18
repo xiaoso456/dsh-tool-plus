@@ -23,8 +23,9 @@ describe('resolveConfig', () => {
     expect(cfg.outputSinkTailBytes).toBe(51_200)
     expect(cfg.outputSinkHeadBytes).toBe(20_480)
     expect(cfg.minimizer).toEqual({ enabled: true, only: [], except: [], maxCaptureBytes: 512 * 1024 })
-    // User decision 2026-08-29: interception defaults ON (upstream default is false).
-    expect(cfg.interceptorEnabled).toBe(true)
+    // User decision 2026-10-18: interception defaults OFF (the SWE-bench run showed
+    // grep interception cost +21.7% steps and +24.5% net tokens).
+    expect(cfg.interceptorEnabled).toBe(false)
     expect(cfg.nonInteractiveEnv).toBe(true)
     expect(cfg.snapshotEnabled).toBe(true)
     expect(cfg.useShellCommandWrapper).toBe(false)

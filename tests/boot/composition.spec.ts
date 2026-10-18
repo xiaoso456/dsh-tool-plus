@@ -167,13 +167,26 @@ describeBash('bash-plus composition', () => {
     expect(textOf(result)).toContain('boot-scoped')
   })
 
-  it('intercepts cat by default (interceptorEnabled defaults to true)', async () => {
-    // Interception defaults ON (user decision 2026-08-29; upstream default is
-    // false): `cat` is blocked with a redirect to the `read` tool whenever the
-    // dedicated tool is visible (registered by the plugin itself).
+  it('does not intercept shell commands by default (interceptorEnabled defaults to false)', async () => {
+    // User decision 2026-10-18: interception defaults OFF — the SWE-bench run
+    // showed grep interception cost +21.7% steps and +24.5% net tokens.
     const result = await call(ctx, 'bash', { command: 'cat package.json', description: 'read file' }, agent)
-    expect(result.isError).toBe(true)
-    expect(textOf(result)).toContain('Use the `read` tool')
+    expect(result.isError).toBe(false)
+    expect(textOf(result)).toContain('@xiaoso/dsh-tool-plus')
+  })
+
+  it('intercepts cat once interceptorEnabled is turned on', async () => {
+    const harness = await setup(0, { interceptorEnabled: true })
+    const fibers: Fiber[] = []
+    try {
+      const onAgent = registerFakeAgent(harness.ctx, `boot-intercept-${callCounter}`, fibers)
+      const result = await call(harness.ctx, 'bash', { command: 'cat package.json', description: 'read file' }, onAgent)
+      expect(result.isError).toBe(true)
+      expect(textOf(result)).toContain('Use the `read` tool')
+    } finally {
+      for (const fiber of fibers.reverse()) await fiber.dispose()
+      await harness.dispose()
+    }
   })
 
   it('supports run_in_background through ctx.jobs and job reads', async () => {
