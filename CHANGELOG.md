@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.16] - 2026-10-21
+
+> 正式版。先发过一版内容相同的 `0.1.16-beta.0` 到 `beta` 通道，本版是它的正式版。
+
+### Fixed
+
+- **pi-natives Node 兼容与 pnpm store 隔离**：新增启动期自愈入口 `lib/pi-natives-bootstrap.mjs`，在加载插件前修复 `@oh-my-pi/pi-natives/native/loader-state.js` 的 `import.meta.dir`；postinstall 改为 copy-on-patch（临时文件 + rename 断 pnpm store 硬链接），已修复但仍在共享 inode 上的文件会 detach。精确解析改用 `import.meta.resolve`，避免 `createRequire.resolve` 对 ESM-only 包报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+
+[对比 0.1.15](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.15...tool-plus-v0.1.16)
+
+## [0.1.16-beta.0] - 2026-10-21
+
+### Fixed
+
+- **pi-natives Node 兼容与 pnpm store 隔离**：新增启动期自愈入口 `lib/pi-natives-bootstrap.mjs`，在加载插件前修复 `@oh-my-pi/pi-natives/native/loader-state.js` 的 `import.meta.dir`；postinstall 改为 copy-on-patch（临时文件 + rename 断 pnpm store 硬链接），已修复但仍在共享 inode 上的文件会 detach。精确解析改用 `import.meta.resolve`，避免 `createRequire.resolve` 对 ESM-only 包报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+
+[对比 0.1.15](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.15...tool-plus-v0.1.16-beta.0)
+
 ## [0.1.15] - 2026-10-18
 
 ### Added

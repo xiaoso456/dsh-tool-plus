@@ -1,7 +1,7 @@
 {
   "name": "@xiaoso/dsh-tool-plus",
   "description": "Oh My Pi bash runtime ported as a deepseek-harness tool plugin: persistent shell session, output minimizer, managed background jobs, command interception",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "license": "MIT",
   "keywords": [
     "deepseek-harness",
@@ -36,13 +36,13 @@
     "node": "^22.19.0 || >=24.0.0",
     "dsh": ">=0.2.1-0 <0.3.0-0"
   },
-  "main": "lib/index.mjs",
+  "main": "lib/pi-natives-bootstrap.mjs",
   "types": "lib/types/index.d.ts",
   "icon": "./assets/icon.png",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.mjs"
+      "default": "./lib/pi-natives-bootstrap.mjs"
     },
     "./client": {
       "types": "./lib/types/client/index.d.ts",

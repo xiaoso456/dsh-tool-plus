@@ -10,3 +10,10 @@ const source = join(root, 'src', 'tools', 'bash', 'shell-snapshot-fn-env.sh')
 const target = join(root, 'lib', 'shell-snapshot-fn-env.sh')
 mkdirSync(join(root, 'lib'), { recursive: true })
 copyFileSync(source, target)
+
+// The pi-natives compatibility bootstrap must stay a plain, unbundled file:
+// it has to run before the plugin graph (and its static pi-natives imports) is
+// evaluated. tsdown's clean removes lib/, so copy it after the build.
+const bootstrapSource = join(root, 'src', 'pi-natives-bootstrap.mjs')
+const bootstrapTarget = join(root, 'lib', 'pi-natives-bootstrap.mjs')
+copyFileSync(bootstrapSource, bootstrapTarget)
