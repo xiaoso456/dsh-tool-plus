@@ -716,8 +716,8 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param credentials - New credentials to store
 	 * @returns Array of newly stored credentials with their database IDs
 	 */
-	replaceAuthCredentialsForProvider(provider: string, credentials: AuthCredential[]): StoredAuthCredential[] {
-		return this.#authStore.replaceAuthCredentialsForProvider(provider, credentials);
+	replaceAuthCredentials(provider: string, credentials: AuthCredential[]): Promise<StoredAuthCredential[]> {
+		return this.#authStore.replaceAuthCredentials(provider, credentials);
 	}
 
 	/**
@@ -734,8 +734,8 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param id - Database row ID of the credential to disable
 	 * @param disabledCause - Human-readable cause stored with the disabled row
 	 */
-	deleteAuthCredential(id: number, disabledCause: string): void {
-		this.#authStore.deleteAuthCredential(id, disabledCause);
+	deleteAuthCredential(id: number, disabledCause: string): Promise<boolean> {
+		return this.#authStore.deleteAuthCredential(id, disabledCause);
 	}
 
 	/**
@@ -743,8 +743,8 @@ ON CONFLICT(model_key) DO UPDATE SET
 	 * @param provider - Provider name whose credentials should be disabled
 	 * @param disabledCause - Human-readable cause stored with the disabled rows
 	 */
-	deleteAuthCredentialsForProvider(provider: string, disabledCause: string): void {
-		this.#authStore.deleteAuthCredentialsForProvider(provider, disabledCause);
+	deleteAuthCredentials(provider: string, disabledCause: string): Promise<void> {
+		return this.#authStore.deleteAuthCredentials(provider, disabledCause);
 	}
 
 	/**

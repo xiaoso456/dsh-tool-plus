@@ -3,6 +3,7 @@
  * always-bundled OMP packages). tsdown aliases "bun" to this module.
  * Runtime Bun global is installed separately by src/tools/shared/bun-shim.ts.
  */
+import JSON5 from 'json5'
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml'
 import { GlobShim } from './bun-shim.ts'
 
@@ -12,6 +13,12 @@ export { GlobShim as Glob } from './bun-shim.ts'
 export const YAML = {
   parse: (s: string): unknown => yamlParse(s),
   stringify: (v: unknown): string => yamlStringify(v),
+}
+
+/** Bun.JSONC (pi-tui keybindings) — json5 is a tolerant superset of JSONC. */
+export const JSONC = {
+  parse: (s: string): unknown => JSON5.parse(s),
+  stringify: (v: unknown): string => JSON5.stringify(v),
 }
 
 /** Bun build plugin hook (pi-utils module-timer) — inert under Node. */

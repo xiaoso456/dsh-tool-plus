@@ -233,7 +233,7 @@ describe("hashline input splitter", () => {
 			expectError(await applyArgs(ws, { input: "PUT <1:\n+x", path: "src/foo.ts" }), /must begin with/);
 			expectError(await applyArgs(ws, { input: "plain text", path: "src/foo.ts" }), /must begin with/);
 			// A header without a tag is rejected too — there is no typeless fallback.
-			expectError(await applyPatch(ws, "[src/foo.ts]\nPUT <1:\n+x"), /Missing hashline snapshot tag/);
+			expectError(await applyPatch(ws, "[src/foo.ts]\nPUT <1:\n+x"), /the header needs this file's current tag/);
 			expectFile(ws, "src/foo.ts", "x\nl1\n");
 		});
 	});

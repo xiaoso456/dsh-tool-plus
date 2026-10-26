@@ -6,7 +6,7 @@
 
 `@xiaoso/dsh-tool-plus`：DeepSeek Harness 基础工具增强——持久 bash、结构化 read、多模式 edit、原子 write、双引擎 grep/glob、图像直读，一个插件全覆盖（Oh My Pi 内核移植，可选 ast_grep/ast_edit）。
 
-**只发一个包**（2026-09-20 起）：根包 `@xiaoso/dsh-tool-plus`。仓库里的 `presets/` 目录随根包的 `files` 一起发布，但**交付方式在 0.1.10 变了**：不再是"首次启动写目录"，而是两个补丁文件（`presets/tool-plus-{standard,ptc}.patch.yml`）挂在 `package.json` 的 `dsh.bundle.patch` 数组里，各插入一条 `@deepseek-ai/dsh-agent-preset` 声明行。装上插件即声明两个预设，**启动时零写入**。
+**只发一个包**：根包 `@xiaoso/dsh-tool-plus`。仓库里的 `presets/` 目录随根包的 `files` 一起发布，但**交付方式已改**：不再是"首次启动写目录"，而是两个补丁文件（`presets/tool-plus-{standard,ptc}.patch.yml`）挂在 `package.json` 的 `dsh.bundle.patch` 数组里，各插入一条 `@deepseek-ai/dsh-agent-preset` 声明行。装上插件即声明两个预设，**启动时零写入**。
 
 | 包 | 目录 | 状态 |
 |---|---|---|
@@ -25,13 +25,13 @@ scripts/build-preset-patches.mjs            ← 基线 + 显式 delta → 生成
 presets/tool-plus-{standard,ptc}.patch.yml  ← 生成物，入库，别手改
 ```
 
-delta 只有四项，每一项都是有记录的产品决定：删 `tool-bash`/`tool-fs`/`tool-fs-search`（宿主面已由 `cordis.patch.yml` 接管，agent 面再挂一份会造成 per-session 影子实例）、强制 `tool-pwsh` 关闭、插一行文档用的 `tool-plus`（disabled）、以及身份/顺序元数据。其余**逐项等于官方基线**——官方改包名、加行、收窄默认（如 0.1.7 关掉 `tool-ralph`）都会随基线继承。
+delta 只有四项，每一项都是有记录的产品决定：删 `tool-bash`/`tool-fs`/`tool-fs-search`（宿主面已由 `cordis.patch.yml` 接管，agent 面再挂一份会造成 per-session 影子实例）、强制 `tool-pwsh` 关闭、插一行文档用的 `tool-plus`（disabled）、以及身份/顺序元数据。其余**逐项等于官方基线**——官方改包名、加行、收窄默认（如官方关掉某个默认工具）都会随基线继承。
 
-**为什么这么做**：手抄副本已经害过一次——两个预设的 `delegation` group 里挂着 `@deepseek-ai/dsh-workflow-worker-thread`，而 0.1.7 把它改名成 `dsh-workflow-ptc`，于是整份预设激活失败且无测试能发现。`tests/unit/preset-patches.spec.ts` 现在钉住"生成物 == 生成器重算结果""delta 恰好只有声明的那几项""行名集合只来自基线"。
+**为什么这么做**：手抄副本已经害过一次——两个预设的 `delegation` group 里挂着 `@deepseek-ai/dsh-workflow-worker-thread`，而上游后来把它改名成 `dsh-workflow-ptc`，于是整份预设激活失败且无测试能发现。`tests/unit/preset-patches.spec.ts` 现在钉住"生成物 == 生成器重算结果""delta 恰好只有声明的那几项""行名集合只来自基线"。
 
 **升 dsh 版本时多一步**：把 `packages/bundle/web-app/presets/{standard,ptc}.patch.yml` 从新版本重新拷进 `presets/baseline/`，跑 `pnpm presets:build`，**逐条 review diff**（官方新增/删除的行是有意义的信号，别默默继承），再跑验证链。
 
-**写路径不许自己实现**：用户改动通过 `ctx.configEditor.edit()` 写进 `<profile>/cordis.patch.yml`（按行 id `preset-<id>` 覆盖整份 `config`）。宿主的这层自带 profile 锁、HMR 串行、配置校验、原子写、失败回滚与更高优先级覆盖检查；**不要**再自己写原子写、备份文件或 profile 补丁解析——那是 0.1.7 之前的做法。
+**写路径不许自己实现**：用户改动通过 `ctx.configEditor.edit()` 写进 `<profile>/cordis.patch.yml`（按行 id `preset-<id>` 覆盖整份 `config`）。宿主的这层自带 profile 锁、HMR 串行、配置校验、原子写、失败回滚与更高优先级覆盖检查；**不要**再自己写原子写、备份文件或 profile 补丁解析——那是旧做法。
 
 ## 发布与推送（每次迭代照此走）
 
@@ -58,11 +58,7 @@ npm publish                        # 主包（含 cordis.patch.yml 与 presets/*
 gh release create tool-plus-v<ver> --title "v<ver>" --notes-file <notes 文件>
 ```
 
-版本对齐：兼容性以 `engines.dsh` 为准，写**官方口径**的一条范围——覆盖整条 minor 线，如 `>=0.2.1-0 <0.3.0-0`。两个 `-0` 都有用：宿主匹配时预发布参与，下界不带 `-0`（写成 `>=0.2.1` 或 `^0.2.1`）会把同代的 rc/alpha 挡在外面；上界不带 `-0`（官方示例的 `<0.3.0`）会把下一代的 `0.3.0-rc.1` 也放进来。宿主优先按它判，0.2.1-alpha.5 起声明了它 peer 就不参与判定；`peerDependencies` 里 15 条 `@deepseek-ai/dsh*` 同步写**同一串**、`devDependencies` 精确 pin 同版号——peer 是留给不认识新字段的老宿主与 pnpm 的镜像，两处必须逐字一致。同一 minor 线内升级**范围不动**（只挪 devDeps 的 pin）；跨线时按实际还支持的版本追加 `||` 并集或整段替换。**跟 `next` 通道**。README 只描述当前对应关系，不保留历史 dsh 版本号。
-
-宿主如何对待版本不匹配的插件：组合每个 profile 时按 `packages/boot/app-boot/src/plugin-compatibility.ts` 逐个插件核对 DSH 版本要求——**声明了 `engines.dsh` 就只比这一段**（必须是字符串、合法 SemVer 范围；空串、写坏的范围、`workspace:*` 之类判「不满足」，非字符串直接抛错），否则要求 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` 的**每一条** peer 范围都匹配运行时（预发布版本参与匹配）。不匹配的插件模块不会被导入，普通行在启动器自己那份组合里变成游离的 `disabled: true` 行（profile 的 patch 层、依赖清单与组合包列表都不改），并带 `incompatible-version`（含 `name`/`version`/`runtimeVersion`/`requirements`）；CLI 会打印 `dsh plugin --profile <profile> allow-version <pkg>@<ver> --dsh-version <ver> --accept-risk` 这条豁免命令（`version-exemptions` 查看、`revoke-version` 撤销，只对精确的包@版本+运行时版本生效）。症状仍是「插件工具突然消失、补丁层不生效」而不是启动失败；排查时看 `<profile>/cordis.yml`（合成结果）里有没有自己的行、自己的 `disabled` 有没有生效。
-
-发布标签：dsh npm `latest` 与 `next` 经常错开，桌面端 app 自带的 dsh 还可能领先两者。pin 到非 `latest` 版本的插件版本只能发 `next`/`beta`——发 `latest` 会让所有默认安装的用户失去这个插件（0.2.1 起宿主会显式报 `incompatible-version` 并提示豁免命令，不再是无声跳过）。
+发布标签：dsh npm `latest` 与 `next` 经常错开，桌面端 app 自带的 dsh 还可能领先两者。pin 到非 `latest` 版本的插件版本只能发 `next`/`beta`——发 `latest` 会让所有默认安装的用户失去这个插件（较新的宿主会显式报 `incompatible-version` 并提示豁免命令，不再是无声跳过）。
 
 ## 端到端测试（真宿主 + 假供应商）
 
@@ -112,12 +108,12 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 
 产物落在 `e2e/.e2e/`（整体 gitignore，每次 run 重写）：`results/<用例>-<hash>/attempt-1/{screenshots,video,trace.md}` 加全局 `report.json` 与被测应用自己的 `logs/app.log`。截图标签一律用 ASCII——中文标签会被产物命名规则折成一串下划线，认不出是哪张。另用配置里的 `artifacts.store` 把**每个产物同时写一份**到 `docs/e2e-evidence/`（同样 gitignore，路径与 `.e2e` 下一一对应）：`.e2e/` 那份每次重写，这份是留给人回看的稳定副本。
 
-**分工**（别以为一条通道能全替）：整页长转录（拉高视口再拍）、轨迹页、录像、页面报错计失败都在这条通道；**宿主进程退出码**与 **headless 宿主形态**只在 `pnpm e2e` 里。老的 `pnpm e2e:web` 已于 2026-10-13 退役，它的能力（整页截图、轨迹页、欢迎层兜底、显式切预设、页面报错计失败、稳定产物目录）已全部被这条通道吸收。
+**分工**（别以为一条通道能全替）：整页长转录（拉高视口再拍）、轨迹页、录像、页面报错计失败都在这条通道；**宿主进程退出码**与 **headless 宿主形态**只在 `pnpm e2e` 里。老的 `pnpm e2e:web` 已退役，它的能力（整页截图、轨迹页、欢迎层兜底、显式切预设、页面报错计失败、稳定产物目录）已全部被这条通道吸收。
 
 ## 改动守则
 
-- `refs/oh-my-pi/` 是干净的上游对照克隆，只读不动；当前 HEAD 已升至 `v18.1.17`（旧基线 `v17.3.5` tag 保留可回溯）。**hashline 不再 vendored**：上游 18.x 删除 TS `packages/hashline`、把编辑引擎重写为 Rust `crates/pi-edit`（经 `@oh-my-pi/pi-natives` 暴露），我们只保留薄适配层 `src/tools/hashline/native/`（`diff-preview.ts` 为旧 TS 逐字移植）；`_raw_omp/` 等其余移植件的逐字审计基准是 `v17.3.5` tag，其余工具按 refs 当前 HEAD 对照
+- `refs/oh-my-pi/` 是干净的上游对照克隆，只读不动；需要对照某个版本时单独取 tag（`git fetch --depth=1 origin refs/tags/<tag>:refs/tags/<tag>`），用 `git show <tag>:<path>` 读源文件，勿 checkout——依赖 pin 以 `package.json` 为准。**hashline 不再 vendored**：上游删除了 TS `packages/hashline`、把编辑引擎重写为 Rust `crates/pi-edit`（经 `@oh-my-pi/pi-natives` 暴露），我们只保留薄适配层 `src/tools/hashline/native/`（`diff-preview.ts` 为旧 TS 逐字移植）；`_raw_omp/` 等其余移植件的逐字审计基准是其来源 tag（历史结论见 `docs/archive/second-impl-audit.md`），其余工具按 refs 当前 checkout 对照
 - **引擎拥有序列化，宿主只落字节**：`EditWriteRequest.content` 已是最终字节序列（notebook 的 nbformat JSON 由 Rust `files.rs::persist` 生成），`native/writer.ts` 必须逐字落盘；**不要**在写盘腿上再调 `serializeEditFileText`（那是旧 TS 引擎的契约，会把引擎的 JSON 当可编辑文本再解析，导致每次 `.ipynb` 编辑报 `Invalid notebook editable representation`）
 - **notebook 只留一套解码器**：解码走引擎自身——`omp/edit/notebook.ts::readEditableNotebookText` 委托 `pi-natives` 的 `notebookToEditableText`（上游 `tools/read.ts` 同款调用）。read 用它铸 hashline tag、引擎用它校验活文件，两边**同一份代码**，一致性是结构性的而非手工维护的；**不要**再写第二套渲染器（曾经的 TS 渲染器已删）。编码半（`readNotebookDocument` / `applyNotebookEditableText` / `serializeEditedNotebookText`）仍留在 TS，因为 native 未导出编码器、而 DSH 自有的 patch/replace/write 三条路径还需要它——把这三条也迁到 Rust 引擎后即可整体删除
-- pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删；消费者侧另加启动期自愈入口 `lib/pi-natives-bootstrap.mjs`（在 import pi-natives 前执行 patch，写入走 copy-on-patch 断硬链接，避免 pnpm store 跨 profile 串改），postinstall 保留为安装时兜底
+- pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删；消费者侧另加启动期自愈入口 `lib/pi-natives-bootstrap.mjs`（在 import pi-natives 前执行 patch，写入走 copy-on-patch 断硬链接，避免 pnpm store 跨 profile 串改），postinstall 保留为安装时兜底。**跟随上游升级时要核对这份补丁**：确认 `patches/@oh-my-pi__pi-natives.patch` 仍能 apply（对一下新包 `native/loader-state.js` 里还有没有 `import.meta.dir`）；上游自己改成 `import.meta.dirname` 后补丁会失效，届时删补丁文件、只留 postinstall/bootstrap 的幂等判断
 - 改动源码后必须跑完第 2 步验证链再交付

@@ -51,7 +51,6 @@ import type {
 	EditMatcherEntry,
 	EditPolicy,
 	EditPreviewBatch,
-	EditVaultRoot,
 	EditWriteRequest,
 	EditWriteResponse,
 } from "@oh-my-pi/pi-natives";
@@ -240,7 +239,6 @@ export type {
 	EditMatcherEntry,
 	EditPolicy,
 	EditPreviewBatch,
-	EditVaultRoot,
 	EditWriteRequest,
 	EditWriteResponse,
 	LineEnding,

@@ -174,13 +174,13 @@ describe("hashline section headers", () => {
 			ws.snapshot("src/a.ts", FILE);
 
 			const three = await applyPatch(ws, "[src/a.ts#1A2]\nPUT 1-1:\n+after");
-			expectError(three, /Input header must be/);
+			expectError(three, /the header needs this file's current tag/);
 
 			const nonHex = await applyPatch(ws, "[src/a.ts#1A2G]\nPUT 1-1:\n+after");
-			expectError(nonHex, /Input header must be/);
+			expectError(nonHex, /the header needs this file's current tag/);
 
 			const five = await applyPatch(ws, "[src/a.ts#1A2B5]\nPUT 1-1:\n+after");
-			expectError(five, /Input header must be/);
+			expectError(five, /the header needs this file's current tag/);
 		});
 	});
 
@@ -190,7 +190,7 @@ describe("hashline section headers", () => {
 			ws.snapshot("src/a.ts", FILE);
 
 			const result = await applyPatch(ws, "[Update File: src/a.ts#1A2G]\nPUT 1-1:\n+after");
-			expectError(result, /Input header must be/);
+			expectError(result, /the header needs this file's current tag/);
 		});
 	});
 

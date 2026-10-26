@@ -280,7 +280,7 @@ describe("Patcher mandatory snapshot tag policy", () => {
 			ws.write(PATH, "a\nb\n");
 
 			const result = await applyPatch(ws, `[${PATH}]\nPUT >$:\n+c`);
-			expectError(result, /Missing hashline snapshot tag.*use the write tool/s);
+			expectError(result, /the header needs this file's current tag/);
 			expectFile(ws, PATH, "a\nb\n");
 			expect(result.requests.length).toBe(0);
 		});
@@ -291,7 +291,7 @@ describe("Patcher mandatory snapshot tag policy", () => {
 			ws.write(PATH, "a\nb\n");
 
 			const result = await applyPatch(ws, `[${PATH}]\nPUT 1-1:\n+X`);
-			expectError(result, /Missing hashline snapshot tag/);
+			expectError(result, /the header needs this file's current tag/);
 			expectFile(ws, PATH, "a\nb\n");
 		});
 	});
@@ -451,7 +451,7 @@ describe("Patcher seen-line provenance", () => {
 		});
 	});
 
-	it("column-clips wide revealed lines, keeps the merge gate closed, and stays anchored across retries", async () => {
+	it("refuses wide unseen anchors and routes the retry to a :raw re-read", async () => {
 		await withWorkspace("patcher-reveal-clip", async ws => {
 			// Minified-bundle-style single wide line at anchor 2. Anchor 3 is a
 			// short line so we can see the width truncation applied only where
@@ -464,14 +464,10 @@ describe("Patcher seen-line provenance", () => {
 				applyPatch(ws, `${ws.header(PATH, tag)}\nPUT 2-3:\n+X\n+Y`, { policy: { enforceSeenLines: true } });
 
 			const first = await attempt();
-			expectError(first, /never displayed \(it showed/);
-			expect(first.outcome.text).toContain("Preview of the actual file content at the first 2 unseen line(s)");
-			// Line 2 is clipped at 512 chars + ellipsis; the full 4KB never leaks
-			// into the error preview.
-			expect(first.outcome.text).toMatch(/2:a{512}…/);
+			expectError(first, /not fully displayed/);
+			expect(first.outcome.text).toContain("a.ts:2-3:raw");
+			// The 4KB line never leaks into the message.
 			expect(first.outcome.text).not.toContain("a".repeat(513));
-			// Short line surfaces verbatim.
-			expect(first.outcome.text).toContain("3:l3");
 			// Guidance routes to a range re-read.
 			expect(first.outcome.text).toMatch(new RegExp(`${PATH}:2-3`));
 			expectFile(ws, PATH, wideContent);
@@ -481,10 +477,8 @@ describe("Patcher seen-line provenance", () => {
 			// merge into seenLines, otherwise the model would land the edit
 			// having only seen the first 512 chars of a >4KB line.
 			const retry = await attempt();
-			expectError(retry, /never displayed \(it showed/);
-			expect(retry.outcome.text).toContain("Preview of the actual file content at the first 2 unseen line(s)");
-			expect(retry.outcome.text).toMatch(/2:a{512}…/);
-			expect(retry.outcome.text).not.toContain("a".repeat(513));
+			expectError(retry, /not fully displayed/);
+			expect(retry.outcome.text).toContain("a.ts:2-3:raw");
 			expectFile(ws, PATH, wideContent);
 		});
 	});

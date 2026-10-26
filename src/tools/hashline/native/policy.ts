@@ -11,6 +11,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { DEFAULT_FUZZY_THRESHOLD } from "../../omp/edit/modes/replace.ts";
+import { DEFAULT_MAX_COLUMN } from "../../omp/session/streaming-output.ts";
+import { resolveOutputMaxColumns } from "../../omp/tools/output-meta.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import type { EditPolicy } from "./index.ts";
 
@@ -69,6 +71,17 @@ export function canonicalCwd(cwd: string): string {
 }
 
 /**
+ * Mirror upstream `displayMaxColumns`: read's per-line cap bounded by the
+ * shared `DEFAULT_MAX_COLUMN`, falling back to the constant when read never
+ * cuts lines. The engine uses it to decide whether a hashline anchor that was
+ * never displayed by `read` can still be trusted on a long line.
+ */
+function resolveMaxColumns(session: ToolSession): number {
+	const readMaxColumns = resolveOutputMaxColumns(session.settings);
+	return readMaxColumns > 0 ? Math.min(readMaxColumns, DEFAULT_MAX_COLUMN) : DEFAULT_MAX_COLUMN;
+}
+
+/**
  * Build the engine policy for one `hashline` tool call.
  *
  * Field sources (all reads go through the DSH settings facade, which maps the
@@ -104,31 +117,30 @@ export function canonicalCwd(cwd: string): string {
  *                         documents `enforcePlanModeWrite` as a deliberate
  *                         no-op), and no DSH session installs
  *                         `getPlanModeState`, so this resolves to `false`.
- * - `localSandboxRoot`  — upstream resolves the `local://` root. DSH has no
- *                         `local://` write sandbox: the edit-path guard
- *                         (`edit/adapter/tools/plan-mode-guard.ts`) hardcodes
- *                         `targetsLocalSandbox → false` and documents plan
- *                         mode as a hint layer, so `undefined` reproduces the
- *                         old engine's `allowTagPathRecovery` exactly (cwd
- *                         only). **If DSH ever wires a real sandbox root, it
- *                         must go through {@link canonicalCwd} too** — the
- *                         engine's containment check is byte-wise on
- *                         `localSandboxRoot` just like on `cwd`.
- *                         Consequence (D-3, awaiting the Lead's ruling): the
- *                         vendored engine's `allowTagPathRecovery` override —
- *                         which let a bare/mis-typed authored path rebind onto
- *                         the file its snapshot tag uniquely names — has no
- *                         counterpart here. The native engine now decides tag
- *                         path recovery from `cwd` / `localSandboxRoot` /
- *                         `vaultRoots` / `homeDir` alone, so a bare filename
- *                         that needs rebinding fails with native's own error
- *                         rather than silently landing on a recovered path.
- * - `vaultRoots`        — upstream `isVaultEnabled() ? cachedVaultRoots() : …`.
- *                         DSH has no `vault://` protocol → `undefined`.
+ * - `maxColumns`        — upstream `displayMaxColumns(settings)`: read's
+ *                         `tools.outputMaxColumns` bounded by
+ *                         `DEFAULT_MAX_COLUMN` (512), or 512 when read never
+ *                         cuts lines. DSH resolves the same setting through
+ *                         `resolveOutputMaxColumns`, so the mapping stays
+ *                         identical; the engine uses this cap to decide when a
+ *                         hashline anchor on a long line needs recorded read
+ *                         provenance.
+ * - `urlSchemes` / `urlAliasSchemes` — upstream lists the internal-URL
+ *                         router specs (and the schemes whose `scheme:/x`
+ *                         spelling aliases `scheme://x`). DSH wires no
+ *                         internal-URL router into the edit path and installs
+ *                         no `resolveUrl` callback, so both stay empty: the
+ *                         engine only ever sees plain paths here.
+ * - `planWritableRoots` — upstream `router.sandboxRoots(context)`: plain-path
+ *                         roots writable while plan mode is active. DSH's
+ *                         plan mode is a hint layer with no sandbox roots, so
+ *                         this stays empty while `planActive` still carries
+ *                         the hint.
  * - `homeDir`           — `os.homedir()` (upstream :571); the engine uses it
  *                         to recognise and refuse home-directory escapes.
  * - `rawInput`          — see {@link HashlinePolicyOptions.rawInput}.
  */
+
 export function buildHashlineEditPolicy(
 	session: ToolSession,
 	options: HashlinePolicyOptions = {},
@@ -139,10 +151,12 @@ export function buildHashlineEditPolicy(
 		allowFuzzy: session.settings.get("edit.fuzzyMatch") !== false,
 		fuzzyThreshold: resolveFuzzyThreshold(session.settings.get("edit.fuzzyThreshold")),
 		enforceSeenLines: session.settings.get("edit.enforceSeenLines") === true,
+		maxColumns: resolveMaxColumns(session),
 		blockAutoGenerated: session.settings.get("edit.blockAutoGenerated") !== false,
 		planActive: session.getPlanModeState?.()?.enabled ?? false,
-		localSandboxRoot: undefined,
-		vaultRoots: undefined,
+		urlSchemes: [],
+		urlAliasSchemes: [],
+		planWritableRoots: [],
 		homeDir: os.homedir(),
 		rawInput: options.rawInput ?? false,
 	};
