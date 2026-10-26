@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.17-beta.1] - 2026-10-26
+
+> 测试版：修正 grep 对显式大文件的误导提示，请安装 beta 通道验证。
+
+### Fixed
+
+- **grep 不再误报「只搜索了前 4 MB」**：显式指定一个大于 4 MB 的文件时，搜索本身已覆盖完整文件，结果末尾却仍附带「只搜索了前 4 MB」的提示。现在该提示已移除，4 MB 之后的内容正常返回匹配。
+
+[对比 0.1.17-beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.17-beta.0...tool-plus-v0.1.17-beta.1)
+
 ## [0.1.17-beta.0] - 2026-10-26
 
 > 测试版：内置工具链跟随上游升级，请安装 beta 通道验证。
