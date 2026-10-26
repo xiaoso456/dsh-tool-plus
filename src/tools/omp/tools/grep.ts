@@ -79,11 +79,11 @@ export const SINGLE_FILE_MATCHES = 200;
  * (DEFAULT_FILE_LIMIT files × MULTI_FILE_PER_FILE_MATCHES matches) plus
  * pagination headroom so the caller can see total file count. */
 const INTERNAL_TOTAL_CAP = 2000;
-/** Mirrors `MAX_FILE_BYTES` in `crates/pi-natives/src/grep.rs`. Native grep
- * searches only the first `MAX_FILE_BYTES` of a larger file (a leading mmap
- * window) and drops the rest; matches beyond the window are not returned. We
- * surface a partial-coverage note when the caller explicitly targeted such a
- * file so they know matches past the window are not shown. */
+/** Size budget mirroring native grep's per-file window (4 MiB). Current
+ * pi-natives scans an explicitly targeted file in full, but oversized files
+ * met during a recursive walk are still searched only through a leading
+ * window; virtual-resource chunking and range-fetch caps keep using this
+ * value as a conservative bound. */
 const NATIVE_GREP_MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** Wall-clock budget for a single native grep invocation. Without it, an
  * aborted or runaway search (huge tree, network mount) keeps burning CPU on
@@ -382,11 +382,11 @@ function findLineIndex(starts: readonly number[], offset: number): number {
 }
 
 /**
- * JS-`RegExp` fallback returning matched line indexes for a virtual resource too
- * large for native grep (>`NATIVE_GREP_MAX_FILE_BYTES`, which native grep silently
- * skips). Mirrors the native probe's output (sorted, deduped indexes) so
- * `buildVirtualMatches` rebuilds context/ranges identically; only the regex dialect
- * differs for these oversized inputs (the pre-RE2-parity behavior).
+ * JS-`RegExp` fallback returning matched line indexes for a virtual resource
+ * that cannot be probed natively in chunks (multiline input, or a single line
+ * larger than the chunk budget). Mirrors the native probe's output (sorted,
+ * deduped indexes) so `buildVirtualMatches` rebuilds context/ranges identically;
+ * only the regex dialect differs for these inputs (the pre-RE2-parity behavior).
  */
 function jsMatchedLineIndexes(
 	content: string,
@@ -627,10 +627,10 @@ async function searchVirtualResources(
 			const lines = multiline ? indexSearchLines(resource.content).lines : splitSearchLines(resource.content);
 			let matchedIndexes: number[];
 			if (Buffer.byteLength(resource.content, "utf8") > NATIVE_GREP_MAX_FILE_BYTES) {
-				// Native grep skips files above its 4 MiB cap. Search oversized content in
-				// line-boundary chunks so line-mode keeps RE2 parity; multiline can't be chunked
-				// without missing matches that span a chunk boundary, so it falls back to JS
-				// (dialect-as-JS only for these oversized multiline inputs).
+				// Chunk oversized virtual content so each native call stays within the
+				// conservative per-call budget; line-mode keeps RE2 parity. Multiline can't
+				// be chunked without missing matches that span a chunk boundary, so it falls
+				// back to JS (dialect-as-JS only for these oversized multiline inputs).
 				matchedIndexes = (
 					multiline
 						? jsMatchedLineIndexes(resource.content, lines, pattern, ignoreCase, true)
@@ -1344,40 +1344,11 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					: "";
 				const { record: recordFile, list: fileList } = createFileRecorder();
 				const fileMatchCounts = new Map<string, number>();
-				// Detect explicit file targets that exceed the native grep size cap.
-				// Native searches only their first NATIVE_GREP_MAX_FILE_BYTES; without
-				// this note the caller might miss that matches beyond the window
-				// (or "no matches") reflect partial coverage, not the whole file.
-				const oversizedNote = await (async (): Promise<string | undefined> => {
-					const explicitFileTargets: string[] = [];
-					if (exactFilePaths) {
-						explicitFileTargets.push(...exactFilePaths);
-					} else if (searchablePaths.length > 0 && !isDirectory && !multiTargets) {
-						explicitFileTargets.push(searchPath);
-					}
-					if (explicitFileTargets.length === 0) return undefined;
-					const oversized: string[] = [];
-					await Promise.all(
-						explicitFileTargets.map(async target => {
-							try {
-								const st = await stat(target);
-								if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
-									oversized.push(path.relative(this.session.cwd, target) || target);
-								}
-							} catch {
-								// Stat failures here are surfaced by other code paths.
-							}
-						}),
-					);
-					if (oversized.length === 0) return undefined;
-					const limitMb = Math.floor(NATIVE_GREP_MAX_FILE_BYTES / (1024 * 1024));
-					return `Searched only the first ${limitMb}MB of large files (matches past the ${limitMb}MB window are not shown; use \`read\` for the rest): ${oversized.join(", ")}`;
-				})();
-				// Directory/multi-target scopes: native counts files it could not map
-				// even a prefix of (rare mmap failures), but cannot name them.
+				// Directory/multi-target scopes: native reports files skipped because
+				// they exceed its size window and cannot name them; point at `read`.
 				const oversizedScanNote =
-					!oversizedNote && skippedOversizedCount > 0
-						? `Skipped ${skippedOversizedCount} unreadable large file(s); target them directly with \`read\``
+					skippedOversizedCount > 0
+						? `Skipped ${skippedOversizedCount} large file(s) beyond native grep's size window; use \`read\` for their contents`
 						: undefined;
 				const archiveNote =
 					archiveUnreadable.length > 0
@@ -1390,7 +1361,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const missingPathsNote =
 					missingPathsForNote.length > 0 ? `Skipped missing paths: ${missingPathsForNote.join(", ")}` : undefined;
 				const warningNote =
-					[missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
+					[missingPathsNote, archiveNote, oversizedScanNote]
 						.filter((s): s is string => Boolean(s))
 						.join("\n") || undefined;
 				if (selectedMatches.length === 0) {
