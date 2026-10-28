@@ -12,8 +12,9 @@
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
 //! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden -RE/--regex
-//! -k/--dos-names -MM/--must-match -v (version without an archive; the
-//! operation runs when an archive is present, without extra verbose detail).
+//! -k/--dos-names -MM/--must-match -so/--show-options -h2 -v (version without
+//! an archive; the operation runs when an archive is present, without extra
+//! verbose detail).
 //! not implemented: -N notes; -TT external test command; -db/-dc/-dd/-dg/-ds/
 //! -du/-dv and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
@@ -33,7 +34,7 @@ use std::{
 
 use brush_core::{ShellExtensions, builtins::Registration};
 use chrono::{DateTime, Local, NaiveDate, Utc};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command, CommandFactory};
 use zip::CompressionMethod;
 
 use crate::host::{Host, Utility, matches_parser, util};
@@ -69,6 +70,8 @@ impl Utility for Zip {
 				"-DF" => Some("--difference"),
 				"-RE" => Some("--regex"),
 				"-MM" => Some("--must-match"),
+				"-so" => Some("--show-options"),
+				"-h2" => Some("--help"),
 				"-sf" => Some("--show-files"),
 				_ => None,
 			};
@@ -169,6 +172,12 @@ fn app() -> Command {
 				.long("dos-names")
 				.action(ArgAction::SetTrue)
 				.help("convert names to MS-DOS 8.3 form"),
+		)
+		.arg(
+			Arg::new("show-options")
+				.long("show-options")
+				.action(ArgAction::SetTrue)
+				.help("show command options and exit"),
 		)
 		.arg(
 			Arg::new("must-match")
@@ -458,6 +467,11 @@ pub(crate) fn zip_builtin<SE: ShellExtensions>() -> Registration<SE> {
 }
 
 fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
+	if matches.get_flag("show-options") {
+		let help = Zip::command().render_help().to_string();
+		let _ = host.stdout_writer().write_all(help.as_bytes());
+		return 0;
+	}
 	if matches.get_flag("version") && matches.get_one::<String>("archive").is_none() {
 		let _ = writeln!(host.stdout_writer(), "zip 3.0 (pi-builtins)");
 		return 0;
@@ -1245,6 +1259,20 @@ mod tests {
 		let (code, _) =
 			run_util::<Zip>(&["-Z", "bzip2", "out.zip", "hello.txt"], "", fixture.path());
 		assert_eq!(code, 16);
+	}
+
+	#[test]
+	fn so_prints_the_option_list() {
+		let (code, capture) = run_util::<Zip>(&["-so"], "", "/");
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("Usage:"), "{}", capture.out());
+	}
+
+	#[test]
+	fn h2_prints_help() {
+		let (code, capture) = run_util::<Zip>(&["-h2"], "", "/");
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("Usage:"), "{}", capture.out());
 	}
 
 	#[test]
