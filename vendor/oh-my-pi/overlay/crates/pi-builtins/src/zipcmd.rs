@@ -82,12 +82,28 @@ impl Utility for Zip {
 				"-AS" => Some("--archive-set"),
 				"-AC" => Some("--archive-clear"),
 				"-TT" => Some("--test-command"),
+				"-db" => Some("--display-bytes"),
+				"-dc" => Some("--display-counts"),
+				"-dd" => Some("--display-dots"),
+				"-dg" => Some("--display-globaldots"),
+				"-du" => Some("--display-usize"),
+				"-dv" => Some("--display-volume"),
+				"-la" => Some("--log-append"),
+				"-li" => Some("--log-info"),
+				"-lf" => Some("--log-file"),
+				"-ds" => Some("--dot-size"),
 				_ => None,
 			};
 			if let Some(replacement) = replacement {
 				rewritten.push(OsString::from(replacement));
 			} else if let Some(rest) = text.strip_prefix("-tt").filter(|rest| !rest.is_empty()) {
 				rewritten.push(OsString::from("--before-date"));
+				rewritten.push(OsString::from(rest.strip_prefix('=').unwrap_or(rest)));
+			} else if let Some(rest) = text.strip_prefix("-ds").filter(|rest| !rest.is_empty()) {
+				rewritten.push(OsString::from("--dot-size"));
+				rewritten.push(OsString::from(rest.strip_prefix('=').unwrap_or(rest)));
+			} else if let Some(rest) = text.strip_prefix("-lf").filter(|rest| !rest.is_empty()) {
+				rewritten.push(OsString::from("--log-file"));
 				rewritten.push(OsString::from(rest.strip_prefix('=').unwrap_or(rest)));
 			} else {
 				rewritten.push(argument);
@@ -181,6 +197,68 @@ fn app() -> Command {
 				.long("dos-names")
 				.action(ArgAction::SetTrue)
 				.help("convert names to MS-DOS 8.3 form"),
+		)
+		.arg(
+			Arg::new("display-bytes")
+				.long("display-bytes")
+				.action(ArgAction::SetTrue)
+				.help("display running byte counts"),
+		)
+		.arg(
+			Arg::new("display-counts")
+				.long("display-counts")
+				.action(ArgAction::SetTrue)
+				.help("display running entry counts"),
+		)
+		.arg(
+			Arg::new("display-dots")
+				.long("display-dots")
+				.action(ArgAction::SetTrue)
+				.help("display a dot for each entry"),
+		)
+		.arg(
+			Arg::new("display-globaldots")
+				.long("display-globaldots")
+				.action(ArgAction::SetTrue)
+				.help("display archive-wide progress dots"),
+		)
+		.arg(
+			Arg::new("dot-size")
+				.long("dot-size")
+				.value_name("SIZE")
+				.action(ArgAction::Set)
+				.help("dot interval (accepted for compatibility)"),
+		)
+		.arg(
+			Arg::new("display-usize")
+				.long("display-usize")
+				.action(ArgAction::SetTrue)
+				.help("display each entry's uncompressed size"),
+		)
+		.arg(
+			Arg::new("display-volume")
+				.long("display-volume")
+				.action(ArgAction::SetTrue)
+				.help("display volume numbers"),
+		)
+		.arg(
+			Arg::new("log-file")
+				.long("log-file")
+				.value_name("PATH")
+				.action(ArgAction::Set)
+				.help("write progress to PATH"),
+		)
+		.arg(
+			Arg::new("log-append")
+				.long("log-append")
+				.action(ArgAction::SetTrue)
+				.help("append to the log file"),
+		)
+		.arg(
+			Arg::new("log-info")
+				.long("log-info")
+				.action(ArgAction::SetTrue)
+				.help("include informational messages in the log"),
 		)
 		.arg(
 			Arg::new("test-command")
@@ -579,6 +657,16 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		archive_set: matches.get_flag("archive-set"),
 		archive_clear: matches.get_flag("archive-clear"),
 		test_command: matches.get_one::<String>("test-command").cloned(),
+		display_bytes: matches.get_flag("display-bytes"),
+		display_counts: matches.get_flag("display-counts"),
+		display_dots: matches.get_flag("display-dots") || matches.get_flag("display-globaldots"),
+		display_usize: matches.get_flag("display-usize"),
+		display_volume: matches.get_flag("display-volume"),
+		log_file: matches
+			.get_one::<String>("log-file")
+			.map(|path| host.resolve(Path::new(path))),
+		log_append: matches.get_flag("log-append"),
+		log_info: matches.get_flag("log-info"),
 		preserve_paths: matches.get_flag("preserve-paths"),
 		absolute_paths: matches.get_flag("absolute-path"),
 		system_hidden: matches.get_flag("system-hidden"),
@@ -607,6 +695,13 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			.map(|path| host.resolve(Path::new(path))),
 	};
 
+	if let Some(path) = config.log_file.as_deref() {
+		if !config.log_append {
+			if let Err(error) = host.fs().create(path) {
+				report(host, &format!("{}: {error}", path.display()));
+			}
+		}
+	}
 	if matches!(config.operation, Operation::Copy | Operation::Difference)
 		&& config.out.is_none()
 	{
@@ -722,6 +817,14 @@ struct Config {
 	archive_set: bool,
 	archive_clear: bool,
 	test_command: Option<String>,
+	display_bytes: bool,
+	display_counts: bool,
+	display_dots: bool,
+	display_usize: bool,
+	display_volume: bool,
+	log_file: Option<PathBuf>,
+	log_append: bool,
+	log_info: bool,
 	preserve_paths: bool,
 	absolute_paths: bool,
 	system_hidden: bool,
@@ -1676,6 +1779,36 @@ mod tests {
 		let (code, _) = run_util::<Zip>(&["-AS", "out.zip", "hello.txt"], "", fixture.path());
 		assert_eq!(code, 12);
 		assert!(!fixture.path().join("out.zip").exists());
+	}
+
+	#[test]
+	fn du_displays_entry_size() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-du", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("[size: 5]"), "{}", capture.out());
+	}
+
+	#[test]
+	fn lf_writes_a_progress_log() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-lf", "log.txt", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(fs::read_to_string(fixture.path().join("log.txt"))
+			.unwrap()
+			.contains("adding: hello.txt"));
 	}
 
 	#[test]

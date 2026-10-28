@@ -5,7 +5,7 @@ use std::{
 	time::SystemTime,
 };
 
-use pi_vfs::{BlockingFs, File, FileTime, Metadata, TempOptions};
+use pi_vfs::{BlockingFs, File, FileTime, Metadata, OpenOptions, TempOptions};
 use regex::RegexBuilder;
 use zip::{AesMode, DateTime, ZipWriter, write::{FileOptions, FullFileOptions}};
 
@@ -313,7 +313,7 @@ pub(super) fn write_entry(
 			target,
 			options(&entry.metadata, &entry.name, config, true, entry.comment.as_deref()),
 		)?;
-		progress(host, config, &entry.name);
+		progress(host, config, &entry.name, entry.metadata.len());
 		return Ok(());
 	}
 
@@ -322,7 +322,7 @@ pub(super) fn write_entry(
 			&entry.name,
 			options(&entry.metadata, &entry.name, config, false, entry.comment.as_deref()),
 		)?;
-		progress(host, config, &entry.name);
+		progress(host, config, &entry.name, entry.metadata.len());
 		return Ok(());
 	}
 
@@ -335,13 +335,40 @@ pub(super) fn write_entry(
 		Some(mode) => io::copy(&mut super::line_endings::LineEndingReader::new(&file, mode), writer)?,
 		None => io::copy(&mut &file, writer)?,
 	};
-	progress(host, config, &entry.name);
+	progress(host, config, &entry.name, entry.metadata.len());
 	Ok(())
 }
 
-fn progress(host: &mut Host, config: &Config, name: &str) {
-	if !config.quiet {
-		let _ = writeln!(host.stdout_writer(), "adding: {name}");
+fn progress(host: &mut Host, config: &Config, name: &str, size: u64) {
+	if config.quiet {
+		return;
+	}
+	let mut line = format!("adding: {name}");
+	if config.display_usize {
+		line.push_str(&format!(" [size: {size}]"));
+	}
+	if config.display_bytes {
+		line.push_str(&format!(" [bytes: {size}]"));
+	}
+	if config.display_counts {
+		line.push_str(" [entry]");
+	}
+	if config.display_volume {
+		line.push_str(" [volume 1]");
+	}
+	if config.log_info {
+		line.push_str(" [info]");
+	}
+	let _ = writeln!(host.stdout_writer(), "{line}");
+	if config.display_dots {
+		let _ = host.stdout_writer().write_all(b".");
+	}
+	if let Some(path) = config.log_file.as_deref() {
+		let mut options = OpenOptions::new();
+		options.write(true).create(true).append(true);
+		if let Ok(mut file) = host.fs().open_with(path, &options) {
+			let _ = writeln!(file, "{line}");
+		}
 	}
 }
 
