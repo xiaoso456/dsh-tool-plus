@@ -13,10 +13,11 @@
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
 //! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden -RE/--regex
 //! -k/--dos-names -MM/--must-match -so/--show-options -h2 -su/-sU -fz/-fz-
-//! -v (version without an archive; the operation runs when an archive is
-//! present, without extra verbose detail).
-//! not implemented: -N notes; -TT external test command; -db/-dc/-dd/-dg/-ds/
-//! -du/-dv and -lf/-la/-li progress/logging.
+//! -AS/--archive-set -AC/--archive-clear -TT/--test-command -v (version
+//! without an archive; the operation runs when an archive is present, without
+//! extra verbose detail).
+//! not implemented: -N notes; -FI FIFO; -db/-dc/-dd/-dg/-ds/-du/-dv and
+//! -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
@@ -37,7 +38,7 @@ use chrono::{DateTime, Local, NaiveDate, Utc};
 use clap::{Arg, ArgAction, ArgMatches, Command, CommandFactory};
 use zip::CompressionMethod;
 
-use crate::host::{Host, Utility, matches_parser, util};
+use crate::host::{Host, ShellCommand, Utility, matches_parser, util};
 
 mod entry;
 mod line_endings;
@@ -56,6 +57,7 @@ matches_parser!(Zip, app);
 impl Utility for Zip {
 	const NAME: &'static str = "zip";
 	const USAGE_ERROR: u8 = 16;
+	const RUNS_COMMANDS: bool = true;
 
 	fn rewrite_argv(argv: Vec<OsString>) -> Result<Vec<OsString>, String> {
 		let mut rewritten = Vec::with_capacity(argv.len());
@@ -77,6 +79,9 @@ impl Utility for Zip {
 				"-sU" => Some("--show-files"),
 				"-fz" => Some("--zip64"),
 				"-fz-" => Some("--no-zip64"),
+				"-AS" => Some("--archive-set"),
+				"-AC" => Some("--archive-clear"),
+				"-TT" => Some("--test-command"),
 				_ => None,
 			};
 			if let Some(replacement) = replacement {
@@ -176,6 +181,25 @@ fn app() -> Command {
 				.long("dos-names")
 				.action(ArgAction::SetTrue)
 				.help("convert names to MS-DOS 8.3 form"),
+		)
+		.arg(
+			Arg::new("test-command")
+				.long("test-command")
+				.value_name("CMD")
+				.action(ArgAction::Set)
+				.help("run CMD against the archive after writing it"),
+		)
+		.arg(
+			Arg::new("archive-set")
+				.long("archive-set")
+				.action(ArgAction::SetTrue)
+				.help("only include Windows files with the DOS archive bit set"),
+		)
+		.arg(
+			Arg::new("archive-clear")
+				.long("archive-clear")
+				.action(ArgAction::SetTrue)
+				.help("clear the DOS archive bit on files after archiving"),
 		)
 		.arg(
 			Arg::new("zip64")
@@ -552,6 +576,9 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		} else {
 			None
 		},
+		archive_set: matches.get_flag("archive-set"),
+		archive_clear: matches.get_flag("archive-clear"),
+		test_command: matches.get_one::<String>("test-command").cloned(),
 		preserve_paths: matches.get_flag("preserve-paths"),
 		absolute_paths: matches.get_flag("absolute-path"),
 		system_hidden: matches.get_flag("system-hidden"),
@@ -605,6 +632,17 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 				return NOTHING_TO_DO;
 			}
 			let status = entry::create_archive(host, &archive, &entries, &config);
+			if status == 0 && config.archive_clear {
+				entry::clear_archive_bits(host, &entries);
+			}
+			if status == 0 {
+				if let Some(command) = config.test_command.as_deref() {
+					let test = run_test_command(host, &config.archive, command);
+					if test != 0 {
+						return test;
+					}
+				}
+			}
 			if status == 0 && config.latest_time {
 				entry::set_archive_time(host, &config.archive, &entries);
 			}
@@ -614,7 +652,16 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			if failed && status == 0 { FAILURE } else { status }
 		},
 		Operation::Update | Operation::Freshen | Operation::Grow | Operation::FileSync => {
-			update::rewrite(host, &archive, &inputs, &config)
+			let status = update::rewrite(host, &archive, &inputs, &config);
+			if status == 0 {
+				if let Some(command) = config.test_command.as_deref() {
+					let test = run_test_command(host, &config.archive, command);
+					if test != 0 {
+						return test;
+					}
+				}
+			}
+			status
 		},
 		Operation::Delete => update::delete(host, &archive, &inputs, &config),
 		Operation::Copy => update::copy(host, &archive, &inputs, &config),
@@ -672,6 +719,9 @@ struct Config {
 	must_match:  bool,
 	dos_names:   bool,
 	zip64:       Option<bool>,
+	archive_set: bool,
+	archive_clear: bool,
+	test_command: Option<String>,
 	preserve_paths: bool,
 	absolute_paths: bool,
 	system_hidden: bool,
@@ -802,6 +852,35 @@ fn parse_date(value: &str) -> Result<NaiveDate, String> {
 
 fn report(host: &mut Host, message: &str) {
 	let _ = writeln!(host.stderr, "zip: {message}");
+}
+
+fn run_test_command(host: &mut Host, archive: &Path, command: &str) -> i32 {
+	let quoted = format!("\"{}\"", archive.display());
+	let command = if command.contains("{}") {
+		command.replace("{}", &quoted)
+	} else {
+		format!("{command} {quoted}")
+	};
+	#[cfg(windows)]
+	let argv = vec![
+		OsString::from("cmd"),
+		OsString::from("/C"),
+		OsString::from(command),
+	];
+	#[cfg(not(windows))]
+	let argv = vec![
+		OsString::from("sh"),
+		OsString::from("-c"),
+		OsString::from(command),
+	];
+	match host.run_command(ShellCommand::new(argv)) {
+		Ok(status) if status.success() => 0,
+		Ok(_) => FAILURE,
+		Err(error) => {
+			report(host, &format!("test command: {error}"));
+			FAILURE
+		},
+	}
 }
 
 type ZipResult<T> = Result<T, ZipError>;
@@ -1561,6 +1640,42 @@ mod tests {
 				run_util::<Zip>(&[flag, "out.zip", "hello.txt"], "", fixture.path());
 			assert_eq!(code, 0, "{}", capture.err());
 		}
+	}
+
+	#[cfg(windows)]
+	#[test]
+	fn ac_clears_the_windows_archive_bit() {
+		use std::os::windows::fs::MetadataExt;
+
+		let fixture = tempdir().unwrap();
+		let path = fixture.path().join("hello.txt");
+		fs::write(&path, b"hello").unwrap();
+		assert_ne!(fs::metadata(&path).unwrap().file_attributes() & 0x20, 0);
+
+		let (code, capture) =
+			run_util::<Zip>(&["-AC", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+		assert_eq!(fs::metadata(&path).unwrap().file_attributes() & 0x20, 0);
+	}
+
+	#[cfg(windows)]
+	#[test]
+	fn as_skips_files_without_the_archive_bit() {
+		use std::os::windows::ffi::OsStrExt;
+		use std::os::windows::fs::MetadataExt;
+		use windows_sys::Win32::Storage::FileSystem::{GetFileAttributesW, SetFileAttributesW};
+
+		let fixture = tempdir().unwrap();
+		let path = fixture.path().join("hello.txt");
+		fs::write(&path, b"hello").unwrap();
+		let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+		let attributes = unsafe { GetFileAttributesW(wide.as_ptr()) };
+		assert_ne!(unsafe { SetFileAttributesW(wide.as_ptr(), attributes & !0x20) }, 0);
+		assert_eq!(fs::metadata(&path).unwrap().file_attributes() & 0x20, 0);
+
+		let (code, _) = run_util::<Zip>(&["-AS", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 12);
+		assert!(!fixture.path().join("out.zip").exists());
 	}
 
 	#[test]

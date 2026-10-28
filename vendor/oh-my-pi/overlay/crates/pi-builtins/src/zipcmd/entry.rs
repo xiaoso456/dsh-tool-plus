@@ -216,6 +216,9 @@ fn collect_path(
 	}
 
 	if file_type.is_file() {
+		if config.archive_set && !has_archive_bit(&metadata) {
+			return Ok(());
+		}
 		entries.push(Entry {
 			native: native.to_owned(),
 			name: name.to_owned(),
@@ -386,6 +389,59 @@ fn options<'a>(
 		options = options.with_file_comment(comment);
 	}
 	options
+}
+
+fn has_archive_bit(metadata: &Metadata) -> bool {
+	#[cfg(windows)]
+	{
+		return metadata
+			.file_attributes()
+			.is_some_and(|attributes| attributes & 0x20 != 0);
+	}
+	#[cfg(not(windows))]
+	{
+		let _ = metadata;
+		true
+	}
+}
+
+pub(super) fn clear_archive_bits(host: &mut Host, entries: &[Entry]) {
+	for entry in entries {
+		if entry.metadata.file_type().is_file() {
+			clear_archive_bit(host, &entry.native);
+		}
+	}
+}
+
+pub(super) fn clear_archive_bits_paths(host: &mut Host, paths: &[PathBuf]) {
+	for path in paths {
+		clear_archive_bit(host, path);
+	}
+}
+
+fn clear_archive_bit(host: &mut Host, path: &Path) {
+	#[cfg(windows)]
+	{
+		use std::os::windows::ffi::OsStrExt;
+		use windows_sys::Win32::Storage::FileSystem::{GetFileAttributesW, SetFileAttributesW};
+
+		let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+		let attributes = unsafe { GetFileAttributesW(wide.as_ptr()) };
+		if attributes == u32::MAX {
+			report(host, &format!("{}: cannot read attributes", path.display()));
+			return;
+		}
+		if attributes & 0x20 == 0 {
+			return;
+		}
+		if unsafe { SetFileAttributesW(wide.as_ptr(), attributes & !0x20) } == 0 {
+			report(host, &format!("{}: cannot clear archive bit", path.display()));
+		}
+	}
+	#[cfg(not(windows))]
+	{
+		let _ = (host, path);
+	}
 }
 
 fn hidden_or_system(metadata: &Metadata) -> bool {

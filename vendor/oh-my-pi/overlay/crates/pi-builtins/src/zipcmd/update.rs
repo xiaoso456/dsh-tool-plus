@@ -43,6 +43,9 @@ pub(super) fn rewrite(
 			return NOTHING_TO_DO;
 		}
 		let status = entry::create_archive(host, archive_path, &entries, config);
+		if status == 0 && config.archive_clear {
+			entry::clear_archive_bits(host, &entries);
+		}
 		if status == 0 && config.latest_time {
 			entry::set_archive_time(host, &config.archive, &entries);
 		}
@@ -67,6 +70,9 @@ pub(super) fn rewrite(
 		Ok(outcome) if config.operation == Operation::Freshen && outcome.changed == 0 => NOTHING_TO_DO,
 		Ok(_) if failed => FAILURE,
 		Ok(outcome) => {
+			if config.archive_clear {
+				entry::clear_archive_bits_paths(host, &outcome.moved);
+			}
 			if config.latest_time {
 				if let Some(latest) = outcome.latest {
 					entry::set_archive_time_value(host, &config.archive, latest);
