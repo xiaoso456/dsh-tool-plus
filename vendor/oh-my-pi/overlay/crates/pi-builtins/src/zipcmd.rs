@@ -11,10 +11,10 @@
 //! Compatibility notes (kept here so the gaps are visible in the source):
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
-//! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden.
-//! not implemented: -k DOS names; -RE regex; -N notes; -TT external test
-//! command; -MM must-match; -v verbose operation; -db/-dc/-dd/-dg/-ds/-du/-dv
-//! and -lf/-la/-li progress/logging.
+//! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden -RE/--regex
+//! -k/--dos-names -MM/--must-match.
+//! not implemented: -N notes; -TT external test command; -v verbose operation;
+//! -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
@@ -66,6 +66,8 @@ impl Utility for Zip {
 				"-jj" => Some("--absolute-path"),
 				"-FS" => Some("--filesync"),
 				"-DF" => Some("--difference"),
+				"-RE" => Some("--regex"),
+				"-MM" => Some("--must-match"),
 				"-sf" => Some("--show-files"),
 				_ => None,
 			};
@@ -159,6 +161,25 @@ fn app() -> Command {
 				.value_name("ARCHIVE")
 				.action(ArgAction::Set)
 				.help("write the result to ARCHIVE (used with -U)"),
+		)
+		.arg(
+			Arg::new("dos-names")
+				.short('k')
+				.long("dos-names")
+				.action(ArgAction::SetTrue)
+				.help("convert names to MS-DOS 8.3 form"),
+		)
+		.arg(
+			Arg::new("must-match")
+				.long("must-match")
+				.action(ArgAction::SetTrue)
+				.help("fail if any input pattern or file is missing or unreadable"),
+		)
+		.arg(
+			Arg::new("regex")
+				.long("regex")
+				.action(ArgAction::SetTrue)
+				.help("treat include, exclude, and -R patterns as regular expressions"),
 		)
 		.arg(
 			Arg::new("system-hidden")
@@ -405,6 +426,7 @@ fn level_name(digit: u8) -> &'static str {
 /// so scripts written against the Linux command keep working.
 const FAILURE: i32 = 1;
 const NOTHING_TO_DO: i32 = 12;
+const OPEN_ERROR: i32 = 18;
 const EMPTY_ARCHIVE: i32 = 13;
 const WRITE_ERROR: i32 = 15;
 
@@ -488,6 +510,9 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		date_filter,
 		ignore_case: matches.get_flag("ignore-case"),
 		no_wild:     matches.get_flag("no-wild"),
+		regex:       matches.get_flag("regex"),
+		must_match:  matches.get_flag("must-match"),
+		dos_names:   matches.get_flag("dos-names"),
 		preserve_paths: matches.get_flag("preserve-paths"),
 		absolute_paths: matches.get_flag("absolute-path"),
 		system_hidden: matches.get_flag("system-hidden"),
@@ -532,6 +557,10 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 	match config.operation {
 		Operation::Create => {
 			let (entries, failed) = entry::collect_all(host, &inputs, &config);
+			if config.must_match && failed {
+				host.error("input missing or unreadable", OPEN_ERROR);
+				return OPEN_ERROR;
+			}
 			if entries.is_empty() {
 				host.error("nothing to do", NOTHING_TO_DO);
 				return NOTHING_TO_DO;
@@ -600,6 +629,9 @@ struct Config {
 	date_filter: DateFilter,
 	ignore_case: bool,
 	no_wild:     bool,
+	regex:       bool,
+	must_match:  bool,
+	dos_names:   bool,
 	preserve_paths: bool,
 	absolute_paths: bool,
 	system_hidden: bool,
@@ -780,6 +812,7 @@ fn archive_base(
 	junk_paths: bool,
 	preserve_paths: bool,
 	absolute_paths: bool,
+	dos_names: bool,
 ) -> String {
 	if junk_paths {
 		return leaf_name(operand);
@@ -787,7 +820,7 @@ fn archive_base(
 
 	let mut name = operand.to_string_lossy().replace('\\', "/");
 	if absolute_paths || preserve_paths {
-		return name.trim_end_matches('/').to_owned();
+		return dos_name(name.trim_end_matches('/'), dos_names);
 	}
 	if name.len() >= 2 && name.as_bytes()[1] == b':' {
 		name = name[2..].to_owned();
@@ -798,7 +831,44 @@ fn archive_base(
 	while name.ends_with('/') {
 		name.pop();
 	}
-	normalize_archive_name(&name)
+	dos_name(&normalize_archive_name(&name), dos_names)
+}
+
+fn dos_name(name: &str, enabled: bool) -> String {
+	if !enabled {
+		return name.to_owned();
+	}
+	name
+		.split('/')
+		.map(dos_component)
+		.collect::<Vec<_>>()
+		.join("/")
+}
+
+fn dos_component(component: &str) -> String {
+	let upper = component.to_ascii_uppercase();
+	let (base, extension) = upper
+		.rsplit_once('.')
+		.map_or((upper.as_str(), ""), |(base, extension)| (base, extension));
+	let mut base: String = base
+		.chars()
+		.map(|character| {
+			if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
+				character
+			} else {
+				'_'
+			}
+		})
+		.collect();
+	if base.is_empty() {
+		base.push('_');
+	}
+	base.truncate(8);
+	if extension.is_empty() {
+		base
+	} else {
+		format!("{base}.{}", extension.chars().take(3).collect::<String>())
+	}
 }
 
 /// Drops empty and `.` components and resolves `..` lexically, so an entry
@@ -1377,6 +1447,34 @@ mod tests {
 	}
 
 	#[test]
+	fn re_uses_regular_expression_patterns() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-RE", "-i", "hello.*", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name("hello.txt").is_ok());
+	}
+
+	#[test]
+	fn k_converts_names_to_dos_83() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("longfilename.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-k", "out.zip", "longfilename.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name("LONGFILE.TXT").is_ok());
+	}
+
+	#[test]
 	fn level_zero_stores_entries() {
 		let fixture = tempdir().unwrap();
 		fs::write(fixture.path().join("hello.txt"), b"hello hello hello").unwrap();
@@ -1409,6 +1507,14 @@ mod tests {
 		let (code, capture) = run_util::<Zip>(&["out.zip", "missing.txt"], "", fixture.path());
 		assert_eq!(code, 12);
 		assert!(capture.err().contains("missing.txt"), "{}", capture.err());
+		assert!(!fixture.path().join("out.zip").exists());
+	}
+
+	#[test]
+	fn mm_fails_on_missing_input() {
+		let fixture = tempdir().unwrap();
+		let (code, _) = run_util::<Zip>(&["-MM", "out.zip", "missing.txt"], "", fixture.path());
+		assert_eq!(code, 18);
 		assert!(!fixture.path().join("out.zip").exists());
 	}
 

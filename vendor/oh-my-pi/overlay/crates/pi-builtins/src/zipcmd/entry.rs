@@ -6,6 +6,7 @@ use std::{
 };
 
 use pi_vfs::{BlockingFs, File, FileTime, Metadata, TempOptions};
+use regex::RegexBuilder;
 use zip::{AesMode, DateTime, ZipWriter, write::{FileOptions, FullFileOptions}};
 
 use crate::host::Host;
@@ -32,6 +33,7 @@ pub(super) fn collect_operand(
 		config.junk_paths,
 		config.preserve_paths,
 		config.absolute_paths,
+		config.dos_names,
 	);
 	let mut entries = Vec::new();
 	collect_path(host.fs(), &native, &name, config, &mut entries)?;
@@ -137,6 +139,12 @@ fn keep_name(name: &str, config: &Config) -> bool {
 }
 
 pub(super) fn name_matches(pattern: &str, name: &str, config: &Config) -> bool {
+	if config.regex {
+		return RegexBuilder::new(pattern)
+			.case_insensitive(config.ignore_case)
+			.build()
+			.is_ok_and(|pattern| pattern.is_match(name));
+	}
 	if config.no_wild {
 		pattern == name
 	} else {

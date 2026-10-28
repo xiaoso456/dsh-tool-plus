@@ -11,7 +11,8 @@ use zip::{ZipArchive, ZipWriter, read::ZipFile};
 use crate::host::Host;
 
 use super::{
-	Config, EMPTY_ARCHIVE, FAILURE, NOTHING_TO_DO, Operation, WRITE_ERROR, ZipResult, archive_base,
+	Config, EMPTY_ARCHIVE, FAILURE, NOTHING_TO_DO, OPEN_ERROR, Operation, WRITE_ERROR, ZipResult,
+	archive_base,
 	entry, report,
 };
 
@@ -30,6 +31,9 @@ pub(super) fn rewrite(
 		},
 	};
 	let (entries, failed) = entry::collect_all(host, inputs, config);
+	if config.must_match && failed {
+		return OPEN_ERROR;
+	}
 
 	let Some(archive) = existing else {
 		if entries.is_empty() {
@@ -262,7 +266,7 @@ pub(super) fn delete(
 	let names: HashSet<String> = inputs
 		.iter()
 		.map(|input| {
-			let name = archive_base(input, config.junk_paths, false, false);
+			let name = archive_base(input, config.junk_paths, false, false, false);
 			if config.ignore_case { name.to_lowercase() } else { name }
 		})
 		.collect();
@@ -373,6 +377,9 @@ pub(super) fn difference(
 	}
 
 	let (mut entries, failed) = entry::collect_all(host, inputs, config);
+	if config.must_match && failed {
+		return OPEN_ERROR;
+	}
 	entries.retain(|entry| {
 		existing.get(&entry.name).is_none_or(|(size, time)| {
 			*size != entry.metadata.len() || *time != entry::zip_time(&entry.metadata)
@@ -438,7 +445,7 @@ pub(super) fn copy(
 	} else {
 		let patterns: Vec<String> = inputs
 			.iter()
-			.map(|input| archive_base(input, false, false, false))
+			.map(|input| archive_base(input, false, false, false, false))
 			.collect();
 		archive
 			.file_names()
