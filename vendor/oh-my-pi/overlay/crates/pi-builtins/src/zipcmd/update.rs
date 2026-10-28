@@ -126,6 +126,7 @@ fn rewrite_existing(
 				Operation::Update | Operation::Freshen => {
 					source.is_none_or(|source| !is_newer(source, &file))
 				},
+				Operation::FileSync => source.is_some_and(|source| !is_changed(source, &file)),
 				Operation::Grow => true,
 				_ => true,
 			};
@@ -142,6 +143,7 @@ fn rewrite_existing(
 				Operation::Update => !exists || replaced.contains(&entry.name),
 				Operation::Freshen => replaced.contains(&entry.name),
 				Operation::Grow => !exists,
+				Operation::FileSync => !exists || replaced.contains(&entry.name),
 				_ => false,
 			};
 			if add {
@@ -171,6 +173,16 @@ fn rewrite_existing(
 fn is_newer(source: &entry::Entry, archived: &ZipFile<'_, File>) -> bool {
 	match (entry::zip_time(&source.metadata), archived.last_modified()) {
 		(Some(source), Some(archived)) => source > archived,
+		_ => true,
+	}
+}
+
+fn is_changed(source: &entry::Entry, archived: &ZipFile<'_, File>) -> bool {
+	if source.metadata.len() != archived.size() {
+		return true;
+	}
+	match (entry::zip_time(&source.metadata), archived.last_modified()) {
+		(Some(source), Some(archived)) => source != archived,
 		_ => true,
 	}
 }
@@ -319,6 +331,82 @@ pub(super) fn delete(
 		report(host, "warning: archive is empty");
 	}
 	0
+}
+
+pub(super) fn difference(
+	host: &mut Host,
+	archive_path: &Path,
+	inputs: &[PathBuf],
+	config: &Config,
+) -> i32 {
+	let fs = host.fs().clone();
+	let mut archive = match open_archive(&fs, &config.archive) {
+		Ok(Some(archive)) => archive,
+		Ok(None) => return EMPTY_ARCHIVE,
+		Err(error) => {
+			report(host, &format!("{}: {error}", archive_path.display()));
+			return FAILURE;
+		},
+	};
+	let Some(out) = config.out.as_deref() else {
+		report(host, "--out requires an archive");
+		return 16;
+	};
+
+	let mut existing = HashMap::new();
+	for index in 0..archive.len() {
+		let file = match archive.by_index_raw(index) {
+			Ok(file) => file,
+			Err(error) => {
+				report(host, &format!("{}: {error}", archive_path.display()));
+				return FAILURE;
+			},
+		};
+		let name = match file.name() {
+			Ok(name) => name.into_owned(),
+			Err(error) => {
+				report(host, &format!("{}: {error}", archive_path.display()));
+				return FAILURE;
+			},
+		};
+		existing.insert(name, (file.size(), file.last_modified()));
+	}
+
+	let (mut entries, failed) = entry::collect_all(host, inputs, config);
+	entries.retain(|entry| {
+		existing.get(&entry.name).is_none_or(|(size, time)| {
+			*size != entry.metadata.len() || *time != entry::zip_time(&entry.metadata)
+		})
+	});
+	if entries.is_empty() {
+		return NOTHING_TO_DO;
+	}
+
+	let (temp_path, temp_file) = match create_temp(&fs, out, config) {
+		Ok(temp) => temp,
+		Err(error) => {
+			report(host, &format!("{}: {error}", out.display()));
+			return WRITE_ERROR;
+		},
+	};
+	let mut writer = ZipWriter::new(temp_file);
+	if let Some(comment) = &config.comment {
+		if let Err(error) = writer.set_raw_comment(comment.clone().into_boxed_slice()) {
+			let _ = fs.remove_file(&temp_path);
+			report(host, &format!("{}: {error}", out.display()));
+			return FAILURE;
+		}
+	}
+	if let Err(error) = entry::write_entries(&mut writer, host, &entries, config) {
+		let _ = fs.remove_file(&temp_path);
+		report(host, &format!("{}: {error}", out.display()));
+		return FAILURE;
+	}
+	if let Err(error) = finish(&fs, writer, &temp_path, out) {
+		report(host, &format!("{}: {error}", out.display()));
+		return WRITE_ERROR;
+	}
+	if failed { FAILURE } else { 0 }
 }
 
 pub(super) fn copy(

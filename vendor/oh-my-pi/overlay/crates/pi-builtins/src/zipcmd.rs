@@ -11,12 +11,12 @@
 //! Compatibility notes (kept here so the gaps are visible in the source):
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
-//! -U/--out.
+//! -U/--out -FS/--filesync -DF/--difference.
 //! not implemented: -k DOS names; -S system/hidden; -RE regex; -N notes;
 //! -TT external test command; -MM must-match; -v verbose operation;
 //! -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
-//! -A/-J SFX adjustment, -FS filesync, -DF difference.
+//! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
 //! -I.
 //! -s is currently an alias for --show-files; Info-ZIP's split -s is not
@@ -64,6 +64,8 @@ impl Utility for Zip {
 				"-ic" => Some("--ignore-case"),
 				"-nw" => Some("--no-wild"),
 				"-jj" => Some("--absolute-path"),
+				"-FS" => Some("--filesync"),
+				"-DF" => Some("--difference"),
 				"-sf" => Some("--show-files"),
 				_ => None,
 			};
@@ -128,6 +130,20 @@ fn app() -> Command {
 				.long("no-wild")
 				.action(ArgAction::SetTrue)
 				.help("treat include and exclude patterns literally"),
+		)
+		.arg(
+			Arg::new("difference")
+				.long("difference")
+				.action(ArgAction::SetTrue)
+				.conflicts_with_all(["copy", "filesync", "update", "freshen", "grow", "delete", "test", "archive-comment"])
+				.help("write only new or changed files to the archive named by --out"),
+		)
+		.arg(
+			Arg::new("filesync")
+				.long("filesync")
+				.action(ArgAction::SetTrue)
+				.conflicts_with_all(["copy", "update", "freshen", "grow", "delete", "test", "archive-comment"])
+				.help("sync the archive with the filesystem, deleting missing entries"),
 		)
 		.arg(
 			Arg::new("copy")
@@ -397,8 +413,10 @@ enum Operation {
 	Update,
 	Freshen,
 	Grow,
+	FileSync,
 	Delete,
 	Copy,
+	Difference,
 	Test,
 	List,
 	Comment,
@@ -490,11 +508,15 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			.map(|path| host.resolve(Path::new(path))),
 	};
 
-	if config.operation == Operation::Copy && config.out.is_none() {
+	if matches!(config.operation, Operation::Copy | Operation::Difference)
+		&& config.out.is_none()
+	{
 		host.error("--out requires an archive", i32::from(Zip::USAGE_ERROR));
 		return i32::from(Zip::USAGE_ERROR);
 	}
-	if config.operation != Operation::Copy && config.out.is_some() {
+	if !matches!(config.operation, Operation::Copy | Operation::Difference)
+		&& config.out.is_some()
+	{
 		host.error("--out is only supported with -U", i32::from(Zip::USAGE_ERROR));
 		return i32::from(Zip::USAGE_ERROR);
 	}
@@ -515,11 +537,12 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			}
 			if failed && status == 0 { FAILURE } else { status }
 		},
-		Operation::Update | Operation::Freshen | Operation::Grow => {
+		Operation::Update | Operation::Freshen | Operation::Grow | Operation::FileSync => {
 			update::rewrite(host, &archive, &inputs, &config)
 		},
 		Operation::Delete => update::delete(host, &archive, &inputs, &config),
 		Operation::Copy => update::copy(host, &archive, &inputs, &config),
+		Operation::Difference => update::difference(host, &archive, &inputs, &config),
 		Operation::Test => verify::test(host, &archive, &config),
 		Operation::List => verify::list(host, &archive, &config),
 		Operation::Comment => update::comment(host, &archive, &config),
@@ -529,6 +552,10 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 fn operation(matches: &ArgMatches) -> Operation {
 	if matches.get_flag("copy") {
 		Operation::Copy
+	} else if matches.get_flag("filesync") {
+		Operation::FileSync
+	} else if matches.get_flag("difference") {
+		Operation::Difference
 	} else if matches.get_flag("show-files") {
 		Operation::List
 	} else if matches.get_flag("archive-comment") {
@@ -1294,6 +1321,50 @@ mod tests {
 		let fixture = tempdir().unwrap();
 		let (code, _) = run_util::<Zip>(&["in.zip", "--out", "out.zip"], "", fixture.path());
 		assert_eq!(code, 16);
+	}
+
+	#[test]
+	fn fs_syncs_archive_with_the_filesystem() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("a.txt"), b"old").unwrap();
+		fs::write(fixture.path().join("b.txt"), b"b").unwrap();
+		let (code, capture) =
+			run_util::<Zip>(&["-q", "in.zip", "a.txt", "b.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		fs::write(fixture.path().join("a.txt"), b"new content").unwrap();
+		fs::remove_file(fixture.path().join("b.txt")).unwrap();
+		let (code, capture) =
+			run_util::<Zip>(&["-FS", "in.zip", "a.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("in.zip"));
+		assert!(archive.by_name("b.txt").is_err());
+		assert_eq!(read_entry(&mut archive, "a.txt"), "new content");
+	}
+
+	#[test]
+	fn df_writes_only_new_or_changed_files() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("a.txt"), b"old").unwrap();
+		fs::write(fixture.path().join("b.txt"), b"same").unwrap();
+		let (code, capture) =
+			run_util::<Zip>(&["-q", "in.zip", "a.txt", "b.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		fs::write(fixture.path().join("a.txt"), b"changed content").unwrap();
+		fs::write(fixture.path().join("c.txt"), b"new").unwrap();
+		let (code, capture) = run_util::<Zip>(
+			&["-DF", "in.zip", "a.txt", "b.txt", "c.txt", "--out", "diff.zip"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("diff.zip"));
+		assert_eq!(read_entry(&mut archive, "a.txt"), "changed content");
+		assert!(archive.by_name("b.txt").is_err());
+		assert_eq!(read_entry(&mut archive, "c.txt"), "new");
 	}
 
 	#[test]
