@@ -169,6 +169,9 @@ fn collect_path(
 		fs.metadata(native)?
 	};
 	let file_type = metadata.file_type();
+	if !config.system_hidden && hidden_or_system(&metadata) {
+		return Ok(());
+	}
 
 	if file_type.is_symlink() {
 		entries.push(Entry {
@@ -373,6 +376,20 @@ fn options<'a>(
 		options = options.with_file_comment(comment);
 	}
 	options
+}
+
+fn hidden_or_system(metadata: &Metadata) -> bool {
+	#[cfg(windows)]
+	{
+		return metadata
+			.file_attributes()
+			.is_some_and(|attributes| attributes & 0x2 != 0 || attributes & 0x4 != 0);
+	}
+	#[cfg(not(windows))]
+	{
+		let _ = metadata;
+		false
+	}
 }
 
 pub(super) fn zip_time(metadata: &Metadata) -> Option<DateTime> {

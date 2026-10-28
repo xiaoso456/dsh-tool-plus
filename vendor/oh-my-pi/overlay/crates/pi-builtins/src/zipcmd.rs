@@ -11,10 +11,10 @@
 //! Compatibility notes (kept here so the gaps are visible in the source):
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
-//! -U/--out -FS/--filesync -DF/--difference.
-//! not implemented: -k DOS names; -S system/hidden; -RE regex; -N notes;
-//! -TT external test command; -MM must-match; -v verbose operation;
-//! -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li progress/logging.
+//! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden.
+//! not implemented: -k DOS names; -RE regex; -N notes; -TT external test
+//! command; -MM must-match; -v verbose operation; -db/-dc/-dd/-dg/-ds/-du/-dv
+//! and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
@@ -159,6 +159,13 @@ fn app() -> Command {
 				.value_name("ARCHIVE")
 				.action(ArgAction::Set)
 				.help("write the result to ARCHIVE (used with -U)"),
+		)
+		.arg(
+			Arg::new("system-hidden")
+				.short('S')
+				.long("system-hidden")
+				.action(ArgAction::SetTrue)
+				.help("include Windows system and hidden files"),
 		)
 		.arg(
 			Arg::new("preserve-paths")
@@ -483,6 +490,7 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		no_wild:     matches.get_flag("no-wild"),
 		preserve_paths: matches.get_flag("preserve-paths"),
 		absolute_paths: matches.get_flag("absolute-path"),
+		system_hidden: matches.get_flag("system-hidden"),
 		quiet:      matches.get_flag("quiet"),
 		junk_paths: matches.get_flag("junk-paths"),
 		symlinks:   matches.get_flag("symlinks"),
@@ -594,6 +602,7 @@ struct Config {
 	no_wild:     bool,
 	preserve_paths: bool,
 	absolute_paths: bool,
+	system_hidden: bool,
 	quiet:      bool,
 	junk_paths: bool,
 	symlinks:    bool,
