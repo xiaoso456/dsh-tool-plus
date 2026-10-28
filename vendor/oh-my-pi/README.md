@@ -95,6 +95,45 @@ Two environment issues were hit, both reproducible:
 The host build picks `modern` on an AVX2 machine; baseline is built by the CI
 matrix's explicit target.
 
+### Verified local result (2026-10-28)
+
+After the `zip` compatibility work, a debug host build was produced with the
+Visual Studio 2022 bundled CMake/Ninja (the earlier failure was simply that
+`cmake` was not on `PATH`):
+
+- `cargo build -p pi-natives` produced `target/debug/pi_natives.dll`
+- copied to `%TEMP%\dev-natives\18.12.6\`, stamped with
+  `bun scripts/stamp-native-version.ts`, and loaded through
+  `PI_NATIVES_DIR`; the loader reported the local addon as `18.12.6`
+- `type -a zip` resolved to the shell builtin; `zip -L`, `zip -V`, and
+  `zip -du ...` all exited 0
+
+### `zip` builtin compatibility
+
+The overlay adds an in-process `zip` builtin under the `util.zip` feature.
+It covers the Info-ZIP switches that map cleanly onto the archive model; the
+Windows-relevant surface is complete.
+
+| area | switches |
+|---|---|
+| core | create/update/freshen/grow/delete/test/list, `-r/-R`, `-0..-9`, `-Z store\|deflate`, `-u -f -g -d -T -y -D -x -i` |
+| names/paths | `-j -jj -p -k` (DOS 8.3), `-n`, `-@`, `-m`, `-o`, `-X`, `-c`, `-z`, `-U/--out` |
+| Windows | `-S/--system-hidden`, `-AS/--archive-set`, `-AC/--archive-clear`, `-TT/--test-command` |
+| sync | `-FS/--filesync`, `-DF/--difference`, `-RE/--regex`, `-MM/--must-match` |
+| progress/logging | `-db -dc -dd -dg -ds -du -dv -lf -la -li` |
+| info | `-L/--license`, `-V/--version-info`, `-h2`, `-so/--show-options` |
+
+Accepted for compatibility but not applicable on Windows: `-FI/--fifo`
+(Unix FIFOs) and `-N/--notes` (Amiga/MacOS filenotes).
+
+Not implemented: non-Windows platform switches `-a -B -C/-C2/-C5 -E -I -w -!`;
+split archives (`-s/-sp/-sb/-sv`), repair (`-F/-FF`), and SFX adjustment
+(`-A/-J`) because `zip 9.1.2` has no support for them. `-s` remains an alias
+for `--show-files`.
+
+Tests: `cargo test -p pi-builtins zipcmd` covers the builtin; the full
+`cargo test -p pi-builtins` run currently passes 1280 tests.
+
 ## CI
 
 [`.github/workflows/native.yml`](../../.github/workflows/native.yml) does two
