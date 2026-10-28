@@ -15,9 +15,10 @@
 //! -k/--dos-names -MM/--must-match -so/--show-options -h2 -su/-sU -fz/-fz-
 //! -AS/--archive-set -AC/--archive-clear -TT/--test-command -v (version
 //! without an archive; the operation runs when an archive is present, without
-//! extra verbose detail).
-//! not implemented: -N notes; -FI FIFO; -db/-dc/-dd/-dg/-ds/-du/-dv and
-//! -lf/-la/-li progress/logging.
+//! extra verbose detail) -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li
+//! progress/logging -L/--license.
+//! accepted for compatibility but not applicable on Windows: -FI/--fifo and
+//! -N/--notes (Info-ZIP's Unix FIFO and Amiga/MacOS filenote switches).
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
@@ -73,6 +74,9 @@ impl Utility for Zip {
 				"-RE" => Some("--regex"),
 				"-MM" => Some("--must-match"),
 				"-so" => Some("--show-options"),
+				"-L" => Some("--license"),
+				"-FI" => Some("--fifo"),
+				"-N" => Some("--notes"),
 				"-h2" => Some("--help"),
 				"-sf" => Some("--show-files"),
 				"-su" => Some("--show-files"),
@@ -297,6 +301,24 @@ fn app() -> Command {
 				.long("show-options")
 				.action(ArgAction::SetTrue)
 				.help("show command options and exit"),
+		)
+		.arg(
+			Arg::new("license")
+				.long("license")
+				.action(ArgAction::SetTrue)
+				.help("display the license and exit"),
+		)
+		.arg(
+			Arg::new("fifo")
+				.long("fifo")
+				.action(ArgAction::SetTrue)
+				.help("read FIFOs (accepted for compatibility; no effect on Windows)"),
+		)
+		.arg(
+			Arg::new("notes")
+				.long("notes")
+				.action(ArgAction::SetTrue)
+				.help("save platform file notes (accepted for compatibility; no effect on Windows)"),
 		)
 		.arg(
 			Arg::new("must-match")
@@ -589,6 +611,13 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 	if matches.get_flag("show-options") {
 		let help = Zip::command().render_help().to_string();
 		let _ = host.stdout_writer().write_all(help.as_bytes());
+		return 0;
+	}
+	if matches.get_flag("license") {
+		let _ = writeln!(
+			host.stdout_writer(),
+			"zip 3.0 (pi-builtins)\nMIT License\nCopyright (c) 2026 xiaoso456"
+		);
 		return 0;
 	}
 	if matches.get_flag("version") && matches.get_one::<String>("archive").is_none() {
@@ -1480,6 +1509,27 @@ mod tests {
 		let (code, capture) = run_util::<Zip>(&["-h2"], "", "/");
 		assert_eq!(code, 0, "{}", capture.err());
 		assert!(capture.out().contains("Usage:"), "{}", capture.out());
+	}
+
+	#[test]
+	fn license_prints_the_mit_notice() {
+		let (code, capture) = run_util::<Zip>(&["-L"], "", "/");
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("MIT License"), "{}", capture.out());
+	}
+
+	#[test]
+	fn fifo_and_notes_are_accepted() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-FI", "-N", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(fixture.path().join("out.zip").exists());
 	}
 
 	#[test]
