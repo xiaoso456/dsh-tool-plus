@@ -349,8 +349,10 @@ fn options<'a>(
 	encrypt: bool,
 	comment: Option<&str>,
 ) -> FullFileOptions<'a, 'static> {
-	let mut options: FullFileOptions<'a, 'static> =
-		FileOptions::default().large_file(metadata.len() > u32::MAX as u64);
+	let large_file = config
+		.zip64
+		.unwrap_or(metadata.len() > u32::MAX as u64);
+	let mut options: FullFileOptions<'a, 'static> = FileOptions::default().large_file(large_file);
 	if config.exclude_extra {
 		options = options.external_attributes(0);
 	} else {

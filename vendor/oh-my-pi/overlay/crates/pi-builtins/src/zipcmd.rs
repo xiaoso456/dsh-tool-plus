@@ -12,9 +12,9 @@
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
 //! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden -RE/--regex
-//! -k/--dos-names -MM/--must-match -so/--show-options -h2 -v (version without
-//! an archive; the operation runs when an archive is present, without extra
-//! verbose detail).
+//! -k/--dos-names -MM/--must-match -so/--show-options -h2 -su/-sU -fz/-fz-
+//! -v (version without an archive; the operation runs when an archive is
+//! present, without extra verbose detail).
 //! not implemented: -N notes; -TT external test command; -db/-dc/-dd/-dg/-ds/
 //! -du/-dv and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
@@ -73,6 +73,10 @@ impl Utility for Zip {
 				"-so" => Some("--show-options"),
 				"-h2" => Some("--help"),
 				"-sf" => Some("--show-files"),
+				"-su" => Some("--show-files"),
+				"-sU" => Some("--show-files"),
+				"-fz" => Some("--zip64"),
+				"-fz-" => Some("--no-zip64"),
 				_ => None,
 			};
 			if let Some(replacement) = replacement {
@@ -172,6 +176,19 @@ fn app() -> Command {
 				.long("dos-names")
 				.action(ArgAction::SetTrue)
 				.help("convert names to MS-DOS 8.3 form"),
+		)
+		.arg(
+			Arg::new("zip64")
+				.long("zip64")
+				.action(ArgAction::SetTrue)
+				.conflicts_with("no-zip64")
+				.help("force Zip64 records"),
+		)
+		.arg(
+			Arg::new("no-zip64")
+				.long("no-zip64")
+				.action(ArgAction::SetTrue)
+				.help("disable Zip64 records"),
 		)
 		.arg(
 			Arg::new("show-options")
@@ -528,6 +545,13 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		regex:       matches.get_flag("regex"),
 		must_match:  matches.get_flag("must-match"),
 		dos_names:   matches.get_flag("dos-names"),
+		zip64:       if matches.get_flag("zip64") {
+			Some(true)
+		} else if matches.get_flag("no-zip64") {
+			Some(false)
+		} else {
+			None
+		},
 		preserve_paths: matches.get_flag("preserve-paths"),
 		absolute_paths: matches.get_flag("absolute-path"),
 		system_hidden: matches.get_flag("system-hidden"),
@@ -647,6 +671,7 @@ struct Config {
 	regex:       bool,
 	must_match:  bool,
 	dos_names:   bool,
+	zip64:       Option<bool>,
 	preserve_paths: bool,
 	absolute_paths: bool,
 	system_hidden: bool,
@@ -1512,6 +1537,30 @@ mod tests {
 		);
 		assert_eq!(code, 0, "{}", capture.err());
 		assert!(open(&fixture.path().join("out.zip")).by_name("LONGFILE.TXT").is_ok());
+	}
+
+	#[test]
+	fn su_lists_archive_entries() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+		let (code, capture) =
+			run_util::<Zip>(&["-q", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let (code, capture) = run_util::<Zip>(&["-su", "out.zip"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("hello.txt"), "{}", capture.out());
+	}
+
+	#[test]
+	fn fz_controls_zip64_records() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+		for flag in ["-fz", "-fz-"] {
+			let (code, capture) =
+				run_util::<Zip>(&[flag, "out.zip", "hello.txt"], "", fixture.path());
+			assert_eq!(code, 0, "{}", capture.err());
+		}
 	}
 
 	#[test]
