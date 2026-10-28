@@ -16,13 +16,12 @@
 //! -AS/--archive-set -AC/--archive-clear -TT/--test-command -v (version
 //! without an archive; the operation runs when an archive is present, without
 //! extra verbose detail) -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li
-//! progress/logging -L/--license.
+//! progress/logging -L/--license -V/--version-info.
 //! accepted for compatibility but not applicable on Windows: -FI/--fifo and
 //! -N/--notes (Info-ZIP's Unix FIFO and Amiga/MacOS filenote switches).
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
-//! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
-//! -I.
+//! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -w -! -I.
 //! -s is currently an alias for --show-files; Info-ZIP's split -s is not
 //! supported (see the split limitation above).
 
@@ -75,6 +74,7 @@ impl Utility for Zip {
 				"-MM" => Some("--must-match"),
 				"-so" => Some("--show-options"),
 				"-L" => Some("--license"),
+				"-V" => Some("--version-info"),
 				"-FI" => Some("--fifo"),
 				"-N" => Some("--notes"),
 				"-h2" => Some("--help"),
@@ -307,6 +307,12 @@ fn app() -> Command {
 				.long("license")
 				.action(ArgAction::SetTrue)
 				.help("display the license and exit"),
+		)
+		.arg(
+			Arg::new("version-info")
+				.long("version-info")
+				.action(ArgAction::SetTrue)
+				.help("display version and copyright information"),
 		)
 		.arg(
 			Arg::new("fifo")
@@ -617,6 +623,13 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		let _ = writeln!(
 			host.stdout_writer(),
 			"zip 3.0 (pi-builtins)\nMIT License\nCopyright (c) 2026 xiaoso456"
+		);
+		return 0;
+	}
+	if matches.get_flag("version-info") {
+		let _ = writeln!(
+			host.stdout_writer(),
+			"zip 3.0 (pi-builtins)\nCopyright (c) 2026 xiaoso456"
 		);
 		return 0;
 	}
@@ -1516,6 +1529,13 @@ mod tests {
 		let (code, capture) = run_util::<Zip>(&["-L"], "", "/");
 		assert_eq!(code, 0, "{}", capture.err());
 		assert!(capture.out().contains("MIT License"), "{}", capture.out());
+	}
+
+	#[test]
+	fn version_info_prints_copyright() {
+		let (code, capture) = run_util::<Zip>(&["-V"], "", "/");
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("Copyright"), "{}", capture.out());
 	}
 
 	#[test]
