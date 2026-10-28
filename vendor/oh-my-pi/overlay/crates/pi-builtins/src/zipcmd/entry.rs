@@ -1,11 +1,12 @@
 use std::{
-	io::{self, Write},
+	collections::VecDeque,
+	io::{self, Read, Write},
 	path::{Path, PathBuf},
 	time::SystemTime,
 };
 
 use pi_vfs::{BlockingFs, File, FileTime, Metadata, TempOptions};
-use zip::{AesMode, DateTime, ZipWriter, write::FileOptions};
+use zip::{AesMode, DateTime, ZipWriter, write::{FileOptions, FullFileOptions}};
 
 use crate::host::Host;
 
@@ -17,6 +18,7 @@ pub(super) struct Entry {
 	pub(super) name: String,
 	pub(super) metadata: Metadata,
 	pub(super) symlink_target: Option<PathBuf>,
+	pub(super) comment: Option<String>,
 }
 
 pub(super) fn collect_operand(
@@ -25,7 +27,12 @@ pub(super) fn collect_operand(
 	config: &Config,
 ) -> ZipResult<Vec<Entry>> {
 	let native = host.resolve(operand);
-	let name = archive_base(operand, config.junk_paths);
+	let name = archive_base(
+		operand,
+		config.junk_paths,
+		config.preserve_paths,
+		config.absolute_paths,
+	);
 	let mut entries = Vec::new();
 	collect_path(host.fs(), &native, &name, config, &mut entries)?;
 	Ok(entries)
@@ -38,17 +45,46 @@ pub(super) fn collect_all(
 ) -> (Vec<Entry>, bool) {
 	let mut entries = Vec::new();
 	let mut failed = false;
+	let mut comments = if config.entry_comments {
+		let mut input = String::new();
+		match host.stdin.read_to_string(&mut input) {
+			Ok(_) => Some(input.lines().map(str::to_owned).collect::<VecDeque<_>>()),
+			Err(error) => {
+				report(host, &format!("standard input: {error}"));
+				failed = true;
+				None
+			},
+		}
+	} else {
+		None
+	};
 	for input in inputs {
 		match collect_operand(host, input, config) {
-			Ok(mut found) => entries.append(&mut found),
+			Ok(mut found) => {
+				if let Some(comments) = comments.as_mut() {
+					for entry in &mut found {
+						entry.comment = comments.pop_front();
+					}
+				}
+				entries.append(&mut found);
+			},
 			Err(error) => {
 				report(host, &format!("{}: {error}", input.display()));
 				failed = true;
-			},
+			}
 		}
 	}
+	entries.retain(|entry| config.date_filter.allows(entry.metadata.modified().ok()));
 	if !config.include.is_empty() || !config.exclude.is_empty() {
 		entries.retain(|entry| keep_name(&entry.name, config));
+	}
+	if !config.recurse_patterns.is_empty() {
+		entries.retain(|entry| {
+			config
+				.recurse_patterns
+				.iter()
+				.any(|pattern| name_matches(pattern, &entry.name, config))
+		});
 	}
 	(entries, failed)
 }
@@ -95,13 +131,25 @@ pub(super) fn set_archive_time_value(host: &mut Host, archive: &Path, latest: Sy
 
 fn keep_name(name: &str, config: &Config) -> bool {
 	let included = config.include.is_empty()
-		|| config.include.iter().any(|pattern| glob_match(pattern, name));
-	let excluded = config.exclude.iter().any(|pattern| glob_match(pattern, name));
+		|| config.include.iter().any(|pattern| name_matches(pattern, name, config));
+	let excluded = config.exclude.iter().any(|pattern| name_matches(pattern, name, config));
 	included && !excluded
 }
 
-fn glob_match(pattern: &str, name: &str) -> bool {
-	glob::Pattern::new(pattern).is_ok_and(|pattern| pattern.matches(name))
+pub(super) fn name_matches(pattern: &str, name: &str, config: &Config) -> bool {
+	if config.no_wild {
+		pattern == name
+	} else {
+		glob_match(pattern, name, config.ignore_case)
+	}
+}
+
+fn glob_match(pattern: &str, name: &str, ignore_case: bool) -> bool {
+	let options = glob::MatchOptions {
+		case_sensitive: !ignore_case,
+		..glob::MatchOptions::new()
+	};
+	glob::Pattern::new(pattern).is_ok_and(|pattern| pattern.matches_with(name, options))
 }
 
 fn collect_path(
@@ -128,6 +176,7 @@ fn collect_path(
 			name: name.to_owned(),
 			metadata,
 			symlink_target: Some(fs.read_link(native)?),
+			comment: None,
 		});
 		return Ok(());
 	}
@@ -139,6 +188,7 @@ fn collect_path(
 				name: name.to_owned(),
 				metadata,
 				symlink_target: None,
+				comment: None,
 			});
 		}
 		if config.recurse {
@@ -160,6 +210,7 @@ fn collect_path(
 			name: name.to_owned(),
 			metadata,
 			symlink_target: None,
+			comment: None,
 		});
 		return Ok(());
 	}
@@ -246,20 +297,26 @@ pub(super) fn write_entry(
 		writer.add_symlink(
 			&entry.name,
 			target,
-			options(&entry.metadata, &entry.name, config, true),
+			options(&entry.metadata, &entry.name, config, true, entry.comment.as_deref()),
 		)?;
 		progress(host, config, &entry.name);
 		return Ok(());
 	}
 
 	if entry.metadata.file_type().is_dir() {
-		writer.add_directory(&entry.name, options(&entry.metadata, &entry.name, config, false))?;
+		writer.add_directory(
+			&entry.name,
+			options(&entry.metadata, &entry.name, config, false, entry.comment.as_deref()),
+		)?;
 		progress(host, config, &entry.name);
 		return Ok(());
 	}
 
 	let file = host.fs().open(&entry.native)?;
-	writer.start_file(&entry.name, options(&entry.metadata, &entry.name, config, true))?;
+	writer.start_file(
+		&entry.name,
+		options(&entry.metadata, &entry.name, config, true, entry.comment.as_deref()),
+	)?;
 	match config.line_endings {
 		Some(mode) => io::copy(&mut super::line_endings::LineEndingReader::new(&file, mode), writer)?,
 		None => io::copy(&mut &file, writer)?,
@@ -279,16 +336,22 @@ fn options<'a>(
 	name: &str,
 	config: &'a Config,
 	encrypt: bool,
-) -> FileOptions<'a, 'static, ()> {
-	let mut options: FileOptions<'a, 'static, ()> = FileOptions::default()
-		.unix_permissions(metadata.permissions().mode())
-		.large_file(metadata.len() > u32::MAX as u64);
+	comment: Option<&str>,
+) -> FullFileOptions<'a, 'static> {
+	let mut options: FullFileOptions<'a, 'static> =
+		FileOptions::default().large_file(metadata.len() > u32::MAX as u64);
+	if config.exclude_extra {
+		options = options.external_attributes(0);
+	} else {
+		options = options.unix_permissions(metadata.permissions().mode());
+	}
 
 	if let Some(modified) = zip_time(metadata) {
 		options = options.last_modified_time(modified);
 	}
 
 	let mut options = if config.level == 0
+		|| config.method == zip::CompressionMethod::Stored
 		|| config
 			.no_compress
 			.iter()
@@ -305,6 +368,9 @@ fn options<'a>(
 		if let Some(password) = config.password.as_deref() {
 			options = options.with_aes_encryption_bytes(AesMode::Aes256, password);
 		}
+	}
+	if let Some(comment) = comment {
+		options = options.with_file_comment(comment);
 	}
 	options
 }

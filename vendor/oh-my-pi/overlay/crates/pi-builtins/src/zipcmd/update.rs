@@ -249,7 +249,10 @@ pub(super) fn delete(
 
 	let names: HashSet<String> = inputs
 		.iter()
-		.map(|input| archive_base(input, config.junk_paths))
+		.map(|input| {
+			let name = archive_base(input, config.junk_paths, false, false);
+			if config.ignore_case { name.to_lowercase() } else { name }
+		})
 		.collect();
 	if names.is_empty() {
 		return NOTHING_TO_DO;
@@ -278,7 +281,12 @@ pub(super) fn delete(
 		for index in 0..archive.len() {
 			let file = archive.by_index_raw(index)?;
 			let name = file.name()?.into_owned();
-			if names.contains(&name) {
+			let matched = if config.ignore_case {
+				names.contains(&name.to_lowercase())
+			} else {
+				names.contains(&name)
+			};
+			if matched {
 				removed += 1;
 			} else {
 				writer.raw_copy_file(file)?;
@@ -309,6 +317,89 @@ pub(super) fn delete(
 
 	if removed == total {
 		report(host, "warning: archive is empty");
+	}
+	0
+}
+
+pub(super) fn copy(
+	host: &mut Host,
+	archive_path: &Path,
+	inputs: &[PathBuf],
+	config: &Config,
+) -> i32 {
+	let fs = host.fs().clone();
+	let mut archive = match open_archive(&fs, &config.archive) {
+		Ok(Some(archive)) => archive,
+		Ok(None) => return EMPTY_ARCHIVE,
+		Err(error) => {
+			report(host, &format!("{}: {error}", archive_path.display()));
+			return FAILURE;
+		},
+	};
+	let Some(out) = config.out.as_deref() else {
+		report(host, "--out requires an archive");
+		return 16;
+	};
+
+	let selected: HashSet<String> = if inputs.is_empty() {
+		archive
+			.file_names()
+			.map(|name| name.map(|name| name.into_owned()))
+			.collect::<Result<_, _>>()
+			.unwrap_or_default()
+	} else {
+		let patterns: Vec<String> = inputs
+			.iter()
+			.map(|input| archive_base(input, false, false, false))
+			.collect();
+		archive
+			.file_names()
+			.filter_map(|name| name.ok())
+			.filter(|name| patterns.iter().any(|pattern| entry::name_matches(pattern, name, config)))
+			.map(|name| name.into_owned())
+			.collect()
+	};
+	if selected.is_empty() {
+		return NOTHING_TO_DO;
+	}
+
+	let (temp_path, temp_file) = match create_temp(&fs, out, config) {
+		Ok(temp) => temp,
+		Err(error) => {
+			report(host, &format!("{}: {error}", out.display()));
+			return WRITE_ERROR;
+		},
+	};
+	let mut writer = ZipWriter::new(temp_file);
+	let comment = config
+		.comment
+		.clone()
+		.unwrap_or_else(|| archive.comment().to_vec());
+	if let Err(error) = writer.set_raw_comment(comment.into_boxed_slice()) {
+		let _ = fs.remove_file(&temp_path);
+		report(host, &format!("{}: {error}", out.display()));
+		return FAILURE;
+	}
+
+	let result: ZipResult<()> = (|| {
+		for index in 0..archive.len() {
+			let file = archive.by_index_raw(index)?;
+			let name = file.name()?.into_owned();
+			if selected.contains(&name) {
+				writer.raw_copy_file(file)?;
+			}
+		}
+		Ok(())
+	})();
+	if let Err(error) = result {
+		let _ = fs.remove_file(&temp_path);
+		report(host, &format!("{}: {error}", out.display()));
+		return FAILURE;
+	}
+
+	if let Err(error) = finish(&fs, writer, &temp_path, out) {
+		report(host, &format!("{}: {error}", out.display()));
+		return WRITE_ERROR;
 	}
 	0
 }

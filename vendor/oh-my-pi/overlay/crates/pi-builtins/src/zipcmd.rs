@@ -7,15 +7,33 @@
 //! The command covers create, update/freshen/grow, delete, test/list, archive
 //! comments, AES-256 password encryption, and the common Info-ZIP switches
 //! that map cleanly onto the archive model.
+//!
+//! Compatibility notes (kept here so the gaps are visible in the source):
+//! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
+//! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
+//! -U/--out.
+//! not implemented: -k DOS names; -S system/hidden; -RE regex; -N notes;
+//! -TT external test command; -MM must-match; -v verbose operation;
+//! -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li progress/logging.
+//! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
+//! -A/-J SFX adjustment, -FS filesync, -DF difference.
+//! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
+//! -I.
+//! -s is currently an alias for --show-files; Info-ZIP's split -s is not
+//! supported (see the split limitation above).
 
 use std::{
+	ffi::OsString,
 	fmt,
 	io::{self, Read, Write},
 	path::{Path, PathBuf},
+	time::SystemTime,
 };
 
 use brush_core::{ShellExtensions, builtins::Registration};
+use chrono::{DateTime, Local, NaiveDate, Utc};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use zip::CompressionMethod;
 
 use crate::host::{Host, Utility, matches_parser, util};
 
@@ -37,6 +55,30 @@ impl Utility for Zip {
 	const NAME: &'static str = "zip";
 	const USAGE_ERROR: u8 = 16;
 
+	fn rewrite_argv(argv: Vec<OsString>) -> Result<Vec<OsString>, String> {
+		let mut rewritten = Vec::with_capacity(argv.len());
+		for argument in argv {
+			let text = argument.to_string_lossy();
+			let replacement = match text.as_ref() {
+				"-tt" => Some("--before-date"),
+				"-ic" => Some("--ignore-case"),
+				"-nw" => Some("--no-wild"),
+				"-jj" => Some("--absolute-path"),
+				"-sf" => Some("--show-files"),
+				_ => None,
+			};
+			if let Some(replacement) = replacement {
+				rewritten.push(OsString::from(replacement));
+			} else if let Some(rest) = text.strip_prefix("-tt").filter(|rest| !rest.is_empty()) {
+				rewritten.push(OsString::from("--before-date"));
+				rewritten.push(OsString::from(rest.strip_prefix('=').unwrap_or(rest)));
+			} else {
+				rewritten.push(argument);
+			}
+		}
+		Ok(rewritten)
+	}
+
 	fn run(self, host: &mut Host) -> i32 {
 		run_zip(&self.matches, host)
 	}
@@ -54,6 +96,68 @@ fn app() -> Command {
 				.help("recurse into directories"),
 		)
 		.arg(
+			Arg::new("recurse-patterns")
+				.short('R')
+				.long("recurse-patterns")
+				.action(ArgAction::SetTrue)
+				.help("recurse the current directory and match PATTERNs"),
+		)
+		.arg(
+			Arg::new("from-date")
+				.short('t')
+				.long("from-date")
+				.value_name("DATE")
+				.action(ArgAction::Set)
+				.help("include files modified on or after DATE (mmddyyyy or yyyy-mm-dd)"),
+		)
+		.arg(
+			Arg::new("before-date")
+				.long("before-date")
+				.value_name("DATE")
+				.action(ArgAction::Set)
+				.help("include files modified before DATE"),
+		)
+		.arg(
+			Arg::new("ignore-case")
+				.long("ignore-case")
+				.action(ArgAction::SetTrue)
+				.help("ignore case when matching names"),
+		)
+		.arg(
+			Arg::new("no-wild")
+				.long("no-wild")
+				.action(ArgAction::SetTrue)
+				.help("treat include and exclude patterns literally"),
+		)
+		.arg(
+			Arg::new("copy")
+				.short('U')
+				.long("copy")
+				.action(ArgAction::SetTrue)
+				.conflicts_with_all(["update", "freshen", "grow", "delete", "test", "archive-comment"])
+				.help("copy selected archive entries to the archive named by --out"),
+		)
+		.arg(
+			Arg::new("out")
+				.long("out")
+				.value_name("ARCHIVE")
+				.action(ArgAction::Set)
+				.help("write the result to ARCHIVE (used with -U)"),
+		)
+		.arg(
+			Arg::new("preserve-paths")
+				.short('p')
+				.long("preserve-paths")
+				.action(ArgAction::SetTrue)
+				.help("store paths as given"),
+		)
+		.arg(
+			Arg::new("absolute-path")
+				.long("absolute-path")
+				.action(ArgAction::SetTrue)
+				.help("store absolute paths"),
+		)
+		.arg(
 			Arg::new("quiet")
 				.short('q')
 				.long("quiet")
@@ -66,6 +170,30 @@ fn app() -> Command {
 				.long("junk-paths")
 				.action(ArgAction::SetTrue)
 				.help("store just the name of a saved file (junk the path)"),
+		)
+		.arg(
+			Arg::new("compression-method")
+				.short('Z')
+				.long("compression-method")
+				.value_name("METHOD")
+				.value_parser(["store", "deflate"])
+				.action(ArgAction::Set)
+				.help("use METHOD for compression: store or deflate"),
+		)
+		.arg(
+			Arg::new("entry-comments")
+				.short('c')
+				.long("entry-comments")
+				.action(ArgAction::SetTrue)
+				.conflicts_with_all(["files-from-stdin", "archive-comment", "encrypt"])
+				.help("read one-line comments for entries from standard input"),
+		)
+		.arg(
+			Arg::new("exclude-extra")
+				.short('X')
+				.long("exclude-extra")
+				.action(ArgAction::SetTrue)
+				.help("exclude extra file attributes"),
 		)
 		.arg(
 			Arg::new("update")
@@ -270,6 +398,7 @@ enum Operation {
 	Freshen,
 	Grow,
 	Delete,
+	Copy,
 	Test,
 	List,
 	Comment,
@@ -311,9 +440,31 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 		Ok(password) => password,
 		Err(code) => return code,
 	};
+	let recurse_patterns = matches.get_flag("recurse-patterns");
+	let patterns: Vec<String> = if recurse_patterns {
+		inputs.iter().map(|path| path.to_string_lossy().into_owned()).collect()
+	} else {
+		Vec::new()
+	};
+	if recurse_patterns {
+		inputs = vec![PathBuf::from(".")];
+	}
+	let date_filter = match date_filter(matches) {
+		Ok(filter) => filter,
+		Err(message) => {
+			host.error(message, i32::from(Zip::USAGE_ERROR));
+			return i32::from(Zip::USAGE_ERROR);
+		},
+	};
 	let config = Config {
 		operation:  operation(matches),
-		recurse:    matches.get_flag("recurse"),
+		recurse:    matches.get_flag("recurse") || recurse_patterns,
+		recurse_patterns: patterns,
+		date_filter,
+		ignore_case: matches.get_flag("ignore-case"),
+		no_wild:     matches.get_flag("no-wild"),
+		preserve_paths: matches.get_flag("preserve-paths"),
+		absolute_paths: matches.get_flag("absolute-path"),
 		quiet:      matches.get_flag("quiet"),
 		junk_paths: matches.get_flag("junk-paths"),
 		symlinks:   matches.get_flag("symlinks"),
@@ -329,9 +480,24 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			.get_one::<String>("temp-dir")
 			.map(|path| host.resolve(Path::new(path))),
 		comment:    archive_comment(matches, host),
+		entry_comments: matches.get_flag("entry-comments"),
+		exclude_extra: matches.get_flag("exclude-extra"),
 		level:      compression_level(matches),
+		method:     compression_method(matches),
 		archive:    host.resolve(&archive),
+		out:        matches
+			.get_one::<String>("out")
+			.map(|path| host.resolve(Path::new(path))),
 	};
+
+	if config.operation == Operation::Copy && config.out.is_none() {
+		host.error("--out requires an archive", i32::from(Zip::USAGE_ERROR));
+		return i32::from(Zip::USAGE_ERROR);
+	}
+	if config.operation != Operation::Copy && config.out.is_some() {
+		host.error("--out is only supported with -U", i32::from(Zip::USAGE_ERROR));
+		return i32::from(Zip::USAGE_ERROR);
+	}
 
 	match config.operation {
 		Operation::Create => {
@@ -353,6 +519,7 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 			update::rewrite(host, &archive, &inputs, &config)
 		},
 		Operation::Delete => update::delete(host, &archive, &inputs, &config),
+		Operation::Copy => update::copy(host, &archive, &inputs, &config),
 		Operation::Test => verify::test(host, &archive, &config),
 		Operation::List => verify::list(host, &archive, &config),
 		Operation::Comment => update::comment(host, &archive, &config),
@@ -360,7 +527,9 @@ fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
 }
 
 fn operation(matches: &ArgMatches) -> Operation {
-	if matches.get_flag("show-files") {
+	if matches.get_flag("copy") {
+		Operation::Copy
+	} else if matches.get_flag("show-files") {
 		Operation::List
 	} else if matches.get_flag("archive-comment") {
 		Operation::Comment
@@ -392,6 +561,12 @@ fn archive_with_zip_extension(path: PathBuf) -> PathBuf {
 struct Config {
 	operation:  Operation,
 	recurse:    bool,
+	recurse_patterns: Vec<String>,
+	date_filter: DateFilter,
+	ignore_case: bool,
+	no_wild:     bool,
+	preserve_paths: bool,
+	absolute_paths: bool,
 	quiet:      bool,
 	junk_paths: bool,
 	symlinks:    bool,
@@ -405,7 +580,11 @@ struct Config {
 	password:    Option<Vec<u8>>,
 	temp_dir:    Option<PathBuf>,
 	comment:     Option<Vec<u8>>,
+	out:         Option<PathBuf>,
+	entry_comments: bool,
+	exclude_extra: bool,
 	level:       i64,
+	method:      CompressionMethod,
 	archive:     PathBuf,
 }
 
@@ -469,6 +648,50 @@ fn compression_level(matches: &ArgMatches) -> i64 {
 	6
 }
 
+fn compression_method(matches: &ArgMatches) -> CompressionMethod {
+	match matches.get_one::<String>("compression-method").map(String::as_str) {
+		Some("store") => CompressionMethod::Stored,
+		_ => CompressionMethod::Deflated,
+	}
+}
+
+#[derive(Clone, Copy, Default)]
+struct DateFilter {
+	from:   Option<NaiveDate>,
+	before: Option<NaiveDate>,
+}
+
+impl DateFilter {
+	fn allows(&self, modified: Option<SystemTime>) -> bool {
+		let Some(modified) = modified else {
+			return true;
+		};
+		let local: DateTime<Local> = DateTime::<Utc>::from(modified).with_timezone(&Local);
+		let date = local.date_naive();
+		self.from.is_none_or(|from| date >= from)
+			&& self.before.is_none_or(|before| date < before)
+	}
+}
+
+fn date_filter(matches: &ArgMatches) -> Result<DateFilter, String> {
+	Ok(DateFilter {
+		from:   matches
+			.get_one::<String>("from-date")
+			.map(|value| parse_date(value))
+			.transpose()?,
+		before: matches
+			.get_one::<String>("before-date")
+			.map(|value| parse_date(value))
+			.transpose()?,
+	})
+}
+
+fn parse_date(value: &str) -> Result<NaiveDate, String> {
+	NaiveDate::parse_from_str(value, "%m%d%Y")
+		.or_else(|_| NaiveDate::parse_from_str(value, "%Y-%m-%d"))
+		.map_err(|_| format!("invalid date: {value}"))
+}
+
 fn report(host: &mut Host, message: &str) {
 	let _ = writeln!(host.stderr, "zip: {message}");
 }
@@ -513,15 +736,23 @@ impl From<String> for ZipError {
 /// The archive spelling of a command-line operand.
 ///
 /// Relative operands keep their path; absolute operands lose the root and the
-/// Windows drive prefix, matching Info-ZIP's habit of not storing a leading
-/// slash. `.` contributes no prefix, so `zip -r out.zip .` stores the tree at
-/// the archive root.
-fn archive_base(operand: &Path, junk_paths: bool) -> String {
+/// Windows drive prefix by default, matching Info-ZIP's habit of not storing a
+/// leading slash. -p/-jj keep the path as given. `.` contributes no prefix, so
+/// `zip -r out.zip .` stores the tree at the archive root.
+fn archive_base(
+	operand: &Path,
+	junk_paths: bool,
+	preserve_paths: bool,
+	absolute_paths: bool,
+) -> String {
 	if junk_paths {
 		return leaf_name(operand);
 	}
 
 	let mut name = operand.to_string_lossy().replace('\\', "/");
+	if absolute_paths || preserve_paths {
+		return name.trim_end_matches('/').to_owned();
+	}
 	if name.len() >= 2 && name.as_bytes()[1] == b':' {
 		name = name[2..].to_owned();
 	}
@@ -858,6 +1089,211 @@ mod tests {
 		let mut text = String::new();
 		leaf.read_to_string(&mut text).unwrap();
 		assert_eq!(text, "leaf");
+	}
+
+	#[test]
+	fn z_store_selects_the_stored_method() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello hello hello").unwrap();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-Z", "store", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("out.zip"));
+		let entry = archive.by_name("hello.txt").unwrap();
+		assert_eq!(entry.compression(), CompressionMethod::Stored);
+	}
+
+	#[test]
+	fn z_deflate_selects_the_deflated_method() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello hello hello").unwrap();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-Z", "deflate", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("out.zip"));
+		let entry = archive.by_name("hello.txt").unwrap();
+		assert_eq!(entry.compression(), CompressionMethod::Deflated);
+	}
+
+	#[test]
+	fn z_rejects_an_unknown_method() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, _) =
+			run_util::<Zip>(&["-Z", "bzip2", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 16);
+	}
+
+	#[test]
+	fn help_is_available_without_an_archive() {
+		let (code, capture) = run_util::<Zip>(&["-h"], "", "/");
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(capture.out().contains("Usage:"), "{}", capture.out());
+	}
+
+	#[test]
+	fn r_matches_patterns_from_the_current_directory() {
+		let fixture = tempdir().unwrap();
+		fs::create_dir(fixture.path().join("nested")).unwrap();
+		fs::write(fixture.path().join("root.txt"), b"root").unwrap();
+		fs::write(fixture.path().join("nested").join("leaf.txt"), b"leaf").unwrap();
+		fs::write(fixture.path().join("nested").join("skip.rs"), b"skip").unwrap();
+
+		let (code, capture) = run_util::<Zip>(&["-R", "out.zip", "*.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let archive = open(&fixture.path().join("out.zip"));
+		let mut names: Vec<String> = archive.file_names().map(|name| name.unwrap().into_owned()).collect();
+		names.sort();
+		assert_eq!(names, vec!["nested/leaf.txt", "root.txt"]);
+	}
+
+	#[test]
+	fn c_attaches_entry_comments() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-c", "out.zip", "hello.txt"],
+			"hello comment
+",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("out.zip"));
+		assert_eq!(archive.by_name("hello.txt").unwrap().comment(), "hello comment");
+	}
+
+	#[test]
+	fn x_omits_unix_permissions() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-X", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("out.zip"));
+		let mode = archive.by_name("hello.txt").unwrap().unix_mode();
+		assert!(mode.is_none(), "mode {mode:?}");
+	}
+
+	#[test]
+	fn t_includes_files_on_or_after_the_date() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-t", "01011970", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name("hello.txt").is_ok());
+	}
+
+	#[test]
+	fn tt_excludes_files_before_the_date() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-tt", "01011970", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 12, "{}", capture.err());
+		assert!(!fixture.path().join("out.zip").exists());
+	}
+
+	#[test]
+	fn ic_matches_patterns_case_insensitively() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-ic", "-i", "*.TXT", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name("hello.txt").is_ok());
+	}
+
+	#[test]
+	fn nw_treats_patterns_literally() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) = run_util::<Zip>(
+			&["-nw", "-i", "*.txt", "out.zip", "hello.txt"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 12, "{}", capture.err());
+		assert!(!fixture.path().join("out.zip").exists());
+	}
+
+	#[test]
+	fn p_preserves_the_absolute_path() {
+		let fixture = tempdir().unwrap();
+		let file = fixture.path().join("hello.txt");
+		fs::write(&file, b"hello").unwrap();
+		let operand = file.to_string_lossy().replace('\\', "/");
+		let expected = operand.clone();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-p", "out.zip", &operand], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name(&expected).is_ok());
+	}
+
+	#[test]
+	fn jj_preserves_the_absolute_path() {
+		let fixture = tempdir().unwrap();
+		let file = fixture.path().join("hello.txt");
+		fs::write(&file, b"hello").unwrap();
+		let operand = file.to_string_lossy().replace('\\', "/");
+		let expected = operand.clone();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-jj", "out.zip", &operand], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name(&expected).is_ok());
+	}
+
+	#[test]
+	fn u_copies_selected_entries_to_out() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("a.txt"), b"a").unwrap();
+		fs::write(fixture.path().join("b.txt"), b"b").unwrap();
+		let (code, capture) =
+			run_util::<Zip>(&["-q", "in.zip", "a.txt", "b.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let (code, capture) = run_util::<Zip>(
+			&["-U", "in.zip", "a.txt", "--out", "out.zip"],
+			"",
+			fixture.path(),
+		);
+		assert_eq!(code, 0, "{}", capture.err());
+
+		let mut archive = open(&fixture.path().join("out.zip"));
+		assert!(archive.by_name("a.txt").is_ok());
+		assert!(archive.by_name("b.txt").is_err());
+	}
+
+	#[test]
+	fn out_without_copy_is_a_usage_error() {
+		let fixture = tempdir().unwrap();
+		let (code, _) = run_util::<Zip>(&["in.zip", "--out", "out.zip"], "", fixture.path());
+		assert_eq!(code, 16);
 	}
 
 	#[test]
