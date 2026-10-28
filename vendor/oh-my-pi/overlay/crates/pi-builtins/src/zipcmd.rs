@@ -12,9 +12,10 @@
 //! supported: -r -R -q -j -0..-9 -Z store|deflate -u -f -g -d -T -y -D -x -i
 //! -n -@ -m -l/-ll -o -P -e -b -c -X -z -sf/--show-files -t/-tt -ic -nw -p -jj
 //! -U/--out -FS/--filesync -DF/--difference -S/--system-hidden -RE/--regex
-//! -k/--dos-names -MM/--must-match.
-//! not implemented: -N notes; -TT external test command; -v verbose operation;
-//! -db/-dc/-dd/-dg/-ds/-du/-dv and -lf/-la/-li progress/logging.
+//! -k/--dos-names -MM/--must-match -v (version without an archive; the
+//! operation runs when an archive is present, without extra verbose detail).
+//! not implemented: -N notes; -TT external test command; -db/-dc/-dd/-dg/-ds/
+//! -du/-dv and -lf/-la/-li progress/logging.
 //! not feasible with zip 9.1.2: -s split archives (-sp/-sb/-sv), -F/-FF repair,
 //! -A/-J SFX adjustment.
 //! platform-specific and intentionally absent: -a -B -C/-C2/-C5 -E -V -w -!
@@ -384,7 +385,7 @@ fn app() -> Command {
 				.short('v')
 				.long("version")
 				.action(ArgAction::SetTrue)
-				.help("show version information"),
+				.help("verbose operation; without an archive, show version information"),
 		)
 		.arg(
 			Arg::new("archive")
@@ -457,7 +458,7 @@ pub(crate) fn zip_builtin<SE: ShellExtensions>() -> Registration<SE> {
 }
 
 fn run_zip(matches: &ArgMatches, host: &mut Host) -> i32 {
-	if matches.get_flag("version") {
+	if matches.get_flag("version") && matches.get_one::<String>("archive").is_none() {
 		let _ = writeln!(host.stdout_writer(), "zip 3.0 (pi-builtins)");
 		return 0;
 	}
@@ -938,6 +939,17 @@ mod tests {
 		let (code, capture) = run_util::<Zip>(&["-v"], "", "/");
 		assert_eq!(code, 0, "{}", capture.err());
 		assert!(capture.out().contains("zip 3.0"), "{}", capture.out());
+	}
+
+	#[test]
+	fn v_with_an_archive_runs_the_operation() {
+		let fixture = tempdir().unwrap();
+		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
+
+		let (code, capture) =
+			run_util::<Zip>(&["-v", "out.zip", "hello.txt"], "", fixture.path());
+		assert_eq!(code, 0, "{}", capture.err());
+		assert!(open(&fixture.path().join("out.zip")).by_name("hello.txt").is_ok());
 	}
 
 	#[test]
