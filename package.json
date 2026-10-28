@@ -93,6 +93,13 @@
     "e2e": "tsx tests/support/harness/dsh-e2e.ts",
     "e2e:browser": "e2e run --config e2e/e2e.config.ts",
     "mock:llm": "tsx tests/support/mock-openai/cli.ts",
+    "bench:fetch": "node tests/benchmarks/fetch.mjs",
+    "bench:grep": "node tests/benchmarks/grep/run.mjs",
+    "bench:find": "node tests/benchmarks/find/run.mjs",
+    "vendor:init": "node scripts/vendor.mjs init",
+    "vendor:sync": "node scripts/vendor.mjs sync",
+    "vendor:apply": "node scripts/vendor.mjs apply",
+    "vendor:check": "node scripts/vendor.mjs check",
     "postinstall": "node scripts/patch-pi-natives.mjs"
   },
   "peerDependencies": {

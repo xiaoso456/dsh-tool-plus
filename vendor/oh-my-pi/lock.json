@@ -1,0 +1,25 @@
+{
+  "repo": "https://github.com/can1357/oh-my-pi.git",
+  "tag": "v18.12.6",
+  "commit": "45c35e40c46166dc726ccc52f5d27f40f2449f99",
+  "package": "@oh-my-pi/pi-natives",
+  "version": "18.12.6",
+  "brushCore": "0.5.0",
+  "brushParser": "0.4.0",
+  "build": {
+    "bazel": "9.2.0",
+    "bun": ">=1.4",
+    "rustToolchain": "nightly-2026-10-06"
+  },
+  "targets": [
+    "linux-x64-baseline",
+    "linux-x64-modern",
+    "linux-arm64",
+    "linux-musl-x64-baseline",
+    "linux-musl-arm64",
+    "darwin-arm64",
+    "darwin-x64-baseline",
+    "win32-x64-baseline",
+    "win32-arm64"
+  ]
+}

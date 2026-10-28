@@ -1,0 +1,209 @@
+name: Native addons
+
+on:
+  pull_request:
+    paths:
+      - "vendor/oh-my-pi/**"
+      - "scripts/vendor.mjs"
+      - ".github/workflows/native.yml"
+  push:
+    tags:
+      - "native-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep this aligned with vendor/oh-my-pi/lock.json. The workflow reads the
+  # lock file for the actual checkout ref, but the tool versions are explicit
+  # so a runner-image change cannot silently select another Bazel/Bun.
+  BUN_VERSION: "1.4.2"
+  BAZELISK_VERSION: "1.28.1"
+
+jobs:
+  vendor:
+    name: Vendor pin and patches
+    runs-on: ubuntu-22.04
+    outputs:
+      omp_commit: ${{ steps.lock.outputs.omp_commit }}
+      omp_tag: ${{ steps.lock.outputs.omp_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read vendor lock
+        id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "omp_commit=$(jq -r .commit vendor/oh-my-pi/lock.json)" >> "$GITHUB_OUTPUT"
+          echo "omp_tag=$(jq -r .tag vendor/oh-my-pi/lock.json)" >> "$GITHUB_OUTPUT"
+      - name: Checkout pinned oh-my-pi
+        uses: actions/checkout@v4
+        with:
+          repository: can1357/oh-my-pi
+          ref: ${{ steps.lock.outputs.omp_commit }}
+          path: vendor/oh-my-pi/upstream
+          fetch-depth: 1
+      - name: Verify pin and patch series
+        shell: bash
+        run: node scripts/vendor.mjs check
+
+  build:
+    name: ${{ matrix.artifact }}
+    if: github.event_name != 'pull_request'
+    needs: vendor
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux gnu: build both x64 ISA floors natively via Bazel.
+          - { artifact: linux-x64-baseline, target: linux-x64-baseline, runner: ubuntu-22.04 }
+          - { artifact: linux-x64-modern, target: linux-x64-modern, runner: ubuntu-22.04 }
+          - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm }
+          - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04 }
+          - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm }
+          # Darwin: explicit targets so the x64 artifact stays baseline.
+          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15 }
+          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel }
+          # Windows: OMP's msvc cross toolchain runs on Linux/mac exec hosts.
+          - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04 }
+          - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04 }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned oh-my-pi
+        uses: actions/checkout@v4
+        with:
+          repository: can1357/oh-my-pi
+          ref: ${{ needs.vendor.outputs.omp_commit }}
+          path: vendor/oh-my-pi/upstream
+          fetch-depth: 1
+      - name: Sync local overlay
+        shell: bash
+        run: node scripts/vendor.mjs sync
+      - name: Apply local patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          patches=(vendor/oh-my-pi/patches/*.patch)
+          for patch in "${patches[@]}"; do
+            echo "applying $patch"
+            git -C vendor/oh-my-pi/upstream apply "$PWD/$patch"
+          done
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install Bazelisk
+        shell: bash
+        run: npm install --global "@bazel/bazelisk@${BAZELISK_VERSION}"
+      - name: Install pinned Rust toolchain
+        shell: bash
+        working-directory: vendor/oh-my-pi/upstream
+        run: rustup show
+      - name: Build native addon
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/build/$ARTIFACT"
+          cd vendor/oh-my-pi/upstream
+          bun run scripts/bazel-natives.ts "$TARGET" --dest "$GITHUB_WORKSPACE/build/$ARTIFACT"
+      - name: Verify addon artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "build/${{ matrix.artifact }}" -type f -name "*.node" -print
+          test "$(find "build/${{ matrix.artifact }}" -type f -name "*.node" | wc -l)" -ge 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-natives-${{ matrix.artifact }}
+          path: build/${{ matrix.artifact }}/*.node
+          if-no-files-found: error
+
+  # Native Windows smoke build. It is not a release artifact: it proves the
+  # local Cargo/N-API path still works with the current VS Build Tools image.
+  windows-host-smoke:
+    name: Windows host smoke
+    if: github.event_name != 'pull_request'
+    needs: vendor
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned oh-my-pi
+        uses: actions/checkout@v4
+        with:
+          repository: can1357/oh-my-pi
+          ref: ${{ needs.vendor.outputs.omp_commit }}
+          path: vendor/oh-my-pi/upstream
+          fetch-depth: 1
+      - name: Sync local overlay
+        shell: bash
+        run: node scripts/vendor.mjs sync
+      - name: Apply local patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          patches=(vendor/oh-my-pi/patches/*.patch)
+          for patch in "${patches[@]}"; do
+            echo "applying $patch"
+            git -C vendor/oh-my-pi/upstream apply "$PWD/$patch"
+          done
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install native build dependencies
+        shell: bash
+        working-directory: vendor/oh-my-pi/upstream
+        run: bun install --frozen-lockfile --ignore-scripts --filter @oh-my-pi/pi-natives
+      - name: Install pinned Rust toolchain
+        shell: bash
+        working-directory: vendor/oh-my-pi/upstream
+        run: rustup show
+      - name: Build host addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/oh-my-pi/upstream
+          bun run scripts/bazel-natives.ts host --dest "$GITHUB_WORKSPACE/build/win32-host"
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/native-v')
+    needs: [vendor, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pi-natives-*
+          path: dist
+      - name: Write checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist -type f -name "*.node" -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
+          cat dist/SHA256SUMS
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -type f -name "*.node" -print)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" dist/SHA256SUMS --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" dist/SHA256SUMS \
+              --title "Native addons $TAG" \
+              --notes "Pinned oh-my-pi ${{ needs.vendor.outputs.omp_tag }} (${{ needs.vendor.outputs.omp_commit }})."
+          fi

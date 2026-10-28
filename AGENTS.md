@@ -117,3 +117,10 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 - **notebook 只留一套解码器**：解码走引擎自身——`omp/edit/notebook.ts::readEditableNotebookText` 委托 `pi-natives` 的 `notebookToEditableText`（上游 `tools/read.ts` 同款调用）。read 用它铸 hashline tag、引擎用它校验活文件，两边**同一份代码**，一致性是结构性的而非手工维护的；**不要**再写第二套渲染器（曾经的 TS 渲染器已删）。编码半（`readNotebookDocument` / `applyNotebookEditableText` / `serializeEditedNotebookText`）仍留在 TS，因为 native 未导出编码器、而 DSH 自有的 patch/replace/write 三条路径还需要它——把这三条也迁到 Rust 引擎后即可整体删除
 - pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删；消费者侧另加启动期自愈入口 `lib/pi-natives-bootstrap.mjs`（在 import pi-natives 前执行 patch，写入走 copy-on-patch 断硬链接，避免 pnpm store 跨 profile 串改），postinstall 保留为安装时兜底。**跟随上游升级时要核对这份补丁**：确认 `patches/@oh-my-pi__pi-natives.patch` 仍能 apply（对一下新包 `native/loader-state.js` 里还有没有 `import.meta.dir`）；上游自己改成 `import.meta.dirname` 后补丁会失效，届时删补丁文件、只留 postinstall/bootstrap 的幂等判断
 - 改动源码后必须跑完第 2 步验证链再交付
+
+## 本地 native 开发（vendor 产物隔离）
+
+- 验证 `vendor/oh-my-pi` 编出的 addon 时，用 `PI_NATIVES_DIR` 指向独立目录；**不要**改 `node_modules/@oh-my-pi/pi-natives/native/`，也不要拷进全局 `~/.omp/natives/`。后者会让 desktop 和其他 profile 一起吃到未发布的 vendor 产物。
+- 目录结构必须是 `<PI_NATIVES_DIR>/<pi-natives 版本>/<addon 文件名>`，例如 `.../dev-natives/18.12.6/pi_natives.win32-x64-modern.node`；版本以 `vendor/oh-my-pi/lock.json` 的 `version` 为准。Windows 下 loader 会优先查这个版本缓存目录。
+- 只在启动 dev profile 的那个 shell 里设置 `PI_NATIVES_DIR`；desktop 从图标启动不会继承，继续用 npm 包的 baseline。启动时带 `PI_DEBUG_STARTUP=1` 可确认日志出现 `native:require:pi_natives.win32-x64-modern.node`。
+- 这是本地验证通道；正式分发仍等 npm 平台包/wrapper 接线，不要把 vendor 产物或缓存路径写进发布包。

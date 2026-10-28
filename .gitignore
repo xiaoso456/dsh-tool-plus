@@ -9,6 +9,14 @@ lib/
 .sessions/
 coverage/
 
+# Benchmark corpora and generated reports
+tests/benchmarks/data/
+tests/benchmarks/results/
+
+# Vendored OMP source checkout (recreated by pnpm vendor:init / CI checkout)
+vendor/oh-my-pi/upstream/
+vendor/oh-my-pi/build/
+
 # Local logs
 debug.log
 *.log
