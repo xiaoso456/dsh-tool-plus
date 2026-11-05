@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.18] - 2026-11-05
+
+> 正式版：预设快照跟上 dsh 0.2.2 基线，修掉 0.2.2 上两个预设加载失败的问题。
+
+### Changed
+
+- **dsh 依赖升到 `0.2.2-rc.1`**：34 条 `devDependencies` 与 `@deepseek-ai/dsh-brand` 精确钉到该版本；`engines.dsh` 与 peer 范围不动（`>=0.2.1-0 <0.3.0-0`，仍是同一条 minor 线）。
+- **预设基线重拷自 dsh 0.2.2-rc.1**：`presets/baseline/{standard,ptc}.patch.yml` 与官方逐字节一致，两个 `tool-plus-*` 预设重新生成；README 的 dsh 版本口径同步为 `v0.2.2-rc.1`。
+- 测试夹具适配 0.2.2 的宿主 API（工具批调用、`jobs.readAt`、`session-projection`），插件运行时源码零改动。
+- 预设生成器现在把基线里的 `!!js` 表达式原样回写成 tag，不再退化成普通 map（否则平台门会被悄悄丢掉）。
+
+### Fixed
+
+- **0.2.2 上 `tool-plus-standard` / `tool-plus-ptc` 加载失败**（[#3](https://github.com/xiaoso456/dsh-tool-plus/issues/3)）：0.2.2 删掉了 `@deepseek-ai/dsh-tool-subagent-control/list-agents` 这条子路径导出，旧预设里还挂着 `tool-subagent-list-agents` 一行，预设注册表 mount 时整份失败并报 `never started`，绑着这两个预设的旧会话也恢复不了。重拷基线后该行随官方基线一起消失；同批跟进的还有 `modelSelectionSettings` → `modelSelection` + `modelDiscovery`，以及 PTC 的 `tool-presentation` → `tool-executor-ptc`。
+
+[对比 0.1.17](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.17...tool-plus-v0.1.18)
+
 ## [0.1.17] - 2026-10-28
 
 > 正式版。先发过 `0.1.17-beta.0` / `0.1.17-beta.1` 到 `beta` 通道，本版是 `0.1.17-beta.1` 的正式版。

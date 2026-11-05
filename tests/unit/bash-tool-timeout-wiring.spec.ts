@@ -16,8 +16,10 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as ToolExecutorNative from '@deepseek-ai/dsh-tool-executor-native'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -60,6 +62,8 @@ async function setup(config: Record<string, unknown> = {}): Promise<{ ctx: Conte
   const fibers: Fiber[] = [
     await ctx.plugin(SystemPrompt),
     await ctx.plugin(ToolRuntime),
+    await ctx.plugin(ToolExecutorNative),
+    await ctx.plugin(SessionProjection),
     await ctx.plugin(AgentRegistry),
     await ctx.plugin(SessionStore),
     await ctx.plugin(LocalJobRegistry),
@@ -91,14 +95,15 @@ function registerFakeAgent(ctx: Context, sessionId: string, fibers: Fiber[]): Ag
 }
 
 let callCounter = 0
-function call(ctx: Context, args: Record<string, unknown>, agent?: Agent) {
-  return ctx.tools.execute({
+/** One `bash` call through the real executor; see composition.spec.ts for the 0.2.2 batch shape. */
+async function call(ctx: Context, args: Record<string, unknown>, agent?: Agent) {
+  const id = ToolCallId(`call-${++callCounter}`)
+  const batch = await ctx.tools.execute({
     signal: testToolSignal,
-    callId: ToolCallId(`call-${++callCounter}`),
-    name: 'bash',
-    arguments: args,
+    calls: [{ type: 'tool-call', id, name: 'bash', arguments: JSON.stringify(args) }],
     ...agent !== undefined ? { agent } : {},
   })
+  return batch.results[0]!.result
 }
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {

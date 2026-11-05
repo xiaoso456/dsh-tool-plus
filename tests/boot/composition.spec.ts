@@ -14,9 +14,11 @@ import type { JobEvent, JobId, JobRead } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as ToolExecutorNative from '@deepseek-ai/dsh-tool-executor-native'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -41,6 +43,8 @@ async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: numb
   const fibers = [
     await ctx.plugin(SystemPrompt),
     await ctx.plugin(ToolRuntime),
+    await ctx.plugin(ToolExecutorNative),
+    await ctx.plugin(SessionProjection),
     await ctx.plugin(AgentRegistry),
     await ctx.plugin(SessionStore),
     await ctx.plugin(LocalJobRegistry),
@@ -73,14 +77,20 @@ function registerFakeAgent(ctx: Context, sessionId: string, fibers: Fiber[]): Ag
 }
 
 let callCounter = 0
-function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
-  return ctx.tools.execute({
+/**
+ * One call through the real executor, shaped like a model step. 0.2.2 replaced
+ * the single-call `execute({ callId, name, arguments })` input with a `calls`
+ * batch of `ToolCallBlock`s carrying raw JSON arguments, and settles into a
+ * `ToolBatchResult`; the helper unwraps the one result the assertions read.
+ */
+async function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
+  const id = ToolCallId(`call-${++callCounter}`)
+  const batch = await ctx.tools.execute({
     signal: testToolSignal,
-    callId: ToolCallId(`call-${++callCounter}`),
-    name,
-    arguments: args,
+    calls: [{ type: 'tool-call', id, name, arguments: JSON.stringify(args) }],
     ...agent !== undefined ? { agent } : {},
   })
+  return batch.results[0]!.result
 }
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {
@@ -102,7 +112,7 @@ async function waitForJob(ctx: Context, id: string, agent: Agent, timeoutMs = 15
  * The model-facing text of one consuming read: the registry hands out ring
  * chunks, and `log` chunks are producer narration the model never sees.
  */
-function readText(read: JobRead): string {
+function readText(read: Pick<JobRead, 'chunks'>): string {
   return read.chunks.filter(chunk => chunk.channel !== 'log').map(chunk => chunk.text).join('')
 }
 
@@ -201,7 +211,10 @@ describeBash('bash-plus composition', () => {
     const id = textOf(started).match(/job (bash-[0-9a-z]+)/)?.[1]
     expect(id).toBeTruthy()
     await waitForJob(ctx, id!, agent)
-    const read = ctx.jobs.read(id as JobId, agent.id)
+    // 0.2.2's `job_output` plugin consumes the ring when it hands the settlement
+    // notice to the model, so a consuming read here is empty by design; the
+    // retained ring still serves the same bytes by absolute offset.
+    const read = ctx.jobs.readAt(id as JobId, 0, agent.id)
     expect(readText(read)).toContain('job-output-line')
   })
 

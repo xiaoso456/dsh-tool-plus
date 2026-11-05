@@ -32,14 +32,24 @@ const outputDir = join(root, 'presets')
 
 /**
  * The `!!js` dialect of the entry-list YAML. `@deepseek-ai/dsh-agent-preset`
- * rows carry `disabled: !!js <expr>` platform gates, so the baseline cannot be
- * parsed with a plain schema. Resolved values become markers that would NOT
- * survive a re-serialize as `!!js` — {@link assertNoJsExpressions} turns that
- * into a loud failure instead of a silently corrupted preset.
+ * rows carry `disabled: !!js <expr>` platform gates (e.g. `tool-plugin-manager`
+ * is gated on `ctx.get('profileContext')`), so the baseline cannot be parsed
+ * with a plain schema. {@link JsExpr} is the value type and this tag is the
+ * represent side too, mirroring `vendor/include/src/index.ts` of the dsh
+ * release we pin: a re-serialize must emit the same `!!js <expr>` scalar, or
+ * the preset would stop evaluating its gate at activation.
  */
+class JsExpr {
+  constructor(value) {
+    this.value = value
+  }
+}
+
 const jsExpressionTag = {
   tag: 'tag:yaml.org,2002:js',
-  resolve: (value) => ({ __jsExpr: value }),
+  resolve: (value) => new JsExpr(String(value)),
+  identify: (value) => value instanceof JsExpr,
+  stringify: (item) => JSON.stringify(item.value.value),
 }
 
 /**
@@ -87,16 +97,14 @@ const PRESETS = [
 /** Module specifier of the declaration plugin every preset row names. */
 const DECLARATION_MODULE = '@deepseek-ai/dsh-agent-preset'
 
-/** Refuse to emit a `!!js` value we cannot round-trip. */
-function assertNoJsExpressions(rows) {
+/** Refuse to emit a value this generator would silently flatten. */
+function assertRepresentable(rows) {
   const walk = (value, path) => {
     if (Array.isArray(value)) return value.forEach((item, index) => walk(item, `${path}[${index}]`))
     if (value === null || typeof value !== 'object') return
     if (typeof value.__jsExpr === 'string' && Object.keys(value).length === 1) {
       throw new Error(
-        `preset rows carry a !!js expression at ${path} that this generator cannot re-emit as !!js.\n`
-        + 'Teach serializePatch() the represent side (mirror vendor/include/src/index.ts JsExpr) '
-        + 'or fold the row into REMOVE_ROWS / FORCE_DISABLED.',
+        `preset rows carry an unparsed !!js marker at ${path}; the baseline must be parsed with jsExpressionTag.`,
       )
     }
     for (const [key, nested] of Object.entries(value)) walk(nested, `${path}.${key}`)
@@ -185,8 +193,13 @@ function header(spec) {
 /** Render one declaration file exactly as it should land on disk. */
 function serializePatch(spec) {
   const declaration = buildDeclaration(spec)
-  assertNoJsExpressions(declaration[0].insert[0].config.plugins)
-  const body = YAML.stringify(declaration, { lineWidth: 0, aliasDuplicateObjects: false, singleQuote: true })
+  assertRepresentable(declaration[0].insert[0].config.plugins)
+  const body = YAML.stringify(declaration, {
+    lineWidth: 0,
+    aliasDuplicateObjects: false,
+    singleQuote: true,
+    customTags: [jsExpressionTag],
+  })
   if (body.includes('__jsExpr')) {
     throw new Error(`${spec.id}: serialized patch still contains a __jsExpr marker — refusing to write`)
   }
