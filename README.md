@@ -13,7 +13,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@xiaoso/dsh-tool-plus?logo=npm)](https://www.npmjs.com/package/@xiaoso/dsh-tool-plus)
 [![License: MIT](https://img.shields.io/github/license/xiaoso456/dsh-tool-plus)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22.19%20%7C%20%3E%3D24-339933?logo=nodedotjs)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%3E%3D24.9-339933?logo=nodedotjs)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)]()
 
 </div>
@@ -129,7 +129,7 @@ dsh plugin --profile web add link:<本仓库路径>
 ## 环境要求
 
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
-- **Node.js** ≥ 22.19 或 ≥ 24
+- **Node.js** ≥ 24.9
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
 - 适用于 DeepSeek Harness `dsh` v0.2.2-rc.1（pre-release，接口可能变动）
 
