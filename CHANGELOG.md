@@ -5,11 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.19] - 2026-11-05
+
+> 正式版：把 `engines.dsh` 的下界对齐到实际支持的 0.2.2 线。
 
 ### Changed
 
 - **`engines.dsh` 下界抬到 `0.2.2`**（`>=0.2.2-0 <0.3.0-0`，15 条 peer 同步）：预设快照取自 0.2.2 基线，0.2.1 宿主上 PTC 预设引用的 `@deepseek-ai/dsh-tool-executor-ptc` 根本不存在，装上也用不了；声明下限现在和实际支持的版本一致，0.2.1 用户留在 0.1.17。
+
+[对比 0.1.18](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.18...tool-plus-v0.1.19)
 
 ## [0.1.18] - 2026-11-05
 
