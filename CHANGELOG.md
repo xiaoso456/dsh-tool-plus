@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.20] - 2026-11-07
+
+> 正式版：预设新增「跟随官方」动作，官方升级后不必等插件发版。
+
+### Added
+
+- **设置 → Tool Plus → 预设新增「跟随官方」**：读取当前环境官方随附的预设声明，套上本插件的增量（去掉宿主面三行、pwsh 关闭、加文档行）后整份写入 profile 配置。我们的预设落后于官方时，按钮旁显示「推荐」标签。
+- 派生规则是纯函数（`src/presets/rebase.ts`），测试钉住它与随包生成物逐值相等，两边漂移会立即变红。
+
+### Changed
+
+- 「跟随官方」与「对齐模板」一样需二次确认；确认框与动作结果出现时自动滚入视口。
+- 预设的 `engines.dsh` 下界保持 `0.2.2`，行为与 0.1.19 一致；README 补充了 0.2.2 下「加载失败」的修复步骤。
+
+[对比 0.1.19](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.19...tool-plus-v0.1.20)
+
 ## [0.1.19] - 2026-11-05
 
 > 正式版：把 `engines.dsh` 的下界对齐到实际支持的 0.2.2 线。
