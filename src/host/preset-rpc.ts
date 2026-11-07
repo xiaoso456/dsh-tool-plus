@@ -76,7 +76,7 @@ export function parsePresetComparePayload(payload: unknown): PresetComparePayloa
 
 /**
  * Validate a `presets/apply` payload. Anything that is not exactly
- * `{ id: non-empty string, action: 'upgrade' | 'align' | 'revert', templateId?: non-empty string }`
+ * `{ id: non-empty string, action: 'upgrade' | 'align' | 'revert' | 'rebase', templateId?: non-empty string }`
  * is rejected, so the write endpoint never receives a half-formed request.
  * @param payload - the raw RPC payload.
  * @returns the narrowed payload, or undefined when invalid.
@@ -85,7 +85,7 @@ export function parsePresetActionPayload(payload: unknown): PresetActionPayload 
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined
   const { id, action, templateId } = payload as { id?: unknown; action?: unknown; templateId?: unknown }
   if (typeof id !== 'string' || id.length === 0) return undefined
-  if (action !== 'upgrade' && action !== 'align' && action !== 'revert') return undefined
+  if (action !== 'upgrade' && action !== 'align' && action !== 'revert' && action !== 'rebase') return undefined
   if (templateId !== undefined && (typeof templateId !== 'string' || templateId.length === 0)) return undefined
   return templateId === undefined ? { id, action } : { id, action, templateId }
 }

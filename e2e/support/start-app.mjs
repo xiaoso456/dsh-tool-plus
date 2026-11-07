@@ -22,6 +22,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse, stringify } from 'yaml'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
@@ -194,7 +195,28 @@ const PROFILE_PATCH = `${mockProfilePatch(mock.url, { withPreset: true, transcri
     welcomeNoticeVersion: 2026-09-28.1
 `
 
-prepareProfile(PROFILE, BUNDLES, PROFILE_PATCH)
+/**
+ * 演示用陈旧数据（仅 `E2E_SEED_STALE=1` 时生效，默认关闭，不影响用例）：
+ * 把我们的 standard 预设覆盖成「缺文档行」的旧版本，让设置页出现「推荐」标签与「恢复随包」，便于人工看效果。
+ * 序列化与 scripts/build-preset-patches.mjs 的 `!!js` 方言一致，`disabled: !!js` 门控原样保留。
+ */
+function staleSeed() {
+  if (process.env.E2E_SEED_STALE !== '1') return ''
+  class JsExpr { constructor(value) { this.value = value } }
+  const jsTag = {
+    tag: 'tag:yaml.org,2002:js',
+    resolve: (value) => new JsExpr(String(value)),
+    identify: (value) => value instanceof JsExpr,
+    stringify: (item) => JSON.stringify(item.value.value),
+  }
+  const file = path.join(REPO_ROOT, 'presets', 'tool-plus-standard.patch.yml')
+  const row = parse(fs.readFileSync(file, 'utf8'), { schema: 'core', customTags: [jsTag] })[0].insert[0]
+  const plugins = row.config.plugins.filter((item) => item.id !== 'tool-plus')
+  const block = stringify({ config: { ...row.config, plugins } }, { lineWidth: 0, customTags: [jsTag] })
+  return '- id: ' + row.id + '\n' + block.split('\n').map((line) => (line === '' ? line : '  ' + line)).join('\n')
+}
+
+prepareProfile(PROFILE, BUNDLES, PROFILE_PATCH + staleSeed())
 
 const child = spawn(
   process.execPath,

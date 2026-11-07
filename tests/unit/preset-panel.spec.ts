@@ -34,6 +34,7 @@ const TEXT: Partial<Record<BashPlusLocaleKey, string>> = {
   presetActionUpdate: '最小更新',
   presetActionAlign: '对齐模板',
   presetActionRevert: '恢复随包',
+  presetActionRebase: '跟随官方',
   presetActionUpdateHint: '只把这 {count} 个工具行（{rows}）关掉。',
   presetActionUpdateNothing: '当前没有需要关掉的工具行。',
   presetActionAlignHint: '用所选模板「{template}」整份替换这一行的插件列表。',
@@ -104,17 +105,26 @@ const compare = (over: Partial<PresetCompareValue> = {}): PresetCompareValue => 
 })
 
 describe('presetActions', () => {
-  it('offers all three actions on our own untouched preset', () => {
-    expect(presetActions(status())).toEqual(['upgrade', 'align'])
+  it('offers all three actions on our own untouched preset, with follow-official first', () => {
+    expect(presetActions(status())).toEqual(['rebase', 'upgrade', 'align'])
+  })
+
+  it('offers follow-official on every one of our presets, even when the list is unreadable', () => {
+    expect(presetActions(status({ customized: true }))).toContain('rebase')
+    expect(presetActions(status({ unrecognized: true }))).toContain('rebase')
+  })
+
+  it('never offers follow-official on a preset another bundle declares', () => {
+    expect(presetActions(status({ source: 'other' }))).not.toContain('rebase')
   })
 
   it('adds revert only when there is an override to remove', () => {
-    expect(presetActions(status({ customized: true }))).toEqual(['upgrade', 'align', 'revert'])
+    expect(presetActions(status({ customized: true }))).toEqual(['rebase', 'upgrade', 'align', 'revert'])
   })
 
   it('drops upgrade when the plugin list is not a readable row list', () => {
-    expect(presetActions(status({ unrecognized: true }))).toEqual(['align'])
-    expect(presetActions(status({ unrecognized: true, customized: true }))).toEqual(['align', 'revert'])
+    expect(presetActions(status({ unrecognized: true }))).toEqual(['rebase', 'align'])
+    expect(presetActions(status({ unrecognized: true, customized: true }))).toEqual(['rebase', 'align', 'revert'])
   })
 
   it('only fixes conflicts on presets another bundle declares', () => {
@@ -129,12 +139,13 @@ describe('presetActions', () => {
 })
 
 describe('action copy', () => {
-  it('names each action and asks for confirmation only for the two that overwrite content', () => {
+  it('names each action and asks for confirmation only for the ones that overwrite content', () => {
     expect(presetActionText(t, 'upgrade')).toBe('最小更新')
     expect(presetActionText(t, 'align')).toBe('对齐模板')
     expect(presetActionText(t, 'revert')).toBe('恢复随包')
-    expect([presetActionNeedsConfirm('upgrade'), presetActionNeedsConfirm('align'), presetActionNeedsConfirm('revert')])
-      .toEqual([false, true, true])
+    expect(presetActionText(t, 'rebase')).toBe('跟随官方')
+    expect([presetActionNeedsConfirm('upgrade'), presetActionNeedsConfirm('align'), presetActionNeedsConfirm('revert'), presetActionNeedsConfirm('rebase')])
+      .toEqual([false, true, true, true])
   })
 
   it('explains the upgrade with the actual rows, or says there is nothing to do', () => {

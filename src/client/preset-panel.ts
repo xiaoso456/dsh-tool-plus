@@ -16,6 +16,7 @@
  * @module @xiaoso/dsh-tool-plus/client/preset-panel
  */
 
+import { OFFICIAL_BASE_OF } from '../presets/rebase.ts'
 import {
   BUNDLED_PRESET_IDS,
   PRESET_ACTION_ENDPOINT,
@@ -266,8 +267,8 @@ export function presetNotes(
 export function presetActions(status: PresetStatus, writable = true): PresetAction[] {
   if (!writable || status.entryId === undefined) return []
   if (status.source === 'other') return status.unrecognized ? [] : ['upgrade']
-  if (status.unrecognized) return status.customized ? ['align', 'revert'] : ['align']
-  return status.customized ? ['upgrade', 'align', 'revert'] : ['upgrade', 'align']
+  if (status.unrecognized) return status.customized ? ['rebase', 'align', 'revert'] : ['rebase', 'align']
+  return status.customized ? ['rebase', 'upgrade', 'align', 'revert'] : ['rebase', 'upgrade', 'align']
 }
 
 /** 动作按钮文案。 */
@@ -275,14 +276,20 @@ export function presetActionText(
   t: (key: BashPlusLocaleKey) => string,
   action: PresetAction,
 ): string {
+  if (action === 'rebase') return t('presetActionRebase')
   if (action === 'align') return t('presetActionAlign')
   if (action === 'revert') return t('presetActionRevert')
   return t('presetActionUpdate')
 }
 
-/** 需要二次确认的动作：两个会动到用户已有内容的动作。 */
+/** 我们的预设跟随的官方预设名（如 tool-plus-standard → standard），供文案点名。 */
+function officialLabelOf(presetId: string): string {
+  return OFFICIAL_BASE_OF[presetId] ?? presetId
+}
+
+/** 需要二次确认的动作：会动到用户已有内容的动作（跟随官方会整份重派生，同样需要确认）。 */
 export function presetActionNeedsConfirm(action: PresetAction): boolean {
-  return action === 'align' || action === 'revert'
+  return action === 'rebase' || action === 'align' || action === 'revert'
 }
 
 /**
@@ -305,6 +312,7 @@ export function presetActionHint(
     for (const [name, value] of Object.entries(values)) text = text.replaceAll(`{${name}}`, value)
     return text
   }
+  if (action === 'rebase') return fill('presetActionRebaseHint', { official: officialLabelOf(status.id) })
   if (action === 'align') return fill('presetActionAlignHint', { template: templateLabel })
   if (action === 'revert') return t('presetActionRevertHint')
   if (status.conflicts.length === 0) return t('presetActionUpdateNothing')
@@ -338,6 +346,7 @@ export function presetConfirmText(
   templateLabel: string,
 ): string {
   if (action === 'revert') return t('presetConfirmRevert')
+  if (action === 'rebase') return t('presetConfirmRebase').replace('{official}', officialLabelOf(status.id))
   const lines = [t('presetConfirmAlign').replace('{template}', templateLabel)]
   if (status.customized) lines.push(t('presetConfirmAlignEdits'))
   return lines.join('\n')
@@ -382,7 +391,9 @@ export function presetResultText(
     return t('presetResultFailed').replace('{reason}', result.reason ?? t('presetFailUnknown'))
   }
   const lines: string[] = []
-  if (action === 'align') {
+  if (action === 'rebase') {
+    lines.push(result.changed ? t('presetResultRebaseDone') : t('presetResultRebaseNoChange'))
+  } else if (action === 'align') {
     lines.push(result.changed ? t('presetResultAlignDone') : t('presetResultAlignNoChange'))
   } else if (action === 'revert') {
     lines.push(result.changed ? t('presetResultRevertDone') : t('presetResultRevertNoChange'))

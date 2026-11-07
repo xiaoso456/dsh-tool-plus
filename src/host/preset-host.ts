@@ -34,7 +34,8 @@ import {
 import { comparePlugins } from '../presets/compare.ts'
 import { disableConflicts } from '../presets/conflicts.ts'
 import { planPresetAction, type PresetActionKind } from '../presets/plan.ts'
-import { isRowList } from '../presets/rows.ts'
+import { OFFICIAL_BASE_OF, rebasePlugins, type RebaseResult } from '../presets/rebase.ts'
+import { isRowList, sameValue } from '../presets/rows.ts'
 import { listPresetStatuses as buildStatusList, templatePlugins, type PresetFacts } from '../presets/status.ts'
 
 /** The context slice this module needs: Cordis service lookup only. */
@@ -283,9 +284,48 @@ function failure(reason: string): PresetActionResultValue {
  */
 export async function listPresetStatuses(ctx: PresetHostCtx): Promise<PresetStatusListValue> {
   const { facts, editor } = await collect(ctx)
-  const list = buildStatusList(facts, editor !== undefined)
+  const built = buildStatusList(facts, editor !== undefined)
+  // 「推荐」标签的依据：跟随官方会不会真的改动我们这一行。
+  const presets = built.presets.map(status => ({ ...status, followOfficial: followsOfficialDiffers(facts, editor, status.id) }))
+  const list = { ...built, presets }
   const legacy = legacyPresetRoot()
   return legacy === undefined ? list : { ...list, legacyPresetRoot: legacy }
+}
+
+/**
+ * 跟随官方是否会改动我们这一行：官方派生结果与当前生效的 plugins 不同即为 true。
+ * 只看我们自己的预设；官方读不到、派生失败、或本部署不可写时一律 false（不推荐）。
+ * @param facts - 本轮收集到的全部预设事实。
+ * @param editor - 宿主的 configEditor。
+ * @param presetId - 预设 id。
+ * @returns 是否推荐跟随官方。
+ */
+function followsOfficialDiffers(facts: readonly PresetFacts[], editor: ConfigEditorLike | undefined, presetId: string): boolean {
+  const fact = facts.find(item => item.id === presetId && item.ours)
+  if (fact === undefined) return false
+  const derived = rebaseFor(editor, presetId, 'rebase')
+  if (derived === undefined || !derived.ok) return false
+  return !sameValue(derived.plugins, fact.effective?.plugins)
+}
+
+/**
+ * 「跟随官方」的派生结果：取当前环境官方那一行的 inherited 层（宿主交给我们的随包层，即官方最新声明），套上我们的增量。
+ * 直接从 configEditor 的可寻址行取，而不走名册：官方行一定是 profile 根下的 preset-* 行，名册只是展示用。
+ * 只有 rebase 动作需要它；官方那一行读不到、或官方结构已变时给出可读原因，由调用方报失败。
+ * @param editor - 宿主的 configEditor（缺席时无法写，直接报原因）。
+ * @param presetId - 我们的预设 id（如 tool-plus-standard）。
+ * @param action - 本次请求的动作。
+ * @returns 派生结果；非 rebase 动作返回 undefined。
+ */
+function rebaseFor(editor: ConfigEditorLike | undefined, presetId: string, action: PresetActionKind): RebaseResult | undefined {
+  if (action !== 'rebase') return undefined
+  if (editor === undefined) return { ok: false, reason: 'this deployment has no editable profile: ctx.configEditor is unavailable' }
+  const officialId = OFFICIAL_BASE_OF[presetId]
+  if (officialId === undefined) return { ok: false, reason: presetId + ' has no official baseline to follow' }
+  const officialRowId = profileRowId(officialId)
+  const official = editor.configuration().find(item => item.entry.options.id === officialRowId)
+  if (official === undefined) return { ok: false, reason: 'official preset ' + officialId + ' is not declared in this environment (no ' + officialRowId + ' row)' }
+  return rebasePlugins(official.inherited.plugins)
 }
 
 /**
@@ -293,7 +333,7 @@ export async function listPresetStatuses(ctx: PresetHostCtx): Promise<PresetStat
  * delegating the write to the harness's own config editor.
  * @param ctx - context used to resolve the services.
  * @param presetId - the preset to act on.
- * @param action - `upgrade`, `align` or `revert`.
+ * @param action - `upgrade`, `align`, `revert` or `rebase`.
  * @param templateId - the align target (required for `align`).
  * @returns the action result, never throwing.
  */
@@ -309,6 +349,9 @@ export async function applyPresetAction(
     if (fact === undefined) return failure(`unknown preset: ${presetId}`)
 
     const wanted = templateId === undefined ? undefined : templatePlugins(facts, templateId)
+    const rebased = rebaseFor(editor, presetId, action)
+    // 官方那一份读不到、或官方结构已变：直接报失败（面板会显示原因），不要伪装成"无变化"。
+    if (rebased !== undefined && !rebased.ok) return failure(rebased.reason)
     const plan = planPresetAction({
       action,
       ours: fact.ours,
@@ -317,6 +360,7 @@ export async function applyPresetAction(
       inherited: fact.inherited,
       ...(wanted === undefined ? {} : { templatePlugins: wanted }),
       ...(templateId === undefined ? {} : { templateId }),
+      ...(rebased === undefined ? {} : { rebased }),
     })
     if (plan.kind === 'noop') return { ok: true, changed: false, reason: plan.reason, changes: [] }
 
@@ -336,6 +380,9 @@ export async function applyPresetAction(
 
     if (plan.kind === 'revert') {
       await editor.edit(entry, (_current, inherited) => inherited)
+    } else if (plan.kind === 'rebase') {
+      const derived = plan.plugins
+      await editor.edit(entry, current => ({ ...current, plugins: derived }))
     } else if (plan.kind === 'align') {
       await editor.edit(entry, current => ({ ...current, plugins: wanted }))
     } else {

@@ -17,7 +17,7 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   IconChevronDownOutlineRegular,
@@ -76,6 +76,8 @@ const CSS = `
 .tpp-tip{position:fixed;z-index:1100;max-width:44ch;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-tooltip-bg);color:var(--dsw-static-neutral-bluish-50);font-size:12px;line-height:18px;pointer-events:none;animation:tpp-in .16s cubic-bezier(.22,1,.36,1) both}
 .tpp-actionButton{display:inline-flex;align-items:center;gap:6px}
 .tpp-helpIcon{flex:none;opacity:.72}
+/* 推荐标签：绿色状态色的淡底胶囊（color-mix 跟随两套主题）。 */
+.tpp-recommend{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:999px;font-size:11px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent)}
 /* 危险动作跟宿主自己的写法（approval 的 reject）：静止态与邻居**完全一样**（同为
    次级按钮），只有悬停时才给危险色填充 + 错误色文字；破坏性由「二次确认 + 提示文案」
    明说，而不是在静止态摆一个红按钮出来（那会显得和整排按钮格格不入）。 */
@@ -150,6 +152,8 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   const [results, setResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
   /** 待二次确认的动作（动作 + 目标预设）；`align` / `revert` 会动到已有内容。 */
   const [confirming, setConfirming] = useState<{ id: string; action: PresetAction } | null>(null)
+  /** 确认框 / 动作结果所在的节点：它们出现在卡片底部，常在视口之外，出现时要滚进来。 */
+  const attentionRef = useRef<HTMLElement | null>(null)
   /**
    * 悬浮说明：portal 到 body 的 fixed 浮层 + 按按钮实时矩形算出的坐标。
    * 位置不能像之前那样用绝对定位挂在卡片里：设置面板的滚动容器是 `overflow-y:auto`，
@@ -203,6 +207,13 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   useEffect(() => {
     setTemplateId(current => resolveSelectedTemplateId(templates, templatePinned ? current : undefined, presetId))
   }, [templates, presetId, templatePinned])
+
+  /** 确认框与结果在卡片底部，用户可能根本看不到；一出现就平滑滚进视野，免得以为点了没反应。 */
+  const resultText = presetId === undefined ? undefined : results[presetId]?.text
+  useEffect(() => {
+    if (confirming === null && resultText === undefined) return
+    attentionRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [confirming, resultText])
 
   /** 比较当前这对（预设 × 模板）。只读，失败即无比较结果（两个点回到"检查中"）。 */
   useEffect(() => {
@@ -350,6 +361,9 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                     }}
                   >
                     <span>{running ? t('presetActionWorking') : presetActionText(t, action)}</span>
+                    {action === 'rebase' && preset.followOfficial === true && !running
+                      ? <span className="tpp-recommend">{t('presetRecommended')}</span>
+                      : null}
                     <IconQuestionOutlineRegular className="tpp-helpIcon" />
                   </button>
                 ))}
@@ -363,7 +377,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
         {/* 一个位置按优先级轮转：动作结果 > 待改摘要。 */}
         {result !== null
           ? (
-            <p className="tp-actionResult" role="status" data-state={result.ok ? 'ok' : 'error'}>
+            <p className="tp-actionResult" role="status" data-state={result.ok ? 'ok' : 'error'} ref={(node: HTMLElement | null) => { attentionRef.current = node }}>
               {result.text}
             </p>
           )
@@ -371,7 +385,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
         {result === null && pending !== null ? <p className="tpp-state">{pending}</p> : null}
         {confirming !== null && confirming.id === preset.id
           ? (
-            <div className="tpp-confirm" role="group" aria-label={t('presetConfirmTitle')}>
+            <div className="tpp-confirm" role="group" aria-label={t('presetConfirmTitle')} ref={(node: HTMLElement | null) => { attentionRef.current = node }}>
               <p className="tpp-confirmText">{presetConfirmText(t, preset, confirming.action, selectedTemplateLabel)}</p>
               <div className="tpp-confirmActions">
                 <button

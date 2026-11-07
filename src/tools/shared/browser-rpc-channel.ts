@@ -73,7 +73,7 @@ export function profileRowId(presetId: string): string {
 }
 
 /** One preset action the settings panel may ask for. */
-export type PresetActionValue = 'upgrade' | 'align' | 'revert'
+export type PresetActionValue = 'upgrade' | 'align' | 'revert' | 'rebase'
 
 /** Payload of a presets/apply call. */
 export interface PresetActionPayload {
@@ -126,6 +126,8 @@ export interface PresetStatusValue {
   customized: boolean
   /** For our own presets: whether the effective content differs from the bundled declaration. */
   templateDiffers: boolean
+  /** For our own presets: following the current official preset would change this row (drives the 推荐 tag). */
+  followOfficial?: boolean
   /**
    * For our own presets: *what* differs (so the panel can say it instead of the
    * bare "differs", which reads as contradictory next to "nothing to adjust").

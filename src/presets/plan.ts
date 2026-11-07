@@ -20,9 +20,10 @@
 import type { PresetChange } from './conflicts.ts'
 import { analyzePlugins, disableConflicts } from './conflicts.ts'
 import { isRowList, sameValue, type PresetRow } from './rows.ts'
+import type { RebaseResult } from './rebase.ts'
 
 /** 面板可以请求的三个动作。 */
-export type PresetActionKind = 'upgrade' | 'align' | 'revert'
+export type PresetActionKind = 'upgrade' | 'align' | 'revert' | 'rebase'
 
 /** 判定所需的全部事实。 */
 export interface PresetPlanInput {
@@ -39,6 +40,8 @@ export interface PresetPlanInput {
   templatePlugins?: unknown
   /** `align` 请求的模板 id（仅用于文案与校验）。 */
   templateId?: string
+  /** `rebase` 的派生结果：当前环境官方声明套上我们的增量；失败时带原因。 */
+  rebased?: RebaseResult
 }
 
 /** 判定结果。 */
@@ -47,6 +50,7 @@ export type PresetPlan =
   | { kind: 'upgrade'; changes: PresetChange[] }
   | { kind: 'align' }
   | { kind: 'revert' }
+  | { kind: 'rebase'; plugins: PresetRow[] }
 
 /** 生效的 plugins（覆盖优先）。 */
 function effectivePlugins(input: PresetPlanInput): PresetRow[] | undefined {
@@ -60,6 +64,17 @@ function effectivePlugins(input: PresetPlanInput): PresetRow[] | undefined {
  * @returns 计划；`noop` 时调用方**不要**调用 `configEditor.edit`。
  */
 export function planPresetAction(input: PresetPlanInput): PresetPlan {
+  if (input.action === 'rebase') {
+    if (!input.ours) return { kind: 'noop', reason: 'only presets this plugin declares can follow the official preset' }
+    if (input.rebased === undefined) return { kind: 'noop', reason: 'no official preset to follow' }
+    if (!input.rebased.ok) return { kind: 'noop', reason: input.rebased.reason }
+    // 已经等于当前官方派生结果（含我们之前写过的覆盖）：不写，避免白改 mtime。
+    if (sameValue(input.rebased.plugins, input.effective?.plugins)) {
+      return { kind: 'noop', reason: 'this preset already matches the current official preset' }
+    }
+    return { kind: 'rebase', plugins: input.rebased.plugins }
+  }
+
   if (input.action === 'revert') {
     if (!input.customized) return { kind: 'noop', reason: 'this preset carries no profile override to remove' }
     return { kind: 'revert' }
