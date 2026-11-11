@@ -13,7 +13,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@xiaoso/dsh-tool-plus?logo=npm)](https://www.npmjs.com/package/@xiaoso/dsh-tool-plus)
 [![License: MIT](https://img.shields.io/github/license/xiaoso456/dsh-tool-plus)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22.19%20%7C%20%3E%3D24-339933?logo=nodedotjs)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%3E%3D24.9-339933?logo=nodedotjs)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-lightgrey)]()
 
 </div>
@@ -22,7 +22,7 @@ Essential tools enhancement for DeepSeek Harness: persistent bash, structured re
 
 ## Features
 
-- **bash**: persistent shell; `cd` and `export` keep state across calls; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools (off by default)
+- **bash**: the working directory follows `cd` across calls; other shell state (exported variables, aliases, shell functions) does not persist by default — see Notes for switching to a persistent shell; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools (off by default)
 - **Safe delete**: `rm` moves files to the system trash by default instead of deleting permanently, so accidental deletes are recoverable; use `command rm` for a real delete
 - **read**: precise line-range reading (supports `:N-M`, `:raw`, and multiple ranges); large code files return a structural summary by default, with details expanded on demand; zip/tar archives, SQLite, notebooks, and PDFs read directly; PNG / JPEG / WebP / GIF images read directly, oversized ones scaled down automatically; can fetch web content (including images embedded in the page); SPA sites (content rendered dynamically by JS, e.g. excalidraw.com) are automatically fetched via local browser rendering
 - **write**: atomic writes that return a diff of the changes; supports patch-style writing, and can write directly into zip/tar archive members and SQLite data
@@ -130,13 +130,14 @@ Full data and the per-task matrix: [docs/benchmark/sbml-compare-ops.md](docs/ben
 ## Requirements
 
 - **dsh CLI**: installed globally, `npm i -g @deepseek-ai/dsh`
-- **Node.js** ≥ 22.19 or ≥ 24
+- **Node.js** ≥ 24.9
 - **Git Bash** (recommended): serves as the bash execution environment on Windows
-- Targets DeepSeek Harness `dsh` v0.2.0-rc.2 (pre-release; interfaces may change)
+- Targets DeepSeek Harness `dsh` v0.2.2-rc.1 (pre-release; interfaces may change)
 
 ## Notes
 
 - No standalone `pwsh` tool: shell work is handled by the more capable persistent `bash`
+- **bash state**: by default each command gets its own shell and only the working directory follows `cd`; set `autoBackgroundMs` to `0` to share one persistent shell, where exported variables, aliases, and shell functions carry over. The change applies immediately — the description the model sees is rewritten with it, no restart.
 
 **Safe rm sends deleted files to the system trash.** Where they land, and whether you can see them:
 
