@@ -14,7 +14,6 @@ import type { GenericCallView, TerminalCallView, ToolResult, ToolResultView } fr
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-jobs'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './tools/bash/bash-interceptor.ts'
@@ -26,6 +25,7 @@ import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
+import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { ensureInheritableHiddenConsole } from './host/win32-console.ts'
 import { applyPresetAction, comparePresetAgainstTemplate, listPresetStatuses } from './host/preset-host.ts'
@@ -139,9 +139,13 @@ export function apply(ctx: Context, config: Config = {}): void {
     disposeModeSensitive = registrations
   }
   registerModeSensitive()
+  /** bash 那一组注册在下面才建立；设置回调会同步跑一次，先置 false 避开 TDZ。 */
+  let bashSurfaceReady = false
   installBashPlusSettings(ctx, config, (current) => {
     cfg = current()
     registerModeSensitive()
+    // bash 那一组在下面才定义；installBashPlusSettings 会同步回调一次，故用标志避开 TDZ。
+    if (bashSurfaceReady) registerBashSurface()
   })
 
   // Tool-plus RPC (`/tool-plus` route: `browser/detect`, `rmSafe/status`,
@@ -162,31 +166,24 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
   })
 
-  ctx.systemPrompt.section({
-    name: 'tool:bash',
-    order: 105,
-    text: 'The bash tool runs commands in a shell: the session working directory follows `cd` across calls, but other shell state '
-      + '(`export`-ed variables, aliases, shell functions) does not persist between calls — pass `workdir` instead of `cd`. '
-      + 'Long-running commands are moved to the background automatically (the call returns a job id; the result is delivered '
-      + 'automatically when it finishes — do not poll for it). '
-      + 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.',
-  })
-
-  ctx.effect(() => () => { closeSessionShells(''); cleanupSnapshots(); sessionStates.clear(); disposeBrowserProbe() }, 'bash-plus teardown')
-  ctx.on('agent/disposed', ({ agent }) => { closeSessionShells(agent.session.id); sessionStates.delete(agent.session.id) })
-
-  ctx.tools.register(defineTool({
+  /**
+   * bash 的提示词段落与工具描述随配置分支（见 tools/bash/description.ts）：自动后台开着时
+   * 每条命令都是新 Shell，只能承诺工作目录跟随 `cd`；关掉后才是真持久。配置热更新要换文案，
+   * 但 DSH 注册表对同名条目会抛错，所以每次先撤旧注册再注册。
+   */
+  let disposeBashSurface: Array<() => void> = []
+  const registerBashSurface = (): void => {
+    for (const dispose of disposeBashSurface) dispose()
+    disposeBashSurface = [
+      ctx.systemPrompt.section({
+        name: 'tool:bash',
+        order: 105,
+        text: bashSystemPromptText(cfg),
+      }),
+    ]
+    disposeBashSurface.push(ctx.tools.register(defineTool({
     name: 'bash',
-    description: 'Execute a bash command and return its output. '
-      + 'The session working directory follows `cd` across calls; other shell state (`export`-ed variables, aliases, shell functions) '
-      + 'does not persist between calls — pass `workdir` to run elsewhere. '
-      + 'Non-zero exits are reported as `[exit code: N]`. Long output is minimized and/or truncated to head+tail; '
-      + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
-      + 're-read elided ranges with the read tool using :N-M selectors on that path. '
-      + 'Set `run_in_background: true` for long-running commands: the call returns a job id immediately; '
-      + 'the result is delivered automatically when it finishes — do not poll for it. '
-      + 'Commands exceeding the auto-background threshold are moved to the background automatically. '
-      + `Current harness environment facts are exposed through managed \`$${DSH_ENV_PREFIX}*\` variables; inspect them when needed.`,
+    description: bashToolDescription(cfg),
     parameters: {
       command: { type: 'string', required: true, description: 'The bash command to execute.' },
       description: { type: 'string', required: true, description: 'Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".' },
@@ -342,7 +339,13 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     presentCall: presentBashCall,
     presentResult: presentBashResult,
-  }))
+  })))
+  }
+  bashSurfaceReady = true
+  registerBashSurface()
+
+  ctx.effect(() => () => { closeSessionShells(''); cleanupSnapshots(); sessionStates.clear(); disposeBrowserProbe() }, 'bash-plus teardown')
+  ctx.on('agent/disposed', ({ agent }) => { closeSessionShells(agent.session.id); sessionStates.delete(agent.session.id) })
 
   // file tools — now that fs is a hard inject, these always have ctx.fs
   // （read/edit/ast_grep/ast_edit 已由 registerModeSensitive 注册，支持 editMode

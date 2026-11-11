@@ -144,6 +144,11 @@ describeBash('bash-plus composition', () => {
     expect(properties).toHaveProperty('run_in_background')
   })
 
+  it('describes shell persistence truthfully when auto-background is off', () => {
+    // autoBackgroundMs=0 时命令走同一个持久 Shell，描述才能承诺变量保持。
+    expect(ctx.tools.get('bash')?.description).toContain('carry over between calls')
+  })
+
   it('registers the tool:bash system prompt section', () => {
     // A duplicate registration in the same layer throws, which proves the
     // plugin's section is already present.
@@ -296,6 +301,16 @@ describeBash('bash-plus background capacity', () => {
 
 /** Auto-backgrounding runs with a 1s threshold so tests stay fast. */
 describeBash('bash-plus auto-backgrounding', () => {
+  it('describes shell persistence truthfully when every call gets its own shell', async () => {
+    const harness = await setup(60_000)
+    try {
+      // 自动后台开着时每条命令都在独立的作业 Shell 里跑，不能承诺变量保持。
+      expect(harness.ctx.tools.get('bash')?.description).toContain('does not persist between calls')
+    } finally {
+      await harness.dispose()
+    }
+  })
+
   let ctx: Context
   let agent: Agent
   let dispose: () => Promise<void>
