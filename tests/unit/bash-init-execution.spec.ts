@@ -94,6 +94,17 @@ describeBash('bash init script', () => {
     expect(fs.existsSync(path.join(os.tmpdir(), 'tool-plus-init-default.sh'))).toBe(true)
   }, 30_000)
 
+it('a disabled init script injects nothing into the session', async () => {
+  const result = await executeBash('printf "P=%s;E=%s" "${TOOL_PLUS_PATH_PREFIX:-}" "${TOOL_PLUS_PROBE:-}"', {
+    sessionKey: 'init-disabled',
+    timeout: 20_000,
+    snapshotEnabled: false,
+    initScriptEnabled: false,
+  })
+  expect(result.exitCode).toBe(0)
+  // Off means off: no PATH prefix for the default script and no user exports.
+  expect(result.output).toContain('P=;E=')
+}, 30_000)
 it('the default script leaves a successful status when there is no prefix', async () => {
     const script = writeScript(DEFAULT_INIT_SCRIPT)
     try {
