@@ -165,7 +165,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:bash',
     order: 105,
-    text: 'The bash tool runs in a persistent shell session: `cd`, `export`, and other state changes carry over between calls. '
+    text: 'The bash tool runs commands in a shell: the session working directory follows `cd` across calls, but other shell state '
+      + '(`export`-ed variables, aliases, shell functions) does not persist between calls — pass `workdir` instead of `cd`. '
       + 'Long-running commands are moved to the background automatically (the call returns a job id; the result is delivered '
       + 'automatically when it finishes — do not poll for it). '
       + 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.',
@@ -176,8 +177,9 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.tools.register(defineTool({
     name: 'bash',
-    description: 'Execute a bash command in a persistent shell session and return its output. '
-      + '`cd`, `export`, and other state changes carry over between calls; pass `workdir` to run elsewhere. '
+    description: 'Execute a bash command and return its output. '
+      + 'The session working directory follows `cd` across calls; other shell state (`export`-ed variables, aliases, shell functions) '
+      + 'does not persist between calls — pass `workdir` to run elsewhere. '
       + 'Non-zero exits are reported as `[exit code: N]`. Long output is minimized and/or truncated to head+tail; '
       + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
       + 're-read elided ranges with the read tool using :N-M selectors on that path. '
