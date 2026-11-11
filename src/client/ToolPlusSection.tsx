@@ -34,9 +34,10 @@ import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlus
 import { TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
-import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
+import { injectSettingsRowsCss, NumberRow, SelectRow, TextRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type TextControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
+import { BashInitPanel } from './BashInitPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the `tool-plus` entry's shared configuration form. */
@@ -130,6 +131,13 @@ const TOOL_TABS = TOOL_PLUS_TABS
 /** All fields the page edits (one shared form). */
 const ALL_FIELDS = TOOL_PLUS_FIELDS
 
+/**
+ * Fields rendered by {@link BashInitPanel} itself, inside the feature's own
+ * group: the enable switch and the script path only make sense next to the
+ * script row, not in the generic 行为 group with unrelated settings.
+ */
+const BASH_INIT_FIELDS = new Set(['bashInitEnabled', 'bashInitScript'])
+
 /** Floor for the pinned page height, so an unusually short pane never collapses the panel. */
 const MIN_PAGE_HEIGHT = 240
 
@@ -193,7 +201,13 @@ function ToolTabPanel(props: {
     )
   }
   const owned = new Set(tab.fields)
-  const visible = TOOL_PLUS_FIELDS.filter(field => owned.has(field.name) && isFieldVisible(field, form))
+  const visible = TOOL_PLUS_FIELDS.filter(
+    field => owned.has(field.name) && isFieldVisible(field, form) && !(tab.id === 'bash' && BASH_INIT_FIELDS.has(field.name)),
+  )
+  const textControl = (name: string): TextControl | undefined =>
+    form.groups.flatMap(group => group.texts).find(control => control.field === name)
+  const toggleControl = (name: string): ToggleControl | undefined =>
+    form.groups.flatMap(group => group.toggles).find(control => control.field === name)
 
   // Group visible fields by their group id, preserving table order inside
   // each group — master toggles (e.g. readSummarizeEnabled) render above the
@@ -205,7 +219,7 @@ function ToolTabPanel(props: {
     else groups.push({ group: field.group, fields: [field] })
   }
 
-  const controlOf = (field: ToolPlusField): { kind: 'number' | 'select' | 'toggle'; control: NumberControl | SelectControl | ToggleControl } | undefined => {
+  const controlOf = (field: ToolPlusField): { kind: 'number' | 'select' | 'text' | 'toggle'; control: NumberControl | SelectControl | TextControl | ToggleControl } | undefined => {
     for (const group of form.groups) {
       if (field.kind === 'number') {
         const control = group.numbers.find(c => c.field === field.name)
@@ -213,6 +227,9 @@ function ToolTabPanel(props: {
       } else if (field.kind === 'select') {
         const control = group.selects.find(c => c.field === field.name)
         if (control !== undefined) return { kind: 'select', control }
+      } else if (field.kind === 'text') {
+        const control = group.texts.find(c => c.field === field.name)
+        if (control !== undefined) return { kind: 'text', control }
       } else {
         const control = group.toggles.find(c => c.field === field.name)
         if (control !== undefined) return { kind: 'toggle', control }
@@ -263,6 +280,18 @@ function ToolTabPanel(props: {
                 />
               )
             }
+            if (entry.kind === 'text') {
+              return (
+                <TextRow
+                  key={field.name}
+                  t={t}
+                  control={entry.control as TextControl}
+                  disabled={!writable}
+                  onEdit={form.editText}
+                  onReset={form.actions.resetField}
+                />
+              )
+            }
             if (entry.kind === 'select') {
               return (
                 <SelectRow
@@ -293,6 +322,19 @@ function ToolTabPanel(props: {
       ))}
       {/* 「全局」tab 的第二个分组：预设清单。它不进表单（没有设置键），自带
           RPC 状态与动作，所以在这里单独挂，而不是在字段表里插一个假字段。 */}
+      {tab.id === 'bash'
+        ? (
+          <BashInitPanel
+            t={t}
+            disabled={!writable}
+            enable={toggleControl('bashInitEnabled')}
+            scriptPath={textControl('bashInitScript')}
+            onToggle={form.onToggle}
+            onEditText={form.editText}
+            onResetField={form.actions.resetField}
+          />
+        )
+        : null}
       {tab.id === 'web' ? <PresetPanel t={t} /> : null}
     </>
   )

@@ -75,6 +75,7 @@ export const SETTINGS_ROWS_CSS = `
 .tp-input:hover:not(:disabled):not(:focus-visible){border-color:var(--dsw-alias-border-l3)}
 .tp-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px;border-color:var(--dsw-alias-border-l3)}
 .tp-input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.tp-textInput{width:248px;text-align:left}
 .tp-input.tp-invalid{border-color:var(--dsw-alias-state-error-primary)}
 .tp-input.tp-invalid:focus-visible{outline-color:var(--dsw-alias-state-error-primary)}
 .tp-invalidText{color:var(--dsw-alias-state-error-primary);animation:tp-soft-in .18s ease both}
@@ -340,3 +341,51 @@ export function ActionRow(props: {
 }
 
 export { hasOwn }
+
+/** Text control: a free-form string (paths, names). */
+export interface TextControl {
+  field: string
+  labelKey: BashPlusLocaleKey
+  hintKey: BashPlusLocaleKey
+  text: string
+  overridden: boolean
+}
+
+/** Text row: same anatomy as the number row, with a wider left-aligned input. */
+export function TextRow(props: {
+  t: (key: BashPlusLocaleKey) => string
+  control: TextControl
+  disabled: boolean
+  onEdit: (field: string, text: string) => void
+  onReset: (field: string) => void
+}): ReactNode {
+  const { t, control, disabled, onEdit, onReset } = props
+  const inputId = useId()
+  return (
+    <div className="tp-row">
+      <div className="tp-rowText">
+        <label className="tp-rowTitle" htmlFor={inputId}>{t(control.labelKey)}</label>
+        <div className="tp-rowDesc">{t(control.hintKey)}</div>
+      </div>
+      {control.overridden
+        ? (
+          <span className="tp-badges">
+            <span className="tp-badge">{t('overridden')}</span>
+            <button type="button" className="tp-reset" disabled={disabled} onClick={() => onReset(control.field)}>
+              {t('reset')}
+            </button>
+          </span>
+        )
+        : null}
+      <input
+        id={inputId}
+        type="text"
+        className="tp-input tp-textInput"
+        disabled={disabled}
+        value={control.text}
+        onChange={e => onEdit(control.field, e.target.value)}
+      />
+    </div>
+  )
+}
+

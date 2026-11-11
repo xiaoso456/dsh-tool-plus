@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+> 修复 issue #5：Windows 上裸 `bash` 不再命中 WSL 转发 stub。
+
+### Added
+
+- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量。默认路径 `$DSH_HOME/tool-plus/bash-init.sh`，`bashInitScript` 可指向别处；弹窗内可编辑、试运行（原样执行脚本并显示它的输出）、恢复默认。没有个人副本时执行内置默认版本，随插件版本更新。
+- 内置默认脚本把插件探测到的真实 Git Bash 目录排到系统目录之前；前缀经 `TOOL_PLUS_PATH_PREFIX` 注入，脚本文件本身与平台无关。
+
+### Fixed
+
+- Windows 的 shell 发现不再把 `C:\Windows\System32\bash.exe`（WSL 转发 stub）或 WindowsApps 的 shim 当成宿主 bash；PortableGit 这类没有注册表项的安装，也能从 `where git` 反推安装根目录。
+
+### Changed
+
+- 配置新增 `bashInitEnabled` / `bashInitScript`；设置页字段类型新增文本输入。
+
 ## [0.1.20] - 2026-11-07
 
 > 正式版：预设新增「跟随官方」动作，官方升级后不必等插件发版。

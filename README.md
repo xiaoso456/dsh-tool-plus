@@ -92,6 +92,8 @@ dsh plugin --profile web add link:<本仓库路径>
 
 开箱即用，无需配置。需要微调时常用项有：后台阈值（`autoBackgroundMs`，设为 `0` 则共用一个持久 Shell，`export` 的变量、别名与函数跨调用保留）、超时（`defaultTimeoutMs` / `maxTimeoutMs`）、输出截断窗口、编辑默认模式（`editMode`，默认 `replace`）、结构化摘要开关（`readSummarizeEnabled`）。抓取相关：可切换网页转 Markdown 的后端（`fetchReader`，含浏览器 JS 渲染——SPA 页面），设置面板里可一键「探测浏览器」查看本机可用的 Chrome/Edge。
 
+Shell 初始化脚本（`bashInitEnabled`，默认开；`bashInitScript` 可改路径）：每次创建 shell 时执行一段可编辑脚本。内置默认会把真正的 Git Bash 排到系统目录之前——Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL 转发 stub，没装 WSL 发行版时裸 `bash` 会报 `execvpe(/bin/bash) failed`。在 设置 → Tool Plus → Bash → Shell 初始化 里编辑、试运行、恢复默认。
+
 ## 性能
 
 标准模式/标准模式增强下，在 Linux 上跑 SWE-bench Multilingual（20 题 × 3 轮）：

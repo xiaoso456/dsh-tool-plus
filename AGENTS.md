@@ -117,3 +117,8 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 - **notebook 只留一套解码器**：解码走引擎自身——`omp/edit/notebook.ts::readEditableNotebookText` 委托 `pi-natives` 的 `notebookToEditableText`（上游 `tools/read.ts` 同款调用）。read 用它铸 hashline tag、引擎用它校验活文件，两边**同一份代码**，一致性是结构性的而非手工维护的；**不要**再写第二套渲染器（曾经的 TS 渲染器已删）。编码半（`readNotebookDocument` / `applyNotebookEditableText` / `serializeEditedNotebookText`）仍留在 TS，因为 native 未导出编码器、而 DSH 自有的 patch/replace/write 三条路径还需要它——把这三条也迁到 Rust 引擎后即可整体删除
 - pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删；消费者侧另加启动期自愈入口 `lib/pi-natives-bootstrap.mjs`（在 import pi-natives 前执行 patch，写入走 copy-on-patch 断硬链接，避免 pnpm store 跨 profile 串改），postinstall 保留为安装时兜底。**跟随上游升级时要核对这份补丁**：确认 `patches/@oh-my-pi__pi-natives.patch` 仍能 apply（对一下新包 `native/loader-state.js` 里还有没有 `import.meta.dir`）；上游自己改成 `import.meta.dirname` 后补丁会失效，届时删补丁文件、只留 postinstall/bootstrap 的幂等判断
 - 改动源码后必须跑完第 2 步验证链再交付
+
+## 代码要求
+
+始终以干净、模块化、高内聚、低耦合的方式构建代码，并采用适当的架构和关注点分离。永远不要仅仅因为我要求就简单地拼凑一个功能。如果你找不到一种自然的方式来构建它，你应该建议进行重构以使整个系统更加干净，请提前停止工作并说明情况。
+

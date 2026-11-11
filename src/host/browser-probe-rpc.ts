@@ -48,6 +48,7 @@ import { getShellConfig } from '../tools/bash/bash-executor.ts'
 import { getOrCreateSnapshot } from '../tools/bash/shell-snapshot.ts'
 import { injectRmSafe, rmSafeCliPath } from '../tools/bash/rm-safe.ts'
 import { probeRmSafeRuntime, queryRmSafeStatus } from '../tools/bash/rm-safe-status.ts'
+import { handleBashInitEndpoint, type BashInitRpcDeps } from './bash-init-rpc.ts'
 
 /** Result shape of one Connection RPC call (official gateway contract). */
 type ConnectionRpcResult = Awaited<ReturnType<ConnectionRpcHandler>>
@@ -79,6 +80,8 @@ export interface ToolPlusRpcDeps {
    * `presets/apply`). Omitted when the caller has no preset analysis to inject.
    */
   presets?: PresetRpcDeps
+  /** Bash init-script endpoints (`bash/init*`) on the same channel. */
+  bashInit: BashInitRpcDeps
 }
 
 /** Cap on one request body; every legitimate payload here is a few hundred bytes. */
@@ -182,6 +185,10 @@ export function installBrowserProbeRpc(ctx: Context, deps: ToolPlusRpcDeps): () 
           } catch (error) {
             return failure(error)
           }
+        }
+        {
+          const handled = await handleBashInitEndpoint(deps.bashInit, endpoint, payload)
+          if (handled !== undefined) return handled
         }
         // Preset endpoints share this route: one route serves every family.
         if (deps.presets !== undefined) {

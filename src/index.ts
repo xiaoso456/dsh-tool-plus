@@ -25,6 +25,7 @@ import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
+import { resolveInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { ensureInheritableHiddenConsole } from './host/win32-console.ts'
@@ -159,6 +160,10 @@ export function apply(ctx: Context, config: Config = {}): void {
   // atomic write, the rollback and the precedence check.
   const disposeBrowserProbe = installBrowserProbeRpc(ctx, {
     getRmSafe: () => cfg.rmSafe,
+    bashInit: {
+      getEnabled: () => cfg.bashInitEnabled,
+      getConfiguredPath: () => cfg.bashInitScript,
+    },
     presets: {
       listPresets: (presetCtx) => listPresetStatuses(presetCtx),
       applyAction: (presetCtx, id, action, templateId) => applyPresetAction(presetCtx, id, action, templateId),
@@ -299,7 +304,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           id = jobs.start(jobSpec((job) => { managed = startManagedJob(job); return managed.hooks }))
         } catch {
           const startedAt = performance.now()
-          const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
+          const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, initScriptEnabled: cfg.bashInitEnabled, initScriptPath: resolveInitScriptPath(cfg.bashInitScript), rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
           if (result.cancelled && exec.signal.aborted) throw abortError()
           if (result.workingDir !== undefined) state.cwd = result.workingDir
           return buildForeground(result, performance.now() - startedAt, timeoutMs)
@@ -331,7 +336,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         return value
       }
       const startedAt = performance.now()
-      const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
+      const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, initScriptEnabled: cfg.bashInitEnabled, initScriptPath: resolveInitScriptPath(cfg.bashInitScript), rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
       const wallTimeMs = performance.now() - startedAt
       if (result.cancelled && exec.signal.aborted) throw abortError()
       if (result.workingDir !== undefined) state.cwd = result.workingDir
