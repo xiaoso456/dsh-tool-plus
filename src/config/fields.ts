@@ -18,7 +18,7 @@ import type { BashPlusLocaleKey } from '../client/locales.ts'
 export type ToolPlusFieldValue = number | boolean | string
 
 /** Field control kinds the settings UI renders. */
-export type ToolPlusFieldKind = 'number' | 'boolean' | 'select' | 'text' | 'action'
+export type ToolPlusFieldKind = 'number' | 'boolean' | 'select' | 'action'
 
 /** One selectable option of a `select` field. */
 export interface ToolPlusSelectOption {
@@ -110,7 +110,6 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'nonInteractiveEnv', kind: 'boolean', default: true, labelKey: 'nonInteractiveEnv', hintKey: 'nonInteractiveEnvHint', group: 'behavior', tool: 'bash' },
   { name: 'snapshotEnabled', kind: 'boolean', default: true, labelKey: 'snapshotEnabled', hintKey: 'snapshotEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'bashInitEnabled', kind: 'boolean', default: true, labelKey: 'bashInitEnabled', hintKey: 'bashInitEnabledHint', group: 'behavior', tool: 'bash' },
-  { name: 'bashInitScript', kind: 'text', default: '', labelKey: 'bashInitScript', hintKey: 'bashInitScriptHint', group: 'behavior', tool: 'bash' },
   { name: 'rmSafe', kind: 'boolean', default: true, labelKey: 'rmSafe', hintKey: 'rmSafeHint', group: 'behavior', tool: 'bash' },
   { name: 'useShellCommandWrapper', kind: 'boolean', default: false, labelKey: 'useShellCommandWrapper', hintKey: 'useShellCommandWrapperHint', group: 'behavior', tool: 'bash' },
   // Bash: timing & backgrounding

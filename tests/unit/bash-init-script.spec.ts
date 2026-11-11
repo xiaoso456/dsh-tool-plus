@@ -15,7 +15,6 @@ import {
   defaultInitScriptPath,
   INIT_PATH_PREFIX_ENV,
   readInitScript,
-  resolveInitScriptPath,
 } from '../../src/tools/bash/init-script.ts'
 
 function tempDir(): string {
@@ -29,20 +28,12 @@ describe('defaultInitScriptPath', () => {
     )
   })
 
-  it('prefers the configured path and resolves it', () => {
-    expect(resolveInitScriptPath('  ./my-init.sh  ', { DSH_HOME: 'C:/dsh-home' })).toBe(
-      path.resolve('./my-init.sh'),
-    )
-    expect(resolveInitScriptPath('   ', { DSH_HOME: 'C:/dsh-home' })).toBe(
-      defaultInitScriptPath({ DSH_HOME: 'C:/dsh-home' }),
-    )
-  })
 })
 
 describe('readInitScript', () => {
   it('falls back to the built-in default when the user copy is missing', () => {
     const dir = tempDir()
-    const info = readInitScript(path.join(dir, 'missing.sh'), { DSH_HOME: dir })
+    const info = readInitScript({ DSH_HOME: dir })
     try {
       expect(info.source).toBe('default')
       expect(info.exists).toBe(false)
@@ -54,10 +45,11 @@ describe('readInitScript', () => {
 
   it('reads the user copy when it exists', () => {
     const dir = tempDir()
-    const script = path.join(dir, 'bash-init.sh')
+    const script = path.join(dir, 'tool-plus', 'bash-init.sh')
+    fs.mkdirSync(path.dirname(script), { recursive: true })
     fs.writeFileSync(script, 'export MY_FLAG=1\n')
     try {
-      const info = readInitScript(script, { DSH_HOME: dir })
+      const info = readInitScript({ DSH_HOME: dir })
       expect(info).toMatchObject({ source: 'user', exists: true, content: 'export MY_FLAG=1\n' })
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })

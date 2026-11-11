@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolPlusField } from '../config/fields.ts'
-import { hasOwn, type NumberControl, type SelectControl, type TextControl, type ToggleControl } from './rows.tsx'
+import { hasOwn, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 
 /** The flat settings document shape this form edits. */
 export type ToolSettingsValue = Record<string, number | boolean | string | undefined>
@@ -21,7 +21,6 @@ export interface ToolFormGroup {
   group: string
   numbers: NumberControl[]
   selects: SelectControl[]
-  texts: TextControl[]
   toggles: ToggleControl[]
 }
 
@@ -37,7 +36,6 @@ export interface ToolForm {
     discard: () => void
   }
   editSelect: (field: string, value: string) => void
-  editText: (field: string, text: string) => void
   onToggle: (field: string, checked: boolean) => void
 }
 
@@ -115,19 +113,6 @@ function renderSelect(field: ToolPlusField, selects: Record<string, string | nul
   }
 }
 
-function renderText(field: ToolPlusField, texts: Record<string, string>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): TextControl {
-  const hasStaged = Object.prototype.hasOwnProperty.call(texts, field.name)
-  const staged = texts[field.name]
-  const resolved = value[field.name]
-  const baseVal = String(revertValue(snap, defaults, field.name) ?? '')
-  const userStored = hasOwn(snap.user, field.name)
-  const current = typeof resolved === 'string' ? resolved : baseVal
-  const text = hasStaged ? (staged ?? '') : current
-  const overridden = hasStaged
-    ? (staged ?? '').trim() !== baseVal.trim()
-    : userStored
-  return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, text, overridden }
-}
 
 function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | null>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): ToggleControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(toggles, field.name)
@@ -154,7 +139,6 @@ function isDirty(
   defaults: Record<string, number | boolean | string>,
   selects: Record<string, string | null>,
   numbers: Record<string, string>,
-  texts: Record<string, string>,
   toggles: Record<string, boolean | null>,
 ): boolean {
   for (const [field, staged] of Object.entries(selects)) {
@@ -189,16 +173,6 @@ function isDirty(
       }
     }
   }
-  for (const [field, staged] of Object.entries(texts)) {
-    const baseVal = String(revertValue(snap, defaults, field) ?? '').trim()
-    const userStored = hasOwn(snap.user, field)
-    const userVal = (snap.user as Record<string, unknown> | undefined)?.[field]
-    if (staged.trim() === baseVal) {
-      if (userStored) return true
-    } else if (!userStored || userVal !== staged) {
-      return true
-    }
-  }
   for (const [field, staged] of Object.entries(toggles)) {
     const baseVal = Boolean(revertValue(snap, defaults, field))
     const userStored = hasOwn(snap.user, field)
@@ -225,7 +199,6 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
   const [snap, setSnap] = useState<ConfigFormSnapshot<ToolSettingsValue>>(() => scope.getSnapshot())
   const [numbers, setNumbers] = useState<Record<string, string>>({})
   const [selects, setSelects] = useState<Record<string, string | null>>({})
-  const [texts, setTexts] = useState<Record<string, string>>({})
   const [toggles, setToggles] = useState<Record<string, boolean | null>>({})
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -245,21 +218,20 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
       let group = map.get(field.group)
       if (group === undefined) {
         order.push(field.group)
-        group = { group: field.group, numbers: [], selects: [], texts: [], toggles: [] }
+        group = { group: field.group, numbers: [], selects: [], toggles: [] }
         map.set(field.group, group)
       }
       if (field.kind === 'number') group.numbers.push(renderNumber(field, numbers, value, snap, defaults))
       else if (field.kind === 'select') group.selects.push(renderSelect(field, selects, value, snap, defaults))
-      else if (field.kind === 'text') group.texts.push(renderText(field, texts, value, snap, defaults))
       else if (field.kind === 'boolean') group.toggles.push(renderToggle(field, toggles, value, snap, defaults))
       // kind === 'action': not part of the staged form — the section renders
       // its own button row and never contributes to dirty/validation.
     }
     return order.map(key => map.get(key)!)
-  }, [fields, numbers, selects, texts, toggles, value, snap, defaults])
+  }, [fields, numbers, selects, toggles, value, snap, defaults])
 
   const invalid = groups.some(group => group.numbers.some(c => c.invalid))
-  const dirty = useMemo(() => isDirty(snap, defaults, selects, numbers, texts, toggles), [snap, defaults, selects, numbers, texts, toggles])
+  const dirty = useMemo(() => isDirty(snap, defaults, selects, numbers, toggles), [snap, defaults, selects, numbers, toggles])
 
   const edit = useCallback((field: string, text: string) => {
     setFailed(false)
@@ -271,11 +243,6 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
     setSelects(prev => ({ ...prev, [field]: value }))
   }, [])
 
-  const editText = useCallback((field: string, text: string) => {
-    setFailed(false)
-    setTexts(prev => ({ ...prev, [field]: text }))
-  }, [])
-
   const onToggle = useCallback((field: string, checked: boolean) => {
     setFailed(false)
     setToggles(prev => ({ ...prev, [field]: checked }))
@@ -285,7 +252,6 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
     setFailed(false)
     setNumbers(prev => ({ ...prev, [field]: '' }))
     setSelects(prev => ({ ...prev, [field]: null }))
-    setTexts(prev => ({ ...prev, [field]: '' }))
     setToggles(prev => ({ ...prev, [field]: null }))
   }, [])
 
@@ -311,14 +277,6 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
           await scope.set(field, staged)
         }
       }
-      for (const [field, staged] of Object.entries(texts)) {
-        const baseVal = String(revertValue(snap, defaults, field) ?? '')
-        if (staged.trim() === '' || staged.trim() === baseVal.trim()) {
-          if (hasOwn(snap.user, field)) await scope.unset(field)
-        } else {
-          await scope.set(field, staged)
-        }
-      }
       for (const [field, staged] of Object.entries(toggles)) {
         const baseVal = Boolean(revertValue(snap, defaults, field))
         if (staged === null || staged === baseVal) {
@@ -333,19 +291,17 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
       setSaving(false)
       setNumbers({})
       setSelects({})
-      setTexts({})
-      setToggles({})
+        setToggles({})
     }
-  }, [scope, writable, invalid, numbers, selects, texts, toggles, snap, defaults])
+  }, [scope, writable, invalid, numbers, selects, toggles, snap, defaults])
 
   const discard = useCallback(() => {
     setFailed(false)
     setNumbers({})
     setSelects({})
-    setTexts({})
     setToggles({})
   }, [])
 
   const shell: SettingsFormShell = { available: snap.status === 'ready', writable, dirty, invalid, saving, failed }
-  return { shell, groups, actions: { edit, resetField, save, discard }, editSelect, editText, onToggle }
+  return { shell, groups, actions: { edit, resetField, save, discard }, editSelect, onToggle }
 }

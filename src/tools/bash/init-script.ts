@@ -46,15 +46,6 @@ export function defaultInitScriptPath(env: NodeJS.ProcessEnv = process.env): str
   return path.join(home, INIT_DIR, INIT_FILE)
 }
 
-/** Effective script path: the configured one when set, the default otherwise. */
-export function resolveInitScriptPath(
-  configured: string | undefined,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const trimmed = configured?.trim()
-  return trimmed ? path.resolve(trimmed) : defaultInitScriptPath(env)
-}
-
 /** State of the init script as the settings row and the shell both need it. */
 export interface InitScriptInfo {
   /** Whether the script is sourced at all (config bashInitEnabled). */
@@ -76,11 +67,10 @@ export interface InitScriptInfo {
  * built-in default; an unreadable one keeps the default and reports why.
  */
 export function readInitScript(
-  configured: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
   enabled = true,
 ): InitScriptInfo {
-  const scriptPath = resolveInitScriptPath(configured, env)
+  const scriptPath = defaultInitScriptPath(env)
   try {
     const content = fs.readFileSync(scriptPath, 'utf8')
     return { enabled, path: scriptPath, source: 'user', content, exists: true }

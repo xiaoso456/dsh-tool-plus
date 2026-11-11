@@ -20,7 +20,7 @@ import {
   type BashInitTestValue,
 } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
-import { TextRow, ToggleRow, type TextControl, type ToggleControl } from './rows.tsx'
+import { ToggleRow, type ToggleControl } from './rows.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 const CSS_LINES = [
@@ -81,13 +81,10 @@ export function BashInitPanel(props: {
   disabled: boolean
   /** Enable switch, rendered here instead of the generic 行为 group. */
   enable?: ToggleControl
-  /** Script path field, same reason. */
-  scriptPath?: TextControl
   onToggle: (field: string, checked: boolean) => void
-  onEditText: (field: string, text: string) => void
   onResetField: (field: string) => void
 }): ReactNode {
-  const { t, disabled, enable, scriptPath, onToggle, onEditText, onResetField } = props
+  const { t, disabled, enable, onToggle, onResetField } = props
   const [status, setStatus] = useState<BashInitStatusValue | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -197,9 +194,6 @@ export function BashInitPanel(props: {
       <div className="tps-card">
         {enable !== undefined
           ? <ToggleRow t={t} control={enable} disabled={disabled} onToggle={onToggle} onReset={onResetField} />
-          : null}
-        {scriptPath !== undefined
-          ? <TextRow t={t} control={scriptPath} disabled={disabled} onEdit={onEditText} onReset={onResetField} />
           : null}
         <div className="tp-row">
           <div className="tp-rowText">

@@ -93,7 +93,7 @@ Writes go through the harness's own `ctx.configEditor`, so they inherit the prof
 
 Works out of the box, no configuration needed. Common tweaks: background threshold (`autoBackgroundMs`), timeouts (`defaultTimeoutMs` / `maxTimeoutMs`), the output truncation window, the default edit mode (`editMode`, default `replace`), and the structured summary toggle (`readSummarizeEnabled`).
 
-Shell init script (`bashInitEnabled`, on by default; `bashInitScript` overrides the path): an editable script runs once per shell creation. The built-in default puts the real Git Bash ahead of the system directories — Windows ships `C:\Windows\System32\bash.exe` as a WSL relay stub, so a bare `bash` fails with `execvpe(/bin/bash) failed` when no WSL distro is installed. Edit, test-run and reset it under Settings → Tool Plus → Bash → Shell init.
+Shell init script (`bashInitEnabled`, on by default): an editable script runs once per shell creation. The built-in default puts the real Git Bash ahead of the system directories — Windows ships `C:\Windows\System32\bash.exe` as a WSL relay stub, so a bare `bash` fails with `execvpe(/bin/bash) failed` when no WSL distro is installed. Edit, test-run and reset it under Settings → Tool Plus → Bash → Shell init.
 
 ## Performance
 

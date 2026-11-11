@@ -12,7 +12,6 @@ import {
   handleBashInitEndpoint,
   parseBashInitSavePayload,
   parseBashInitTestPayload,
-  parseInitProbe,
 } from '../../src/host/bash-init-rpc.ts'
 import { BASH_INIT_RESET_ENDPOINT, BASH_INIT_SAVE_ENDPOINT, BASH_INIT_STATUS_ENDPOINT, BASH_INIT_TEST_ENDPOINT } from '../../src/tools/shared/browser-rpc-channel.ts'
 import { getShellConfig } from '../../src/tools/bash/bash-executor.ts'
@@ -42,16 +41,24 @@ describe('parseBashInitTestPayload', () => {
 })
 
 describe('handleBashInitEndpoint', () => {
-  const deps = (configuredPath: string, enabled = true) => ({
-    getEnabled: () => enabled,
-    getConfiguredPath: () => configuredPath,
-  })
+  const deps = (enabled = true) => ({ getEnabled: () => enabled })
+
+  /** Run `body` with $DSH_HOME pointed at `dir`, restoring the real value after. */
+  async function withHome<T>(dir: string, body: () => Promise<T>): Promise<T> {
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = dir
+    try {
+      return await body()
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+    }
+  }
 
   it('status reports the built-in default when no user copy exists', async () => {
     const dir = tempDir()
     try {
-      const script = path.join(dir, 'bash-init.sh')
-      const result = await handleBashInitEndpoint(deps(script), BASH_INIT_STATUS_ENDPOINT, {})
+      const result = await withHome(dir, () => handleBashInitEndpoint(deps(), BASH_INIT_STATUS_ENDPOINT, {}))
       expect(result?.ok).toBe(true)
       const value = (result as { value: { source: string; exists: boolean; content: string } }).value
       expect(value.source).toBe('default')
@@ -65,8 +72,8 @@ describe('handleBashInitEndpoint', () => {
   it('save writes the user copy, status reads it back, reset removes it', async () => {
     const dir = tempDir()
     try {
-      const script = path.join(dir, 'nested', 'bash-init.sh')
-      const saved = await handleBashInitEndpoint(deps(script), BASH_INIT_SAVE_ENDPOINT, { content: 'export A=1' })
+      const script = path.join(dir, 'tool-plus', 'bash-init.sh')
+      const saved = await withHome(dir, () => handleBashInitEndpoint(deps(), BASH_INIT_SAVE_ENDPOINT, { content: 'export A=1' }))
       expect(saved?.ok).toBe(true)
       expect(fs.readFileSync(script, 'utf8')).toBe('export A=1')
       // save answers with the state after the write (one round trip for the dialog)
@@ -76,11 +83,11 @@ describe('handleBashInitEndpoint', () => {
         content: 'export A=1',
       })
 
-      const status = await handleBashInitEndpoint(deps(script), BASH_INIT_STATUS_ENDPOINT, {})
+      const status = await withHome(dir, () => handleBashInitEndpoint(deps(), BASH_INIT_STATUS_ENDPOINT, {}))
       const value = (status as { value: { source: string; exists: boolean; content: string } }).value
       expect(value).toMatchObject({ source: 'user', exists: true, content: 'export A=1' })
 
-      const reset = await handleBashInitEndpoint(deps(script), BASH_INIT_RESET_ENDPOINT, {})
+      const reset = await withHome(dir, () => handleBashInitEndpoint(deps(), BASH_INIT_RESET_ENDPOINT, {}))
       expect(reset?.ok).toBe(true)
       expect((reset as { value: { source: string; exists: boolean } }).value).toMatchObject({
         source: 'default',
@@ -93,12 +100,12 @@ describe('handleBashInitEndpoint', () => {
   })
 
   it('returns undefined for endpoints that are not ours', async () => {
-    expect(await handleBashInitEndpoint(deps('x'), 'browser/detect', {})).toBeUndefined()
+    expect(await handleBashInitEndpoint(deps(), 'browser/detect', {})).toBeUndefined()
   })
 })
 
 describe('bash/initTest runs the script itself', () => {
-  const deps = { getEnabled: () => true, getConfiguredPath: () => undefined as string | undefined }
+  const deps = { getEnabled: () => true }
   const bashReady = ((): boolean => {
     try {
       const { shell } = getShellConfig()

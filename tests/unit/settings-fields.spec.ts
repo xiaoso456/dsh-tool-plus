@@ -130,7 +130,7 @@ describe('fields vs settings schema', () => {
     expect(resolveConfig(Config({}))).toEqual(resolveConfig({}))
   })
 
-  it('every boolean/number/select/text field kind maps to a schema-compatible default type', () => {
+  it('every boolean/number/select field kind maps to a schema-compatible default type', () => {
     for (const field of TOOL_PLUS_FIELDS) {
       if (field.kind === 'action') {
         // Action fields carry a placeholder default (''), never a schema value.
@@ -140,7 +140,6 @@ describe('fields vs settings schema', () => {
       }
       if (field.kind === 'boolean') expect(typeof field.default).toBe('boolean')
       else if (field.kind === 'select') expect(typeof field.default).toBe('string')
-      else if (field.kind === 'text') expect(typeof field.default).toBe('string')
       else expect(typeof field.default).toBe('number')
     }
   })

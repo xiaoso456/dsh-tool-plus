@@ -11,7 +11,7 @@
 
 ### Added
 
-- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量。默认路径 `$DSH_HOME/tool-plus/bash-init.sh`，`bashInitScript` 可指向别处；弹窗内可编辑、试运行（原样执行脚本并显示它的输出）、恢复默认。没有个人副本时执行内置默认版本，随插件版本更新。
+- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量。固定路径 `$DSH_HOME/tool-plus/bash-init.sh`；弹窗内可编辑、试运行（原样执行脚本并显示它的输出）、恢复默认。没有个人副本时执行内置默认版本，随插件版本更新。
 - 内置默认脚本把插件探测到的真实 Git Bash 目录排到系统目录之前；前缀经 `TOOL_PLUS_PATH_PREFIX` 注入，脚本文件本身与平台无关。
 
 ### Fixed
@@ -20,7 +20,7 @@
 
 ### Changed
 
-- 配置新增 `bashInitEnabled` / `bashInitScript`；设置页字段类型新增文本输入。
+- 配置新增 `bashInitEnabled`（默认开）；开关与脚本编辑收在同一个「Shell 初始化」分组里。
 
 [对比 0.1.20](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.20...tool-plus-v0.1.21-beta.0)
 

@@ -15,9 +15,9 @@ import * as path from 'node:path'
 import { executeBash } from '../tools/bash/bash-executor.ts'
 import { quoteShellArg } from '../tools/bash/shell-quote.ts'
 import {
+  defaultInitScriptPath,
   initLogPath,
   readInitScript,
-  resolveInitScriptPath,
   type InitScriptInfo,
 } from '../tools/bash/init-script.ts'
 import {
@@ -38,8 +38,6 @@ type ConnectionRpcResult = Awaited<ReturnType<ConnectionRpcHandler>>
 export interface BashInitRpcDeps {
   /** Live config read (`bashInitEnabled`). */
   getEnabled(): boolean
-  /** Live config read (`bashInitScript`); empty means the default path. */
-  getConfiguredPath(): string | undefined
 }
 
 /** Cap on one script: far above any realistic init script, far below a DoS. */
@@ -91,7 +89,7 @@ export function parseBashInitSavePayload(payload: unknown): BashInitSavePayload 
 
 function statusValue(deps: BashInitRpcDeps): BashInitStatusValue {
   const enabled = deps.getEnabled()
-  const info: InitScriptInfo = readInitScript(deps.getConfiguredPath(), process.env, enabled)
+  const info: InitScriptInfo = readInitScript(process.env, enabled)
   return {
     enabled: info.enabled,
     path: info.path,
@@ -123,7 +121,7 @@ export async function handleBashInitEndpoint(
     const parsed = parseBashInitSavePayload(payload)
     if (parsed === undefined) return failure(new Error('content must be a string under 256 KiB'), 'bad-request')
     try {
-      const scriptPath = resolveInitScriptPath(deps.getConfiguredPath(), process.env)
+      const scriptPath = defaultInitScriptPath(process.env)
       writeScript(scriptPath, parsed.content)
       // Return the new state so the dialog needs exactly one round trip.
       return { ok: true, value: statusValue(deps) }
@@ -134,7 +132,7 @@ export async function handleBashInitEndpoint(
 
   if (endpoint === BASH_INIT_RESET_ENDPOINT) {
     try {
-      const scriptPath = resolveInitScriptPath(deps.getConfiguredPath(), process.env)
+      const scriptPath = defaultInitScriptPath(process.env)
       try {
         fs.rmSync(scriptPath, { force: true })
       } catch (error) {
@@ -153,7 +151,7 @@ export async function handleBashInitEndpoint(
     const started = Date.now()
     const tempPath = path.join(os.tmpdir(), 'tool-plus-init-test-' + process.pid + '-' + Date.now() + '.sh')
     try {
-      const effective = parsed.content ?? readInitScript(deps.getConfiguredPath(), process.env).content
+      const effective = parsed.content ?? readInitScript(process.env).content
       fs.writeFileSync(tempPath, effective, { mode: 0o600 })
       // 试运行 = 原样执行这段脚本（source），把它的输出交回去，不附加任何探针。
       // initScriptEnabled 关掉，免得同一份脚本在建 shell 时再跑一次（那次输出会被丢弃）。

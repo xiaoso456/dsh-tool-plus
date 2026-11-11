@@ -115,7 +115,6 @@ export interface RuntimeConfig {
   nonInteractiveEnv: boolean
   snapshotEnabled: boolean
   bashInitEnabled: boolean
-  bashInitScript: string
   rmSafe: boolean
   useShellCommandWrapper: boolean
   /**
@@ -212,7 +211,6 @@ export interface Config {
   /** Source the bash init script once per shell (default true). */
   bashInitEnabled?: boolean
   /** Custom init script path; empty = `$DSH_HOME/tool-plus/bash-init.sh`. */
-  bashInitScript?: string
   /** Redefine `rm` in the session shell to move into the system trash (default true). */
   rmSafe?: boolean
   useShellCommandWrapper?: boolean
@@ -298,7 +296,6 @@ export const Config = z.object({
   nonInteractiveEnv: z.boolean().default(fieldDefault('nonInteractiveEnv', true)).volatile(),
   snapshotEnabled: z.boolean().default(fieldDefault('snapshotEnabled', true)).volatile(),
   bashInitEnabled: z.boolean().default(fieldDefault('bashInitEnabled', true)).volatile(),
-  bashInitScript: z.string().default(fieldDefault('bashInitScript', '')).volatile(),
   rmSafe: z.boolean().default(fieldDefault('rmSafe', true)).volatile(),
   useShellCommandWrapper: z.boolean().default(fieldDefault('useShellCommandWrapper', false)).volatile(),
   webCards: z.boolean().default(fieldDefault('webCards', true)).volatile(),
@@ -409,7 +406,6 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     nonInteractiveEnv: config.nonInteractiveEnv ?? fieldDefault('nonInteractiveEnv', true),
     snapshotEnabled: config.snapshotEnabled ?? fieldDefault('snapshotEnabled', true),
     bashInitEnabled: config.bashInitEnabled ?? fieldDefault('bashInitEnabled', true),
-    bashInitScript: config.bashInitScript ?? fieldDefault('bashInitScript', ''),
     rmSafe: config.rmSafe ?? fieldDefault('rmSafe', true),
     useShellCommandWrapper: config.useShellCommandWrapper ?? fieldDefault('useShellCommandWrapper', false),
     webCards: config.webCards ?? fieldDefault('webCards', true),
