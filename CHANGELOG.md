@@ -5,7 +5,7 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.21-beta.0] - 2026-11-11
 
 > 修复 issue #5：Windows 上裸 `bash` 不再命中 WSL 转发 stub。
 
@@ -21,6 +21,8 @@
 ### Changed
 
 - 配置新增 `bashInitEnabled` / `bashInitScript`；设置页字段类型新增文本输入。
+
+[对比 0.1.20](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.20...tool-plus-v0.1.21-beta.0)
 
 ## [0.1.20] - 2026-11-07
 
