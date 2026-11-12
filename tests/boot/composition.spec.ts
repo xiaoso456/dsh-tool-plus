@@ -7,6 +7,9 @@
  */
 
 import { existsSync } from 'node:fs'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -336,6 +339,54 @@ describeBash('bash-plus auto-backgrounding', () => {
     expect(textOf(result)).not.toContain('Backgrounded as job')
   })
 
+
+  it('sources the fixed init script on the job path (issue #6)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-compose-init-'))
+    fs.mkdirSync(path.join(dir, 'tool-plus'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'tool-plus', 'bash-init.sh'), 'export TP_COMPOSE_INIT=yes\n')
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = dir
+    try {
+      const result = await call(ctx, 'bash', { command: 'printf "C=%s" "$TP_COMPOSE_INIT"', description: 'init probe' }, agent)
+      expect(result.isError).toBe(false)
+      expect(textOf(result)).toContain('C=yes')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it.skipIf(process.platform !== 'win32')('injects the Git PATH prefix on job shells (issue #6)', async () => {
+    const harness = await setup(60_000)
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-issue6-home-'))
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = dir
+    const localFibers: Fiber[] = []
+    const testAgent = registerFakeAgent(harness.ctx, `issue6-${callCounter}`, localFibers)
+    try {
+      // 默认配置下前台命令也走作业 shell。
+      const foreground = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix' }, testAgent)
+      expect(textOf(foreground)).toMatch(/P=\S/)
+      // 显式 run_in_background 也必须同样 source。
+      const background = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix bg', run_in_background: true }, testAgent)
+      const id = textOf(background).match(/job (bash-[0-9a-z]+)/)?.[1]
+      expect(id).toBeTruthy()
+      await waitForJob(harness.ctx, id!, testAgent, 20_000)
+      const read = harness.ctx.jobs.readAt(id as JobId, 0, testAgent.id)
+      expect(readText(read)).toMatch(/P=\S/)
+      // 没有个人副本时内置默认脚本必须被物化。
+      const defaultScript = path.join(os.tmpdir(), 'tool-plus-init-default.sh')
+      expect(fs.existsSync(defaultScript)).toBe(true)
+      expect(fs.readFileSync(defaultScript, 'utf8')).toContain('TOOL_PLUS_PATH_PREFIX')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+      for (const fiber of localFibers.reverse()) await fiber.dispose()
+      await harness.dispose()
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 40_000)
   it('hands back a job id when the command outlives the window', async () => {
     const result = await call(ctx, 'bash', { command: 'sleep 3', description: 'slow', timeoutMs: 60_000 }, agent)
     expect(result.isError).toBe(false)

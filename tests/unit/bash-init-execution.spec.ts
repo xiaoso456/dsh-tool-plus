@@ -14,6 +14,8 @@ import * as path from 'node:path'
 import { existsSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { closeSessionShells, executeBash, getShellConfig } from '../../src/tools/bash/bash-executor.ts'
+import { startBashJob } from '../../src/tools/bash/background.ts'
+import { resolveConfig } from '../../src/config/settings.ts'
 import { computePathPrefix, DEFAULT_INIT_SCRIPT } from '../../src/tools/bash/init-script.ts'
 
 const bashAvailable = ((): boolean => {
@@ -126,6 +128,58 @@ it('the default script leaves a successful status when there is no prefix', asyn
     }
   }, 30_000)
 
+  it('runs the init script on the auto-background job path (issue #6)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-init-job-'))
+    const script = path.join(dir, 'tool-plus', 'bash-init.sh')
+    fs.mkdirSync(path.dirname(script), { recursive: true })
+    fs.writeFileSync(script, 'export TP_JOB_INIT=on\n')
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = dir
+    try {
+      const job = startBashJob({
+        sessionId: 'init-job-on',
+        command: 'printf "V=%s" "$TP_JOB_INIT"',
+        cwd: process.cwd(),
+        timeoutMs: 20_000,
+        env: {},
+        config: resolveConfig({ bashInitEnabled: true }),
+      })
+      const result = await job.completion
+      expect(result.exitCode).toBe(0)
+      expect(result.output.text).toContain('V=on')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('leaves job shells uninitialized when the feature is off', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-init-job-'))
+    const script = path.join(dir, 'tool-plus', 'bash-init.sh')
+    fs.mkdirSync(path.dirname(script), { recursive: true })
+    fs.writeFileSync(script, 'export TP_JOB_INIT=on\n')
+    const previous = process.env.DSH_HOME
+    process.env.DSH_HOME = dir
+    try {
+      const job = startBashJob({
+        sessionId: 'init-job-off',
+        command: 'printf "V=%s" "$TP_JOB_INIT"',
+        cwd: process.cwd(),
+        timeoutMs: 20_000,
+        env: {},
+        config: resolveConfig({ bashInitEnabled: false }),
+      })
+      const result = await job.completion
+      expect(result.exitCode).toBe(0)
+      expect(result.output.text).toContain('V=')
+      expect(result.output.text).not.toContain('V=on')
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = previous
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
   it.skipIf(process.platform !== 'win32')('puts the real Git dirs ahead of System32', async () => {
     const prefix = computePathPrefix()
     const script = writeScript(DEFAULT_INIT_SCRIPT)

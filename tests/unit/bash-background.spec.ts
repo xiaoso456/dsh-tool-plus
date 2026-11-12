@@ -67,6 +67,25 @@ describe('background job minimized passthrough', () => {
   })
 })
 
+describe('background job init-script passthrough', () => {
+  it('forwards the init-script config so job shells source it too (issue #6)', async () => {
+    executeBashMock.mockReset()
+    executeBashMock.mockResolvedValue(executorResult())
+    await startJob(resolveConfig({ bashInitEnabled: true }))
+    const passed = executeBashMock.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(passed.initScriptEnabled).toBe(true)
+    expect(String(passed.initScriptPath)).toMatch(/bash-init\.sh$/)
+  })
+
+  it('stays off when the feature is disabled', async () => {
+    executeBashMock.mockReset()
+    executeBashMock.mockResolvedValue(executorResult())
+    await startJob(resolveConfig({ bashInitEnabled: false }))
+    const passed = executeBashMock.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(passed.initScriptEnabled).toBe(false)
+  })
+})
+
 // 后台 rmSafe 透传的两条用例归 `rm-safe.spec.ts`（同属 rm-safe 契约面）；
 // 这里只留 minimized 透传，避免同一断言在两个文件里各跑一遍。
 
