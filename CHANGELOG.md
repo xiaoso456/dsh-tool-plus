@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.21-beta.1] - 2026-11-12
+
+> 修复 issue #6：0.1.21-beta.0 的 Shell 初始化脚本在默认配置下不执行。
+
+### Fixed
+
+- Shell 初始化脚本现在也作用于作业路径（默认自动后台、`run_in_background`）；此前只有直连路径会 source，默认配置下等于没生效。
+- 补充回归覆盖：作业路径参数透传、真实作业 shell 执行、真插件工具层默认配置。
+
+[对比 beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.21-beta.0...tool-plus-v0.1.21-beta.1)
+
 ## [0.1.21-beta.0] - 2026-11-11
 
 > 修复 issue #5：Windows 上裸 `bash` 不再命中 WSL 转发 stub。
