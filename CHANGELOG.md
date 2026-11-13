@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.21] - 2026-11-13
+
+> 正式版：新增可编辑的 Shell 初始化脚本，修掉 Windows 上裸 `bash` 命中 WSL 的问题；工具描述不再夸大跨调用状态保持。
+
+### Added
+
+- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量；弹窗内可编辑、试运行（原样执行并显示输出）、恢复默认。没有保存过个人脚本时使用内置默认版本，随插件版本更新。
+- 内置默认脚本把探测到的真实 Git Bash 目录排到系统目录之前，裸 `bash` 与嵌套 `bash` 都落到 Git Bash，而不是 WSL 转发程序。
+
+### Fixed
+
+- 初始化脚本在默认配置下不再形同虚设：此前只有前台直连会执行，走作业通道（自动转后台、显式后台运行）时被跳过。
+- Windows 的 shell 发现不再把 WSL 转发程序或应用商店的占位程序当成宿主 bash；可移植版 Git 这类没有注册表项的安装也能反推出安装根目录。
+- bash 工具的描述不再声称环境变量、别名跨调用保持：自动后台开启时如实说明只有工作目录会保留。
+
+### Changed
+
+- 设置页新增「Shell 初始化」分组，放启用开关与会话初始化脚本，开关默认开。
+
+[对比 0.1.20](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.20...tool-plus-v0.1.21)
+
 ## [0.1.21-beta.1] - 2026-11-12
 
 > 修复 issue #6：0.1.21-beta.0 的 Shell 初始化脚本在默认配置下不执行。
