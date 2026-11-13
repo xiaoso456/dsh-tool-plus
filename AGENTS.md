@@ -124,3 +124,7 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 - 目录结构必须是 `<PI_NATIVES_DIR>/<pi-natives 版本>/<addon 文件名>`，例如 `.../dev-natives/18.12.6/pi_natives.win32-x64-modern.node`；版本以 `vendor/oh-my-pi/lock.json` 的 `version` 为准。Windows 下 loader 会优先查这个版本缓存目录。
 - 只在启动 dev profile 的那个 shell 里设置 `PI_NATIVES_DIR`；desktop 从图标启动不会继承，继续用 npm 包的 baseline。启动时带 `PI_DEBUG_STARTUP=1` 可确认日志出现 `native:require:pi_natives.win32-x64-modern.node`。
 - 这是本地验证通道；正式分发仍等 npm 平台包/wrapper 接线，不要把 vendor 产物或缓存路径写进发布包。
+
+## 代码要求
+
+始终以干净、模块化、高内聚、低耦合的方式构建代码，并采用适当的架构和关注点分离。永远不要仅仅因为我要求就简单地拼凑一个功能。如果你找不到一种自然的方式来构建它，你应该建议进行重构以使整个系统更加干净，请提前停止工作并说明情况。

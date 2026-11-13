@@ -113,6 +113,7 @@ function renderSelect(field: ToolPlusField, selects: Record<string, string | nul
   }
 }
 
+
 function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | null>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): ToggleControl {
   const hasStaged = Object.prototype.hasOwnProperty.call(toggles, field.name)
   const staged = toggles[field.name]
@@ -290,7 +291,7 @@ export function useToolForm(scope: ConfigForm<ToolSettingsValue>, fields: readon
       setSaving(false)
       setNumbers({})
       setSelects({})
-      setToggles({})
+        setToggles({})
     }
   }, [scope, writable, invalid, numbers, selects, toggles, snap, defaults])
 

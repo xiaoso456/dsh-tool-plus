@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto'
 import type { JobHandle, JobHooks, JobOutcome } from '@deepseek-ai/dsh-jobs'
 import { allocateSpillFile, saveOriginalText } from './adapter/spill.ts'
 import { executeBash } from './bash-executor.ts'
+import { defaultInitScriptPath } from './init-script.ts'
 import { TailBuffer } from './streaming-output.ts'
 import type { BashForegroundOutput, ResolvedConfig } from './types.ts'
 
@@ -95,6 +96,12 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       headBytes: config.outputSinkHeadBytes,
       useShellCommandWrapper: config.useShellCommandWrapper,
       snapshotEnabled: config.snapshotEnabled,
+      // The init script must run on every shell creation, including the
+      // one-shot job shells the default auto-background path uses; leaving
+      // these out made the feature a no-op under the default config
+      // (issue #6).
+      initScriptEnabled: config.bashInitEnabled,
+      initScriptPath: defaultInitScriptPath(),
       rmSafe: config.rmSafe,
       nonInteractiveEnv: config.nonInteractiveEnv,
       artifactPath: spillPath,

@@ -37,6 +37,7 @@ import { useToolForm, type ToolSettingsValue } from './forms.ts'
 import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
+import { BashInitPanel } from './BashInitPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the `tool-plus` entry's shared configuration form. */
@@ -130,6 +131,13 @@ const TOOL_TABS = TOOL_PLUS_TABS
 /** All fields the page edits (one shared form). */
 const ALL_FIELDS = TOOL_PLUS_FIELDS
 
+/**
+ * Fields rendered by {@link BashInitPanel} itself, inside the feature's own
+ * group: the enable switch only makes sense next to the script row, not in the
+ * generic 行为 group with unrelated settings.
+ */
+const BASH_INIT_FIELDS = new Set(['bashInitEnabled'])
+
 /** Floor for the pinned page height, so an unusually short pane never collapses the panel. */
 const MIN_PAGE_HEIGHT = 240
 
@@ -193,7 +201,11 @@ function ToolTabPanel(props: {
     )
   }
   const owned = new Set(tab.fields)
-  const visible = TOOL_PLUS_FIELDS.filter(field => owned.has(field.name) && isFieldVisible(field, form))
+  const visible = TOOL_PLUS_FIELDS.filter(
+    field => owned.has(field.name) && isFieldVisible(field, form) && !(tab.id === 'bash' && BASH_INIT_FIELDS.has(field.name)),
+  )
+  const toggleControl = (name: string): ToggleControl | undefined =>
+    form.groups.flatMap(group => group.toggles).find(control => control.field === name)
 
   // Group visible fields by their group id, preserving table order inside
   // each group — master toggles (e.g. readSummarizeEnabled) render above the
@@ -293,6 +305,17 @@ function ToolTabPanel(props: {
       ))}
       {/* 「全局」tab 的第二个分组：预设清单。它不进表单（没有设置键），自带
           RPC 状态与动作，所以在这里单独挂，而不是在字段表里插一个假字段。 */}
+      {tab.id === 'bash'
+        ? (
+          <BashInitPanel
+            t={t}
+            disabled={!writable}
+            enable={toggleControl('bashInitEnabled')}
+            onToggle={form.onToggle}
+            onResetField={form.actions.resetField}
+          />
+        )
+        : null}
       {tab.id === 'web' ? <PresetPanel t={t} /> : null}
     </>
   )

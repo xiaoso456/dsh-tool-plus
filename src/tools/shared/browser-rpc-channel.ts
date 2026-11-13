@@ -73,7 +73,7 @@ export function profileRowId(presetId: string): string {
 }
 
 /** One preset action the settings panel may ask for. */
-export type PresetActionValue = 'upgrade' | 'align' | 'revert'
+export type PresetActionValue = 'upgrade' | 'align' | 'revert' | 'rebase'
 
 /** Payload of a presets/apply call. */
 export interface PresetActionPayload {
@@ -126,6 +126,8 @@ export interface PresetStatusValue {
   customized: boolean
   /** For our own presets: whether the effective content differs from the bundled declaration. */
   templateDiffers: boolean
+  /** For our own presets: following the current official preset would change this row (drives the 推荐 tag). */
+  followOfficial?: boolean
   /**
    * For our own presets: *what* differs (so the panel can say it instead of the
    * bare "differs", which reads as contradictory next to "nothing to adjust").
@@ -241,3 +243,50 @@ export interface PresetActionResultValue {
   backupPath?: string
   changes: PresetChangeValue[]
 }
+
+/** Endpoint that reports the bash init script state (content included). */
+export const BASH_INIT_STATUS_ENDPOINT = 'bash/initStatus'
+
+/** Endpoint that writes the user's init script copy. */
+export const BASH_INIT_SAVE_ENDPOINT = 'bash/initSave'
+
+/** Endpoint that deletes the user copy (back to the built-in default). */
+export const BASH_INIT_RESET_ENDPOINT = 'bash/initReset'
+
+/** Endpoint that sources a candidate script in a fresh shell and reports the effect. */
+export const BASH_INIT_TEST_ENDPOINT = 'bash/initTest'
+
+/** bash/initStatus result: everything the settings dialog needs to open. */
+export interface BashInitStatusValue {
+  /** Whether the script is sourced at all. */
+  enabled: boolean
+  /** Absolute path of the user copy. */
+  path: string
+  /** Content a shell would source right now (user copy or built-in default). */
+  source: 'user' | 'default'
+  /** Whether the user copy exists on disk. */
+  exists: boolean
+  /** Content a shell would source right now. */
+  content: string
+  /** Read failure or the tail of the shell's init log, when present. */
+  lastError?: string
+}
+
+/** bash/initSave request. */
+export interface BashInitSavePayload {
+  content: string
+}
+
+/** bash/initTest request; absent content tests the current effective script. */
+export interface BashInitTestPayload {
+  content?: string
+}
+
+/** bash/initTest result: what the script itself printed when sourced. */
+export interface BashInitTestValue {
+  exitCode?: number
+  /** stdout + stderr of the sourced script, verbatim. */
+  output: string
+  durationMs: number
+}
+

@@ -22,7 +22,7 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 
 ## 功能特性
 
-- **bash**：持久 shell，`cd`、`export` 跨调用保持状态；冗长日志（git/npm/cargo…）自动压缩；超长输出只保留头尾，完整内容落盘可回读；长命令自动转后台；可选拦截 `cat`、`grep`、`find`、`sed -i`，引导改用专用工具（默认关闭）
+- **bash**：工作目录跟随 `cd` 跨调用保持；默认每条命令单独开 Shell，`export` 的变量、别名与函数不跨调用保留（换目录用 `workdir`）；冗长日志（git/npm/cargo…）自动压缩；超长输出只保留头尾，完整内容落盘可回读；长命令自动转后台；可选拦截 `cat`、`grep`、`find`、`sed -i`，引导改用专用工具（默认关闭）
 - **安全删除**：`rm` 默认把文件移入系统回收站而非永久删除，误删可恢复；需要真删时用 `command rm`
 - **read**：按行区间精准读取（支持 `:N-M`、`:raw`、多区间）；大代码文件默认返回结构摘要，细节按需展开；zip/tar 归档、SQLite、notebook、PDF 直接读；PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放；可抓取网页内容（含网页内图片）；SPA 站点（内容由 JS 动态渲染，如 excalidraw.com）自动改用本机浏览器渲染后抓取
 - **write**：原子写入，返回修改 diff；支持补丁式写入，可直接写 zip/tar 归档成员与 SQLite 数据
@@ -82,6 +82,7 @@ dsh plugin --profile web add link:<本仓库路径>
 
 - **最小更新**：只把这几个仍挂着的官方工具行关掉，其他内容一个字节都不动
 - **对齐模板**：用所选模板整份替换这一行的插件列表
+- **跟随官方**：读取当前环境官方随附的预设声明，套上本插件的增量（去掉宿主面三行、pwsh 关闭、加文档行）后整份写入。官方升级后点它即可，不必等插件发版
 - **恢复随包**：删掉你写在 profile 配置（`<profile>/cordis.patch.yml`）里的覆盖，回落到随包声明
 - **查看差异**：先看差在哪几行，再决定动不动手
 
@@ -89,7 +90,9 @@ dsh plugin --profile web add link:<本仓库路径>
 
 ## 配置
 
-开箱即用，无需配置。需要微调时常用项有：后台阈值（`autoBackgroundMs`）、超时（`defaultTimeoutMs` / `maxTimeoutMs`）、输出截断窗口、编辑默认模式（`editMode`，默认 `replace`）、结构化摘要开关（`readSummarizeEnabled`）。抓取相关：可切换网页转 Markdown 的后端（`fetchReader`，含浏览器 JS 渲染——SPA 页面），设置面板里可一键「探测浏览器」查看本机可用的 Chrome/Edge。
+开箱即用，无需配置。需要微调时常用项有：后台阈值（`autoBackgroundMs`，设为 `0` 则共用一个持久 Shell，`export` 的变量、别名与函数跨调用保留）、超时（`defaultTimeoutMs` / `maxTimeoutMs`）、输出截断窗口、编辑默认模式（`editMode`，默认 `replace`）、结构化摘要开关（`readSummarizeEnabled`）。抓取相关：可切换网页转 Markdown 的后端（`fetchReader`，含浏览器 JS 渲染——SPA 页面），设置面板里可一键「探测浏览器」查看本机可用的 Chrome/Edge。
+
+Shell 初始化脚本（`bashInitEnabled`，默认开）：每次创建 shell 时执行一段可编辑脚本。内置默认会把真正的 Git Bash 排到系统目录之前——Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL 转发 stub，没装 WSL 发行版时裸 `bash` 会报 `execvpe(/bin/bash) failed`。在 设置 → Tool Plus → Bash → Shell 初始化 里编辑、试运行、恢复默认。
 
 ## 性能
 
@@ -136,6 +139,8 @@ dsh plugin --profile web add link:<本仓库路径>
 ## 注意事项
 
 - 不提供单独的 `pwsh` 工具：shell 场景由功能更全的持久 `bash` 统一承担
+- **bash 的状态保持**：默认每条命令单独开 Shell，只有工作目录跟随 `cd`；把 `autoBackgroundMs` 设为 `0` 后共用一个持久 Shell，`export` 的变量、别名与函数都跨调用保留。设置改完立即生效，工具给模型的说明会同步改写，不用重启。
+- 预设显示「加载失败」（dsh 0.2.2 起）：升级到 `@xiaoso/dsh-tool-plus@0.1.20` 或更新版本；之后官方改了预设，在 设置 → Tool Plus → 预设 点「跟随官方」即可修复
 
 **安全 rm 删掉的文件进系统回收站**，各平台的落点与可见性：
 

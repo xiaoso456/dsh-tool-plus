@@ -43,6 +43,8 @@ export interface Config {
   nonInteractiveEnv?: boolean
   /** Capture the user's rc file (aliases, functions, options) into the session shell. */
   snapshotEnabled?: boolean
+  /** Source the bash init script on shell creation; every execution path (direct and job) must honour it. */
+  bashInitEnabled?: boolean
   /** Redefine `rm` in the session shell to move into the system trash; the plugin config layer decides the default (rmSafe: true). */
   rmSafe?: boolean
   /** Wrap every command in `bash -c '…'` for a full bash environment. */

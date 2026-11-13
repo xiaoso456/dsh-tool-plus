@@ -20,7 +20,12 @@ import {
   getShellConfig,
   needsInteractiveShellArg,
 } from '../../src/tools/bash/bash-executor.ts'
-import { resolveWindowsShell } from '../../src/tools/bash/windows-shell.ts'
+import {
+  gitRootFromBinary,
+  isWslBashStub,
+  resolveGitBashDirs,
+  resolveWindowsShell,
+} from '../../src/tools/bash/windows-shell.ts'
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-shell-discovery-'))
@@ -149,3 +154,71 @@ describe('resolveWindowsShell', () => {
     }
   })
 })
+describe('isWslBashStub', () => {
+  it('flags the System32 relay and the WindowsApps shim only', () => {
+    expect(isWslBashStub('C:\\Windows\\System32\\bash.exe')).toBe(true)
+    expect(isWslBashStub('C:\\Users\\x\\AppData\\Local\\Microsoft\\WindowsApps\\bash.exe')).toBe(true)
+    expect(isWslBashStub('C:\\Program Files\\Git\\bin\\bash.exe')).toBe(false)
+    expect(isWslBashStub('C:\\Program Files\\Git\\usr\\bin\\bash.exe')).toBe(false)
+  })
+})
+
+describe('resolveWindowsShell · WSL stub', () => {
+  const winOnly = it.skipIf(process.platform !== 'win32')
+  winOnly('falls back to cmd.exe instead of returning System32 bash.exe (issue #5)', () => {
+    const dir = tempDir()
+    const stubDir = path.join(dir, 'Windows', 'System32')
+    fs.mkdirSync(stubDir, { recursive: true })
+    fs.writeFileSync(path.join(stubDir, 'bash.exe'), '')
+    try {
+      expect(resolveWindowsShell({ PATH: stubDir })).toBe('C:\\Windows\\System32\\cmd.exe')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('resolveGitBashDirs', () => {
+  it('returns bin and usr/bin of an env-derived install', () => {
+    const root = tempDir()
+    fs.mkdirSync(path.join(root, 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'bin', 'bash.exe'), '')
+    fs.mkdirSync(path.join(root, 'usr', 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'usr', 'bin', 'bash.exe'), '')
+    try {
+      expect(resolveGitBashDirs({ GIT_INSTALL_ROOT: root }, () => undefined)).toEqual({
+        root,
+        bin: path.join(root, 'bin'),
+        usrBin: path.join(root, 'usr', 'bin'),
+      })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('derives a portable install root from where git', () => {
+    const root = tempDir()
+    fs.mkdirSync(path.join(root, 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'bin', 'bash.exe'), '')
+    const whereGit = () => path.join(root, 'cmd', 'git.exe')
+    try {
+      const dirs = resolveGitBashDirs({}, whereGit)
+      expect(dirs?.root).toBe(root)
+      expect(dirs?.bin).toBe(path.join(root, 'bin'))
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('gitRootFromBinary', () => {
+  const winOnly = it.skipIf(process.platform !== 'win32')
+  winOnly('strips cmd/, bin/, usr/bin/ and mingw64/bin/', () => {
+    const base = 'D:\\PortableGit'
+    expect(gitRootFromBinary(base + '\\cmd\\git.exe')).toBe(base)
+    expect(gitRootFromBinary(base + '\\bin\\git.exe')).toBe(base)
+    expect(gitRootFromBinary(base + '\\usr\\bin\\git.exe')).toBe(base)
+    expect(gitRootFromBinary(base + '\\mingw64\\bin\\git.exe')).toBe(base)
+  })
+})
+

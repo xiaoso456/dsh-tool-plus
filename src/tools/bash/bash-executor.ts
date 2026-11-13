@@ -18,6 +18,8 @@ import { type MinimizerOptions, Shell, type ShellRunResult } from "@oh-my-pi/pi-
 import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
+import { initScriptSetup } from "./init-script.ts";
+import { quoteShellArg } from "./shell-quote.ts";
 import { injectRmSafe, rmSafeCliPath } from "./rm-safe.ts";
 import { OutputSink } from "./streaming-output.ts";
 import { resolveWindowsShell } from "./windows-shell.ts";
@@ -110,6 +112,10 @@ export interface BashExecutorOptions {
 	useUserShell?: boolean;
 	/** Capture the user rc snapshot into the session shell (default true). */
 	snapshotEnabled?: boolean;
+	/** Source the bash init script once per shell (default false). */
+	initScriptEnabled?: boolean;
+	/** Absolute path of the init script to source last. */
+	initScriptPath?: string;
 	/** Redefine `rm` in the session shell to move into the system trash (default false). */
 	rmSafe?: boolean;
 	/** Apply non-interactive env hardening to the command environment (default true). */
@@ -325,9 +331,7 @@ export function ensureInteractiveShellArgs(shell: string, args: string[]): strin
 	return [...effectiveArgs, "-i"];
 }
 
-function quoteShellArg(value: string): string {
-	return `'${value.replace(/'/g, "'\\''")}'`;
-}
+
 
 function buildUserShellCommand(shell: string, args: string[], command: string): string {
 	return [shell, ...ensureInteractiveShellArgs(shell, args), command].map(quoteShellArg).join(" ");
@@ -365,7 +369,23 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const shellConfig = options?.useUserShell === true ? resolveUserShellConfig(baseShellConfig) : baseShellConfig;
 	const { shell, args, env: shellEnv, prefix } = shellConfig;
 	const bashShell = isBashShell(shell);
-	let snapshotPath = bashShell && options?.snapshotEnabled !== false ? await getOrCreateSnapshot(shell, shellEnv) : null;
+	// The init script rides the snapshot: it is sourced last, so it can override
+	// PATH/aliases captured from the user's rc (issue #5). A disabled snapshot
+	// no longer disables it — we then create a minimal file instead of capturing
+	// the user's rc.
+	// One decision point for the init script: which file to source and which
+	// platform env its default content needs. The executor stays about running
+	// commands (see init-script.ts::initScriptSetup).
+	const init = initScriptSetup({
+		enabled: options?.initScriptEnabled === true,
+		scriptPath: options?.initScriptPath,
+	});
+	const initSourceLine = init.sourceLine;
+	const captureUserRc = options?.snapshotEnabled !== false;
+	let snapshotPath =
+		bashShell && (captureUserRc || initSourceLine !== undefined)
+			? await getOrCreateSnapshot(shell, shellEnv, { initSourceLine, captureUserRc })
+			: null;
 	// rmSafe: redefine `rm` to move into the system trash. The injection rides
 	// the snapshot file (sourced once at session creation), so it applies to
 	// every persistent/one-shot shell without per-command overhead. When
@@ -435,8 +455,12 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		};
 	}
 
+	// The init script's default content consumes its own env (the Git Bash
+	// prefix on Windows, empty on POSIX); no env is injected when the feature
+	// is off, so turning it off cannot change PATH order by accident.
+	const sessionEnv = Object.keys(init.env).length > 0 ? { ...shellEnv, ...init.env } : shellEnv;
 	const shellOptions = {
-		sessionEnv: shellEnv,
+		sessionEnv,
 		snapshotPath: snapshotPath ?? undefined,
 		minimizer,
 	};

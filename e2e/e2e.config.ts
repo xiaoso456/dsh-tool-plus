@@ -105,7 +105,10 @@ export default {
            * 子进程环境是白名单制的，`DSH_HOME` 不在白名单里。开发者把 harness home 挪过位置时，
            * 启动脚本要靠它找到共享的 bundle 仓库；没设就不传，让两边都用 `~/.dsh` 这个默认值。
            */
-          env: process.env.DSH_HOME === undefined ? {} : { DSH_HOME: process.env.DSH_HOME },
+          env: {
+            ...(process.env.DSH_HOME === undefined ? {} : { DSH_HOME: process.env.DSH_HOME }),
+            ...(process.env.E2E_SEED_STALE === undefined ? {} : { E2E_SEED_STALE: process.env.E2E_SEED_STALE }),
+          },
           /** dsh 首次启动要装 profile；给足 3 分钟，别让慢启动被当成 APP_UNREACHABLE。 */
           startupTimeout: 180_000,
           shutdownTimeout: 15_000,

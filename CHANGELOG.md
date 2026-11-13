@@ -5,6 +5,73 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.21] - 2026-11-13
+
+> 正式版：新增可编辑的 Shell 初始化脚本，修掉 Windows 上裸 `bash` 命中 WSL 的问题；工具描述不再夸大跨调用状态保持。
+
+### Added
+
+- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量；弹窗内可编辑、试运行（原样执行并显示输出）、恢复默认。没有保存过个人脚本时使用内置默认版本，随插件版本更新。
+- 内置默认脚本把探测到的真实 Git Bash 目录排到系统目录之前，裸 `bash` 与嵌套 `bash` 都落到 Git Bash，而不是 WSL 转发程序。
+
+### Fixed
+
+- 初始化脚本在默认配置下不再形同虚设：此前只有前台直连会执行，走作业通道（自动转后台、显式后台运行）时被跳过。
+- Windows 的 shell 发现不再把 WSL 转发程序或应用商店的占位程序当成宿主 bash；可移植版 Git 这类没有注册表项的安装也能反推出安装根目录。
+- bash 工具的描述不再声称环境变量、别名跨调用保持：自动后台开启时如实说明只有工作目录会保留。
+
+### Changed
+
+- 设置页新增「Shell 初始化」分组，放启用开关与会话初始化脚本，开关默认开。
+
+[对比 0.1.20](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.20...tool-plus-v0.1.21)
+
+## [0.1.21-beta.1] - 2026-11-12
+
+> 修复 issue #6：0.1.21-beta.0 的 Shell 初始化脚本在默认配置下不执行。
+
+### Fixed
+
+- Shell 初始化脚本现在也作用于作业路径（默认自动后台、`run_in_background`）；此前只有直连路径会 source，默认配置下等于没生效。
+- 补充回归覆盖：作业路径参数透传、真实作业 shell 执行、真插件工具层默认配置。
+
+[对比 beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.21-beta.0...tool-plus-v0.1.21-beta.1)
+
+## [0.1.21-beta.0] - 2026-11-11
+
+> 修复 issue #5：Windows 上裸 `bash` 不再命中 WSL 转发 stub。
+
+### Added
+
+- **Shell 初始化脚本**（设置 → Tool Plus → Bash）：每次创建 shell 时执行一段可编辑脚本，可改 PATH、加别名、导出变量。固定路径 `$DSH_HOME/tool-plus/bash-init.sh`；弹窗内可编辑、试运行（原样执行脚本并显示它的输出）、恢复默认。没有个人副本时执行内置默认版本，随插件版本更新。
+- 内置默认脚本把插件探测到的真实 Git Bash 目录排到系统目录之前；前缀经 `TOOL_PLUS_PATH_PREFIX` 注入，脚本文件本身与平台无关。
+
+### Fixed
+
+- Windows 的 shell 发现不再把 `C:\Windows\System32\bash.exe`（WSL 转发 stub）或 WindowsApps 的 shim 当成宿主 bash；PortableGit 这类没有注册表项的安装，也能从 `where git` 反推安装根目录。
+
+### Changed
+
+- 配置新增 `bashInitEnabled`（默认开）；开关与脚本编辑收在同一个「Shell 初始化」分组里。
+
+[对比 0.1.20](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.20...tool-plus-v0.1.21-beta.0)
+
+## [0.1.20] - 2026-11-07
+
+> 正式版：预设新增「跟随官方」动作，官方升级后不必等插件发版。
+
+### Added
+
+- **设置 → Tool Plus → 预设新增「跟随官方」**：读取当前环境官方随附的预设声明，套上本插件的增量（去掉宿主面三行、pwsh 关闭、加文档行）后整份写入 profile 配置。我们的预设落后于官方时，按钮旁显示「推荐」标签。
+- 派生规则是纯函数（`src/presets/rebase.ts`），测试钉住它与随包生成物逐值相等，两边漂移会立即变红。
+
+### Changed
+
+- 「跟随官方」与「对齐模板」一样需二次确认；确认框与动作结果出现时自动滚入视口。
+- 预设的 `engines.dsh` 下界保持 `0.2.2`，行为与 0.1.19 一致；README 补充了 0.2.2 下「加载失败」的修复步骤。
+
+[对比 0.1.19](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.19...tool-plus-v0.1.20)
+
 ## [0.1.19] - 2026-11-05
 
 > 正式版：把 `engines.dsh` 的下界对齐到实际支持的 0.2.2 线。
