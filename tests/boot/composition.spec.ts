@@ -362,19 +362,23 @@ describeBash('bash-plus auto-backgrounding', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-issue6-home-'))
     const previous = process.env.DSH_HOME
     process.env.DSH_HOME = dir
+    // 宿主进程若本身就带着前缀（在插件自己的 shell 里跑测试），断言就退化成
+    // 验证继承而非注入；先摘掉，确保这条只证明插件注入。
+    const ambientPrefix = process.env.TOOL_PLUS_PATH_PREFIX
+    delete process.env.TOOL_PLUS_PATH_PREFIX
     const localFibers: Fiber[] = []
     const testAgent = registerFakeAgent(harness.ctx, `issue6-${callCounter}`, localFibers)
     try {
       // 默认配置下前台命令也走作业 shell。
       const foreground = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix' }, testAgent)
-      expect(textOf(foreground)).toMatch(/P=\S/)
+      expect(textOf(foreground)).toMatch(/P=[^\n]*Git/)
       // 显式 run_in_background 也必须同样 source。
       const background = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix bg', run_in_background: true }, testAgent)
       const id = textOf(background).match(/job (bash-[0-9a-z]+)/)?.[1]
       expect(id).toBeTruthy()
       await waitForJob(harness.ctx, id!, testAgent, 20_000)
       const read = harness.ctx.jobs.readAt(id as JobId, 0, testAgent.id)
-      expect(readText(read)).toMatch(/P=\S/)
+      expect(readText(read)).toMatch(/P=[^\n]*Git/)
       // 没有个人副本时内置默认脚本必须被物化。
       const defaultScript = path.join(os.tmpdir(), 'tool-plus-init-default.sh')
       expect(fs.existsSync(defaultScript)).toBe(true)
@@ -382,6 +386,7 @@ describeBash('bash-plus auto-backgrounding', () => {
     } finally {
       if (previous === undefined) delete process.env.DSH_HOME
       else process.env.DSH_HOME = previous
+      if (ambientPrefix !== undefined) process.env.TOOL_PLUS_PATH_PREFIX = ambientPrefix
       for (const fiber of localFibers.reverse()) await fiber.dispose()
       await harness.dispose()
       fs.rmSync(dir, { recursive: true, force: true })

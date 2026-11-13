@@ -97,15 +97,24 @@ describeBash('bash init script', () => {
   }, 30_000)
 
 it('a disabled init script injects nothing into the session', async () => {
-  const result = await executeBash('printf "P=%s;E=%s" "${TOOL_PLUS_PATH_PREFIX:-}" "${TOOL_PLUS_PROBE:-}"', {
-    sessionKey: 'init-disabled',
-    timeout: 20_000,
-    snapshotEnabled: false,
-    initScriptEnabled: false,
-  })
-  expect(result.exitCode).toBe(0)
-  // Off means off: no PATH prefix for the default script and no user exports.
-  expect(result.output).toContain('P=;E=')
+  // The host process can itself carry the prefix (running the suite from inside
+  // the plugin's own shell). Scrub it so the assertion is about what the plugin
+  // injects, not what the host already had.
+  const ambient = process.env.TOOL_PLUS_PATH_PREFIX
+  delete process.env.TOOL_PLUS_PATH_PREFIX
+  try {
+    const result = await executeBash('printf "P=%s;E=%s" "${TOOL_PLUS_PATH_PREFIX:-}" "${TOOL_PLUS_PROBE:-}"', {
+      sessionKey: 'init-disabled',
+      timeout: 20_000,
+      snapshotEnabled: false,
+      initScriptEnabled: false,
+    })
+    expect(result.exitCode).toBe(0)
+    // Off means off: no PATH prefix for the default script and no user exports.
+    expect(result.output).toContain('P=;E=')
+  } finally {
+    if (ambient !== undefined) process.env.TOOL_PLUS_PATH_PREFIX = ambient
+  }
 }, 30_000)
 it('the default script leaves a successful status when there is no prefix', async () => {
     const script = writeScript(DEFAULT_INIT_SCRIPT)
