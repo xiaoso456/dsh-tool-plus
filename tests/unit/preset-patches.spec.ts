@@ -170,8 +170,20 @@ describe('preset patches', () => {
         }
       })
 
-      it('leaves no !!js marker behind (they would serialize as a plain map)', () => {
-        expect(JSON.stringify(pluginsOf(generated(spec.id)))).not.toContain('__jsExpr')
+      it('round-trips every !!js platform gate as a tag, never as a plain map', () => {
+        // The baseline carries `disabled: !!js <expr>` gates (0.2.2 moved
+        // tool-plugin-manager onto `!ctx.get('profileContext')`). Serializing one as a
+        // plain object would silently drop the gate, so the generated file must spell
+        // out the tag and keep it on exactly the rows the baseline puts it on.
+        const jsRows = (rows: readonly Row[]): string[] =>
+          [...flatten(rows)].filter(([, row]) => JSON.stringify(row).includes('__jsExpr')).map(([path]) => path).sort()
+        const raw = readFileSync(generated(spec.id), 'utf8')
+        expect(raw).not.toContain('__jsExpr')
+        // Rows we drop or force-disable legitimately lose their gate.
+        const overridden = new Set<string>([...REMOVED, FORCE_DISABLED])
+        const mine = jsRows(pluginsOf(generated(spec.id)))
+        expect(mine).toEqual(jsRows(pluginsOf(baseline(spec.baseline))).filter(path => !overridden.has(path)))
+        for (const path of mine) expect(raw).toContain('!!js ')
       })
     })
   }

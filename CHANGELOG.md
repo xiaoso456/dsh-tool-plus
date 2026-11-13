@@ -5,6 +5,51 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.1.19] - 2026-11-05
+
+> 正式版：把 `engines.dsh` 的下界对齐到实际支持的 0.2.2 线。
+
+### Changed
+
+- **`engines.dsh` 下界抬到 `0.2.2`**（`>=0.2.2-0 <0.3.0-0`，15 条 peer 同步）：预设快照取自 0.2.2 基线，0.2.1 宿主上 PTC 预设引用的 `@deepseek-ai/dsh-tool-executor-ptc` 根本不存在，装上也用不了；声明下限现在和实际支持的版本一致，0.2.1 用户留在 0.1.17。
+
+[对比 0.1.18](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.18...tool-plus-v0.1.19)
+
+## [0.1.18] - 2026-11-05
+
+> 正式版：预设快照跟上 dsh 0.2.2 基线，修掉 0.2.2 上两个预设加载失败的问题。
+
+### Changed
+
+- **dsh 依赖升到 `0.2.2-rc.1`**：34 条 `devDependencies` 与 `@deepseek-ai/dsh-brand` 精确钉到该版本；`engines.dsh` 与 peer 范围不动（`>=0.2.1-0 <0.3.0-0`，仍是同一条 minor 线）。
+- **预设基线重拷自 dsh 0.2.2-rc.1**：`presets/baseline/{standard,ptc}.patch.yml` 与官方逐字节一致，两个 `tool-plus-*` 预设重新生成；README 的 dsh 版本口径同步为 `v0.2.2-rc.1`。
+- 测试夹具适配 0.2.2 的宿主 API（工具批调用、`jobs.readAt`、`session-projection`），插件运行时源码零改动。
+- 预设生成器现在把基线里的 `!!js` 表达式原样回写成 tag，不再退化成普通 map（否则平台门会被悄悄丢掉）。
+
+### Fixed
+
+- **0.2.2 上 `tool-plus-standard` / `tool-plus-ptc` 加载失败**（[#3](https://github.com/xiaoso456/dsh-tool-plus/issues/3)）：0.2.2 删掉了 `@deepseek-ai/dsh-tool-subagent-control/list-agents` 这条子路径导出，旧预设里还挂着 `tool-subagent-list-agents` 一行，预设注册表 mount 时整份失败并报 `never started`，绑着这两个预设的旧会话也恢复不了。重拷基线后该行随官方基线一起消失；同批跟进的还有 `modelSelectionSettings` → `modelSelection` + `modelDiscovery`，以及 PTC 的 `tool-presentation` → `tool-executor-ptc`。
+
+[对比 0.1.17](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.17...tool-plus-v0.1.18)
+
+## [0.1.17] - 2026-10-28
+
+> 正式版。先发过 `0.1.17-beta.0` / `0.1.17-beta.1` 到 `beta` 通道，本版是 `0.1.17-beta.1` 的正式版。
+
+### Changed
+
+- **内置工具链升级到上游新版本**，用户可感知的变化：
+  - 编辑冲突提示更明确：文件缺少快照标签时直接给出当前标签；锚定到未完整显示的超长行时，提示重新读取对应行的完整内容，而不是给一段截断预览。
+  - 超长行的编辑更安全：没有完整读过的长行不再允许直接写入，避免只看到部分内容就改错。
+  - Bash 内置命令的一批修复：Windows 上可删除只读目录、跨盘移动保留时间戳与权限、中文输出不再乱码、搜索不再把重定向输出当输入、`tail -F` 不再误报文件被替换，以及 `sed`、`sort`、`read` 等命令在词边界、locale 与 UTF-8 上的行为修正。
+  - 搜索与编辑性能提升：大结果集的 grep 内存占用下降，编辑结果的读取格式化更快，Windows 上文件类内置命令（查找、删除、建目录、列目录、查看属性）提速。
+
+### Fixed
+
+- **grep 不再误报「只搜索了前 4 MB」**：显式指定一个大于 4 MB 的文件时，搜索本身已覆盖完整文件，结果末尾却仍附带「只搜索了前 4 MB」的提示。现在该提示已移除，4 MB 之后的内容正常返回匹配。
+
+[对比 0.1.16](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.16...tool-plus-v0.1.17)
+
 ## [0.1.17-beta.1] - 2026-10-26
 
 > 测试版：修正 grep 对显式大文件的误导提示，请安装 beta 通道验证。

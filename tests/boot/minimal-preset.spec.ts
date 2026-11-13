@@ -11,9 +11,11 @@ import type { JobId } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as ToolExecutorNative from '@deepseek-ai/dsh-tool-executor-native'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as StrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
@@ -38,6 +40,8 @@ describeShell('minimal-style two-tool preset', () => {
     const fibers = [
       await ctx.plugin(SystemPrompt),
       await ctx.plugin(ToolRuntime),
+      await ctx.plugin(ToolExecutorNative),
+      await ctx.plugin(SessionProjection),
       await ctx.plugin(AgentRegistry),
       await ctx.plugin(SessionStore),
       await ctx.plugin(LocalJobRegistry),
@@ -63,13 +67,17 @@ describeShell('minimal-style two-tool preset', () => {
       expect(ctx.tools.get('str_replace_editor', agent.ctx)).toBeDefined()
 
       // The bash tool executes.
-      const result = await ctx.tools.execute({
+      const batch = await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: ToolCallId('minimal-call-1'),
-        name: 'bash',
-        arguments: { command: 'echo minimal-works', description: 'echo' },
+        calls: [{
+          type: 'tool-call',
+          id: ToolCallId('minimal-call-1'),
+          name: 'bash',
+          arguments: JSON.stringify({ command: 'echo minimal-works', description: 'echo' }),
+        }],
         agent,
       })
+      const result = batch.results[0]!.result
       expect(result.isError).toBe(false)
       const text = result.content.filter(b => b.type === 'text').map(b => (b as { text: string }).text).join('')
       expect(text).toContain('minimal-works')
