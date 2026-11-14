@@ -7,6 +7,7 @@
 
 mod bccmd;
 mod envsubstcmd;
+mod freecmd;
 mod gzipcmd;
 mod hexdumpcmd;
 mod revcmd;
@@ -39,4 +40,5 @@ pub(crate) fn register<SE: ShellExtensions>(builtins: &mut Vec<(&'static str, Re
 	builtins.push(("hexdump", hexdumpcmd::hexdump_builtin::<SE>()));
 	builtins.push(("hd", hexdumpcmd::hd_builtin::<SE>()));
 	builtins.push(("rev", revcmd::rev_builtin::<SE>()));
+	builtins.push(("free", freecmd::free_builtin::<SE>()));
 }

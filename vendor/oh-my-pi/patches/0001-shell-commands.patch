@@ -349,7 +349,7 @@ index 9fec727d..2056fb52 100644
      ],
      crate_name = "pi_builtins",
 diff --git a/crates/pi-builtins/Cargo.toml b/crates/pi-builtins/Cargo.toml
-index 21583eda..b27b73e6 100644
+index 21583eda..dd5ed83b 100644
 --- a/crates/pi-builtins/Cargo.toml
 +++ b/crates/pi-builtins/Cargo.toml
 @@ -33,6 +33,10 @@ path = "src/lib.rs"
@@ -363,7 +363,15 @@ index 21583eda..b27b73e6 100644
  brush-core = "^0.5.0"
  brush-parser = "^0.4.0"
  cfg-if = "1.0.4"
-@@ -188,6 +192,7 @@ pretty_assertions = { version = "1.4.1", features = ["unstable"] }
+@@ -178,6 +182,7 @@ windows-sys = { version = "0.61", features = [
+   "Win32_Networking_WinSock",
+   "Win32_Storage_FileSystem",
+   "Win32_System_IO",
++  "Win32_System_ProcessStatus",
+   "Win32_System_SystemInformation",
+   "Win32_System_WindowsProgramming",
+ ] }
+@@ -188,6 +193,7 @@ pretty_assertions = { version = "1.4.1", features = ["unstable"] }
  tempfile = "3"
  
  [features]
@@ -371,7 +379,7 @@ index 21583eda..b27b73e6 100644
  default = ["base", "utils"]
  
  # Every upstream POSIX/bash builtin.
-@@ -393,6 +398,7 @@ base = [
+@@ -393,6 +399,7 @@ base = [
  "util.yes" = []
  
  utils = [

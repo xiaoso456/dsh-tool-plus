@@ -21,6 +21,7 @@
 | `uuidgen` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/uuidgencmd.rs` | 代码完成、10 单测绿；v4/v1/v6/v7/v3/v5、`@dns/@url/@oid/@x500` 命名空间、`-C/-x` 全支持；RFC 4122 测试向量通过 | [uuidgen.md](./uuidgen.md) |
 | `strings` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/stringscmd.rs` | 代码完成、10 单测绿 + 2 ignored 探针；单字节/8 位/UTF-16/32、`-t/-f/-s/-w` 支持，8 MiB 语料与 BusyBox 逐字节相同 | [strings.md](./strings.md) |
 | `hexdump` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/hexdumpcmd.rs` | 代码完成、10 单测绿 + 2 ignored 探针；`-b/-X/-c/-C/-d/-o/-x` 全支持、`hd` 隐含 `-C`，7 种版式与 BusyBox 逐字节相同；`-e/-f/-L` 报可读原因拒绝 | [hexdump.md](./hexdump.md) |
+| `free` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/freecmd.rs` | 代码完成、13 单测绿 + 1 ignored 性能探针；procps 4.0.4 的参数与排版；Windows 的 free/buff-cache/swap 为近似值并写进文档 | [free.md](./free.md) |
 | `rev` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/revcmd.rs` | 代码完成、7 单测绿 + 2 ignored 探针；UTF-8 按字符反转、`-0` NUL 分行，8 MiB ASCII 语料与 BusyBox 逐字节相同 | [rev.md](./rev.md) |
 | `bc` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/bccmd.rs` | 代码完成、49 单测绿；GNU bc 的 7 个参数全支持，表达式/变量/进制（ibase 2..36、obase 2..INT_MAX）/流程控制/函数/数组/`-l` 全部实现；逐语句错误恢复、`-s`/`-w`、`BC_ENV_ARGS`/`BC_LINE_LENGTH` 与 GNU 对齐；GNU 上游 `Test/` 脚本（数组、阶乘、sqrt、checklib 等）跑通 | [bc.md](./bc.md) |
 | `xz` | 无 | 无 | `overlay/crates/pi-builtins/src/xzcmd.rs` | 代码完成、8 单测绿；未进发布包 | [xz.md](./xz.md) |
@@ -42,9 +43,9 @@
 
 | 来源 | 含义 | 工具 |
 |---|---|---|
-| **内建** | pi-builtins 工厂注册，无进程开销 | bassum/base64/cat/chmod/cksum/cmp/comm/cp/cut/date/dd/df/diff/dirname/du/env/fd/find/fold/grep/rg/head/hostname/id/jq/zip/ln/ls/md5sum/mkdir/mktemp/mv/nl/nproc/od/paste/printenv/readlink/realpath/rm/rmdir/sed/seq/sha*sum/sort/sponge/stat/tac/tail/tee/touch/tr/tree/truncate/ts/uname/uniq/uptime/wc/which/whoami/xargs/yes/pgrep/pkill/ps/sleep/timeout/top/hexdump/hd/strings/rev/uuidgen |
+| **内建** | pi-builtins 工厂注册，无进程开销 | bassum/base64/cat/chmod/cksum/cmp/comm/cp/cut/date/dd/df/diff/dirname/du/env/fd/find/fold/grep/rg/head/hostname/id/jq/zip/ln/ls/md5sum/mkdir/mktemp/mv/nl/nproc/od/paste/printenv/readlink/realpath/rm/rmdir/sed/seq/sha*sum/sort/sponge/stat/tac/tail/tee/touch/tr/tree/truncate/ts/uname/uniq/uptime/wc/which/whoami/xargs/yes/pgrep/pkill/ps/sleep/timeout/top/hexdump/hd/strings/rev/uuidgen/free |
 | **Git Bash 外部 exe** | 能用，但依赖 Git 安装、每次 spawn 进程 | unzip / tar / column / shuf / patch / file / awk / less / xxd / split / join / expr |
-| **完全缺失** | 哪都没有 | cal / units / nc / watch（`bc`、`uuidgen`、`strings`、`hexdump`、`rev`、`envsubst`、`gzip`/`gunzip`/`zcat`、`xz`/`unxz`/`xzcat`、`zstd`/`unzstd`/`zstdcat` 已内建，见清单） |
+| **完全缺失** | 哪都没有 | cal / units / nc / watch（`bc`、`uuidgen`、`strings`、`hexdump`、`rev`、`free`、`envsubst`、`gzip`/`gunzip`/`zcat`、`xz`/`unxz`/`xzcat`、`zstd`/`unzstd`/`zstdcat` 已内建，见清单） |
 
 **优先级原则（用户 2026-11-14 定）**：Git Bash 已提供的降优先级——它们不是不能用，只是没内建；优先补 `完全缺失` 这一类。
 
