@@ -5,10 +5,10 @@
 | 一句话定位 | 任意精度十进制计算器，脚本里做算数/进制换算 |
 | 实现层 | 内建命令（brush + pi-builtins），进程内执行 |
 | 上游来源 | GNU bc 1.07.1（Windows 上完全缺失，Git Bash 也不带） |
-| 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/shellcmds/bccmd.rs`（约 3000 行，含 48 个单测 + 1 个 ignored 性能探针） |
+| 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/shellcmds/bccmd.rs`（约 3000 行，含 49 个单测 + 1 个 ignored 性能探针） |
 | 接入方式 | 统一接线补丁 `patches/0001-shell-commands.patch` 的 `util.shellcmds`；在 `shellcmds.rs` 里注册 |
 | 依赖 | `bigdecimal 0.4` + `num-bigint`（pi-builtins 已有依赖，本命令未引入新依赖） |
-| 测试 | 48 个单测（语法/语义/错误恢复/环境变量/管道 + 真实 shell） |
+| 测试 | 49 个单测（语法/语义/错误恢复/环境变量/管道 + 真实 shell） |
 
 ## 为什么自研
 
@@ -21,7 +21,7 @@
 | 数字 | 任意精度十进制；`ibase` 2..16（`-s`）或 2..36（GNU 扩展）；`obase` 2..2147483647；非十进制输出按 GNU 的多字符数字格式（每位十进制数、空格分隔、宽度取 `obase-1` 的位数）；整个数字只有一位整数位时即使大于等于 ibase 也按原值读取，多位数则每一位（含首位）夹到 ibase-1 |
 | 运算 | `+ - * / % ^`、比较 `== != < <= > >=`、逻辑 `&& \|\| !`、括号、一元负号、前后缀 `++`/`--` |
 | 变量 | 普通变量、`scale`/`ibase`/`obase`/`last` 特殊变量、复合赋值 `+= -= *= /= %= ^=`；给特殊变量赋值时向零截断再夹取（scale 0..1000000、ibase 2..16 或 2..36、obase 2..2147483647），越界打 `Runtime warning` |
-| 语句 | 表达式（非赋值时打印结果）、`print`（字符串 + 表达式，不换行）、字符串字面量（打印后换行）、`quit`/`halt`、`limits`、`warranty`、复合语句 `{ ... }` |
+| 语句 | 表达式（非赋值时打印结果）、`print`（字符串 + 表达式，不换行）、字符串字面量（原样写出，不追加换行，与 GNU 一致）、`quit`/`halt`、`limits`、`warranty`、复合语句 `{ ... }` |
 | 字符串 | 转义 `\a \b \f \n \q \r \t \\`；其他反斜杠组合按 GNU 规则连字符一起忽略 |
 | 流程控制 | `if (expr) stmt [else stmt]`、`while (expr) stmt`、`for ([expr]; [expr]; [expr]) stmt`、`break`、`continue`（只允许在循环内） |
 | 函数 | `define [void] name(params) { auto a, b[]; ... }`、`return`/`return (expr)`、递归（上限 1000 层）、动态作用域、`auto` 遮蔽并恢复全局 |
@@ -67,7 +67,7 @@
 - 解释循环是「解析一条语句 → 执行 → 再解析下一条」：`quit`/`halt` 之后的内容不会被执行；解析错误按 yacc 的 `error ENDOFLINE` 方式恢复到下一个换行/分号；标准模式的扩展错误按 execution block 跳过整行。
 - 数值语义：加减取较大 scale；乘法 scale 相加；除法与取模按 `scale` 变量截断（向零）；幂按 `min(scale(a)*exp, max(scale, scale(a)))` 截断。
 - 非十进制常量按 GNU `push_constant` 的规则转换：单个整数位原样保留，其余位夹到 `ibase-1`；小数部分按 `数字个数` 位截断（`.B` 在 ibase=16 下是 `.6`，不是精确的 `.6875`）。
-- 输出复刻 bc 习惯：小于 1 的数省略前导零（`.33333`）；obase>16 时每位十进制数字零填充到 `obase-1` 的宽度、空格分隔；`last` 记录最后一次打印的数值；`BC_LINE_LENGTH` 的折行在 `emit` 里统一处理（数字折行加反斜杠，`-s` 下字符串不折）。
+- 除法用「按目标 scale 放大后的整数除法」一次得到截断商，开方用整数平方根一次求出 `floor(sqrt(x) * 10^scale)`（`sqrt(1)` 按 GNU 特例返回 1）；输出复刻 bc 习惯：小于 1 的数省略前导零（`.33333`）；obase>16 时每位十进制数字零填充到 `obase-1` 的宽度、空格分隔；`last` 记录最后一次打印的数值；`BC_LINE_LENGTH` 的折行在 `emit` 里统一处理（数字折行加反斜杠，`-s` 下字符串不折）。
 - 函数调用按 POSIX：进入函数时捕获当时的 `ibase`，函数体内的常量用捕获值转换；`auto`/参数保存旧值，返回时按逆序恢复。数组参数 `*x[]` 用别名表实现，每帧局部数组阻断向外的别名查找。
 - 递归在独立线程上跑（栈 32 MiB，帧上限 1000），输出与诊断缓冲在 `Machine` 里，结束后写回宿主。
 
@@ -92,19 +92,21 @@ GNU bc 1.07.1 的 `Test/` 脚本已下载到 `docs/draft/upstream/bc-1.07.1/`（
 
 | 脚本 | 内容 | 本实现 | GNU bc | 比值 |
 |---|---|---|---|---|
-| `div.b` | 10 万次 scale=20 除法 | 452 ms | 178 ms | 2.54× |
-| `mul.b` | 约 200 万次乘法 | 2034 ms | 2226 ms | 0.91× |
-| `fact.b` | 599! 递归 | 630 ms | 656 ms | 0.96× |
-| `raise.b` | 大批量幂运算 | 5 ms | 581 ms | 0.01× |
-| `sqrt.b` | 4 个 scale 下各 499 次开方 | 175 ms | 102 ms | 1.72× |
+| `div.b` | 10 万次 scale=20 除法 | 99 ms | 205 ms | 0.48× |
+| `mul.b` | 约 200 万次乘法 | 2080 ms | 2270 ms | 0.92× |
+| `fact.b` | 599! 递归 | 791 ms | 895 ms | 0.88× |
+| `raise.b` | 大批量幂运算 | 7 ms | 849 ms | 0.01× |
+| `sqrt.b` | 4 个 scale 下各 499 次开方 | 9 ms | 128 ms | 0.07× |
 
-结论：除法与开方慢 1.5–2.5 倍（`BigDecimal` 除法/牛顿迭代的实现差异），乘法与阶乘基本持平；幂运算因用二进制快速幂，比 GNU 的线性连乘快两个数量级。日常脚本里 bc 的调用多是几十次运算，这点差距不可感知。
+结论：全部五项的耗时都不高于 GNU。除法的关键是绕开 `bigdecimal` 默认按 100 位有效数字求商、再截断的做法，改为「按目标 scale 放大被除数后做一次整数除法」；开方改成一次整数平方根直接得到 `floor(sqrt(x) * 10^scale)`，不再跑牛顿迭代。乘法/阶乘本来就和 GNU 的 O(n²) 实现同量级，幂运算的二进制快速幂更是明显快于 GNU 的线性连乘。
+
+没有换成 GMP/rug 这类 C bignum：bc 内建要随 addon 跨平台分发（Windows/macOS/Linux、baseline/modern 多套），C 依赖会明显抬高交叉编译与分发成本；`num-bigint` 的整数除法与整数平方根已经足够把这两项做到不慢于 GNU。将来若出现超大规模（十万位以上）高频乘除的需求，再评估 GMP 系。
 
 ## 测试与验证
 
-- `cargo test -p pi-builtins bccmd` → 48 通过，1 个 ignored 性能探针。
+- `cargo test -p pi-builtins bccmd` → 49 通过，1 个 ignored 性能探针。
 - 覆盖：优先级与幂/一元、`scale` 对除法的影响、赋值静默、`(a=1)` 打印、`ibase`/`obase` 换算（含 36 进制、单 digit 夹取、非十进制小数位数）、`sqrt`/`length`/`scale`、`print` 拼接、`-l` 数学库、除零/负数开方错误恢复、shell 管道、`-v` 版本、`-s` 整行跳过、`-w` 告警、`BC_ENV_ARGS`/`POSIXLY_CORRECT`、`BC_LINE_LENGTH`、`if/else/while/for`、`break`/`continue`、递归与 `return`、`auto` 与动态作用域、数组与 `*array` 参数、数组下标截断/越界、`void` 函数、前后缀 `++`/`--`、字符串转义、`read()`（文件模式）、深递归（`length(100!) = 158`）、`last` 赋值、`quit` 后内容不再执行、`limits`/`warranty`、非法字节逐字符报错并继续。
-- 差分校准：用 GnuWin32 GNU bc 1.06 对拍过 40+ 个手写用例（括号、进制、夹取、折行、错误恢复、多字符数字、小数位数等）；`ibase > 16` 是 1.07 新增行为，1.06 会夹到 16，这部分按 1.07 源码实现、无本地对照。
+- 差分校准：用 GnuWin32 GNU bc 1.06 逐字节对拍了 47 个输入（手写用例 + 上游 `Test/` 的 array/aryprm/div/fact/mul/raise/sqrt/sqrt1/sqrt2/BUG.bc 等），stdout 全部一致；`ibase > 16` 是 1.07 新增行为，1.06 会夹到 16，这部分按 1.07 源码实现、无本地对照。
 - **真 addon 端到端已验证**（2026-11-14）：`local` 构建 → `scripts/stamp-pi-natives.mjs` 打戳 → 替换 leaf 包 `.node` → `PI_E2E_EXPECT_TREE=1 pnpm e2e`，24 项全过；步骤 1 的命令含 `echo 'obase = 16; 255' | bc`，输出里出现 `FF`。
 - 写 e2e 断言时踩过一次坑：`xz-ok` 与 `FF` 在结果里是连着的（`xz-okFF`），`\bFF\b` 没有词边界，改用 `xz-ok[\s\S]*FF` 才匹配。
 

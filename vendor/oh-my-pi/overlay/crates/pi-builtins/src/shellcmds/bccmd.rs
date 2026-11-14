@@ -1512,8 +1512,10 @@ impl Machine {
 				self.quitting = true;
 			},
 			Statement::Text(text) => {
+				// A string statement writes the string verbatim; GNU bc does
+				// not append a newline (that is why "x = "; x stays on one
+				// line).
 				self.emit_string(&unescape_string(text));
-				self.emit_string("\n");
 			},
 			Statement::Print(items) => {
 				for item in items {
@@ -2077,15 +2079,14 @@ impl Machine {
 		if right.is_zero() {
 			return Err("Divide by zero".to_string());
 		}
-		let quotient = left / right;
-		Ok(truncate(&quotient, self.scale))
+		divide_to(left, right, self.scale)
 	}
 
 	fn modulo(&self, left: &BigDecimal, right: &BigDecimal) -> Result<BigDecimal, String> {
 		if right.is_zero() {
 			return Err("Modulo by zero".to_string());
 		}
-		let quotient = truncate(&(left / right), self.scale);
+		let quotient = divide_to(left, right, self.scale)?;
 		let remainder = left - &quotient * right;
 		let target = (self.scale + scale_of(right)).max(scale_of(left));
 		Ok(truncate(&remainder, target))
@@ -2165,17 +2166,25 @@ impl Machine {
 		if value.is_zero() {
 			return Ok(BigDecimal::zero());
 		}
-		let mut guess = BigDecimal::from_f64(value.to_f64().map(f64::sqrt).unwrap_or(1.0))
-			.unwrap_or_else(BigDecimal::one);
-		for _ in 0..200 {
-			let quotient = divide_to(value, &guess, target + 4)?;
-			let next = truncate(&((guess.clone() + quotient) / BigDecimal::from(2)), target + 4);
-			if next == guess {
-				break;
-			}
-			guess = next;
+		if value == &BigDecimal::one() {
+			// GNU's bc_sqrt has this exact special case: sqrt(1) is 1 even
+			// when scale is non-zero.
+			return Ok(BigDecimal::one());
 		}
-		Ok(truncate(&guess, target))
+		// floor(sqrt(value) * 10^target) is an integer square root; this is
+		// exact and much cheaper than Newton iteration on BigDecimals.
+		let (mantissa, scale) = value.as_bigint_and_exponent();
+		let exponent = 2 * target - scale;
+		let radicand = if exponent >= 0 {
+			mantissa * BigInt::from(10).pow(exponent as u32)
+		} else {
+			mantissa / BigInt::from(10).pow((-exponent) as u32)
+		};
+		let root = radicand.sqrt();
+		if root.is_zero() {
+			return Ok(BigDecimal::zero());
+		}
+		Ok(BigDecimal::new(root, target))
 	}
 
 	/// Constants are converted with the ibase that was in effect when the
@@ -2485,10 +2494,31 @@ fn divide_to(left: &BigDecimal, right: &BigDecimal, scale: i64) -> Result<BigDec
 	if right.is_zero() {
 		return Err("division by zero".to_string());
 	}
-	let factor = BigDecimal::from(BigInt::from(10).pow(scale as u32));
-	let scaled = left * &factor;
-	let quotient = (scaled / right).with_scale_round(0, bigdecimal::RoundingMode::Down);
-	Ok((quotient / factor).with_scale_round(scale, bigdecimal::RoundingMode::Down))
+	if left.is_zero() {
+		return Ok(BigDecimal::zero());
+	}
+	// value = mantissa * 10^-scale. Scale the left mantissa by the number of
+	// decimal places the quotient needs, then use one integer division
+	// (which truncates toward zero, exactly like bc).
+	let (left_mantissa, left_scale) = left.as_bigint_and_exponent();
+	let (right_mantissa, right_scale) = right.as_bigint_and_exponent();
+	let shift = right_scale + scale - left_scale;
+	let (numerator, denominator) = if shift >= 0 {
+		(
+			left_mantissa * BigInt::from(10).pow(shift as u32),
+			right_mantissa,
+		)
+	} else {
+		(
+			left_mantissa,
+			right_mantissa * BigInt::from(10).pow((-shift) as u32),
+		)
+	};
+	let quotient = numerator / denominator;
+	if quotient.is_zero() {
+		return Ok(BigDecimal::zero());
+	}
+	Ok(BigDecimal::new(quotient, scale))
 }
 
 /// GNU bc: for 0.xxx the leading 0 is not significant, so length is the
@@ -2679,7 +2709,7 @@ mod tests {
 	fn void_functions_print_nothing() {
 		let (code, out, err) = run(&[], "define void hello() { \"hi\" }\nhello()\n");
 		assert_eq!(code, 0, "stderr: {err}");
-		assert_eq!(out, "hi\n");
+		assert_eq!(out, "hi");
 	}
 
 	#[test]
@@ -2746,7 +2776,14 @@ mod tests {
 	fn string_escapes_are_processed() {
 		let (code, out, err) = run(&[], concat!(r#""a\nb\tq\q""#, "\n"));
 		assert_eq!(code, 0, "stderr: {err}");
-		assert_eq!(out, "a\nb\tq\"\n");
+		assert_eq!(out, "a\nb\tq\"");
+	}
+
+	#[test]
+	fn string_statements_do_not_append_a_newline() {
+		let (code, out, err) = run(&[], "\"a\"; \"b\"\n\"c\"\n");
+		assert_eq!(code, 0, "stderr: {err}");
+		assert_eq!(out, "abc");
 	}
 
 	#[test]
@@ -2824,8 +2861,11 @@ mod tests {
 			return;
 		};
 		let source = std::fs::read_to_string(&path).unwrap();
+		let raw_args = std::env::var("BC_BENCH_ARGS").unwrap_or_default();
+		let owned: Vec<String> = raw_args.split_whitespace().map(str::to_string).collect();
+		let args: Vec<&str> = owned.iter().map(String::as_str).collect();
 		let started = std::time::Instant::now();
-		let (code, out, err) = run(&[], &source);
+		let (code, out, err) = run(&args, &source);
 		println!(
 			"BENCH {} code={} elapsed_ms={}\n--out--\n{}\n--err--\n{}",
 			path,

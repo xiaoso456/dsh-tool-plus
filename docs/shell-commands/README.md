@@ -18,7 +18,7 @@
 
 | 命令 | 上游 OMP | brush（v18.12.6） | 实现位置 | 状态 | 文档 |
 |---|---|---|---|---|---|
-| `bc` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/bccmd.rs` | 代码完成、48 单测绿；GNU bc 的 7 个参数全支持，表达式/变量/进制（ibase 2..36、obase 2..INT_MAX）/流程控制/函数/数组/`-l` 全部实现；逐语句错误恢复、`-s`/`-w`、`BC_ENV_ARGS`/`BC_LINE_LENGTH` 与 GNU 对齐；GNU 上游 `Test/` 脚本（数组、阶乘、sqrt、checklib 等）跑通 | [bc.md](./bc.md) |
+| `bc` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/bccmd.rs` | 代码完成、49 单测绿；GNU bc 的 7 个参数全支持，表达式/变量/进制（ibase 2..36、obase 2..INT_MAX）/流程控制/函数/数组/`-l` 全部实现；逐语句错误恢复、`-s`/`-w`、`BC_ENV_ARGS`/`BC_LINE_LENGTH` 与 GNU 对齐；GNU 上游 `Test/` 脚本（数组、阶乘、sqrt、checklib 等）跑通 | [bc.md](./bc.md) |
 | `xz` | 无 | 无 | `overlay/crates/pi-builtins/src/xzcmd.rs` | 代码完成、8 单测绿；未进发布包 | [xz.md](./xz.md) |
 | `unxz` | 无 | 无 | 同上（同一实现，隐含 `-d`） | 同上 | [unxz.md](./unxz.md) |
 | `xzcat` | 无 | 无 | 同上（同一实现，隐含 `-dc`） | 同上 | [xzcat.md](./xzcat.md) |
