@@ -18,7 +18,7 @@
         {
           "id": "call_bash",
           "name": "bash",
-          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version; printf gzip-ok | gzip -c | gunzip\",\"description\":\"Marker, tree version, gzip round-trip\"}",
+          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version; printf gzip-ok | gzip -c | gunzip; export PI_E2E_V=envsubst-ok; printf '$PI_E2E_V' | envsubst\",\"description\":\"Marker, tree version, gzip+envsubst round-trips\"}",
           "argumentChunks": 3
         }
       ]

@@ -18,6 +18,7 @@
 
 | 命令 | 上游 OMP | brush（v18.12.6） | 实现位置 | 状态 | 文档 |
 |---|---|---|---|---|---|
+| `envsubst` | 无 | 无 | `overlay/crates/pi-builtins/src/envsubstcmd.rs` | 代码完成、7 单测绿；未进发布包 | [envsubst.md](./envsubst.md) |
 | `zip` | 无 | 无 | `overlay/crates/pi-builtins/src/zipcmd*` | 代码完成，分发未接线 | [zip.md](./zip.md) |
 | `gzip` | 无 | 无 | `overlay/crates/pi-builtins/src/gzipcmd.rs` | 代码完成、9 单测绿、真 addon e2e 通过；未进发布包 | [gzip.md](./gzip.md) |
 | `gunzip` | 无 | 无 | 同上（同一实现，隐含 `-d`） | 同上 | [gunzip.md](./gunzip.md) |
@@ -32,7 +33,7 @@
 |---|---|---|
 | **内建** | pi-builtins 工厂注册，无进程开销 | bassum/base64/cat/chmod/cksum/cmp/comm/cp/cut/date/dd/df/diff/dirname/du/env/fd/find/fold/grep/rg/head/hostname/id/jq/zip/ln/ls/md5sum/mkdir/mktemp/mv/nl/nproc/od/paste/printenv/readlink/realpath/rm/rmdir/sed/seq/sha*sum/sort/sponge/stat/tac/tail/tee/touch/tr/tree/truncate/ts/uname/uniq/uptime/wc/which/whoami/xargs/yes/pgrep/pkill/ps/sleep/timeout/top |
 | **Git Bash 外部 exe** | 能用，但依赖 Git 安装、每次 spawn 进程 | unzip / tar / column / shuf / patch / file / awk / less / xxd / split / join / expr |
-| **完全缺失** | 哪都没有 | envsubst / nc / watch（`gzip`/`gunzip`/`zcat` 已内建，见清单） |
+| **完全缺失** | 哪都没有 | nc / watch（`envsubst`、`gzip`/`gunzip`/`zcat` 已内建，见清单） |
 
 **优先级原则（用户 2026-11-14 定）**：Git Bash 已提供的降优先级——它们不是不能用，只是没内建；优先补 `完全缺失` 这一类。
 
