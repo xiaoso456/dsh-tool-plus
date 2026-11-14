@@ -6,7 +6,7 @@
 | 实现层 | 内建命令（brush + pi-builtins） |
 | 上游来源 | GNU gettext 的 `envsubst`；**Windows 上完全缺失**（Git Bash 也不带），模板类脚本会直接失败 |
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/envsubstcmd.rs`（约 300 行，含 7 个单测） |
-| 接入方式 | `vendor/oh-my-pi/patches/0004-envsubst-integration.patch`（4 处：pi-builtins 的 Cargo.toml / lib.rs / factory.rs，pi-natives 的 feature 列表） |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；本命令在 overlay 的 `shellcmds.rs` 里加一行注册 |
 | 依赖 | 无（只用标准库） |
 | 测试 | 7 个单测；其中两个走真实 shell（见「测试来源」） |
 

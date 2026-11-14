@@ -6,7 +6,7 @@
 | 实现层 | 内建命令（brush + pi-builtins）；`xz` / `unxz` / `xzcat` 三个调用名共用一份实现 |
 | 上游来源 | XZ Utils（GNU xz）；**Windows 上完全缺失**（Git Bash 也不带） |
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/xzcmd.rs`（约 700 行，含 8 个单测） |
-| 接入方式 | `vendor/oh-my-pi/patches/0006-xz-integration.patch`（含 Cargo.toml / lib.rs / factory.rs / pi-natives 的 feature，以及 Cargo.lock 的累计条目） |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；三个调用名在 overlay 的 `shellcmds.rs` 里注册 |
 | 依赖 | `xz2 0.1`（liblzma 绑定，MIT；`static` feature 内置 C 源码，cc 构建，不需要 cmake） |
 | 测试 | 8 个单测（含真实 shell 的调用名测试） |
 

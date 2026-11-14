@@ -6,7 +6,7 @@
 | 实现层 | 内建命令（brush + pi-builtins），不是外部进程 |
 | 上游来源 | 上游 pin 没有 gzip/gunzip/zcat；Windows 上 `gzip` 落到 Git Bash 的 `gzip.exe`，`gunzip` 是**无扩展名脚本**，而 brush 在 Windows 按 PATH 查找只认 `.exe/.cmd/.bat` → 等于完全不可用 |
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/gzipcmd.rs`（680 行，含 10 个单测） |
-| 接入方式 | `vendor/oh-my-pi/patches/0003-gzip-integration.patch`（4 处：pi-builtins 的 Cargo.toml / lib.rs / factory.rs，pi-natives 的 feature 列表） |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；三个调用名在 overlay 的 `shellcmds.rs` 里注册 |
 | 依赖 | `flate2 1.1`（已在 lock 里，MIT/Apache-2.0，无新增传递依赖） |
 | 测试 | 9 个单测 + 1 个性能探针（ignored）；pi-builtins 全量 1322 通过 |
 

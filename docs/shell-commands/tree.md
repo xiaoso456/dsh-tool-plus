@@ -6,7 +6,7 @@
 | 实现层 | 内建命令（brush + pi-builtins），不是外部进程 |
 | 上游来源 | 上游 pin v18.12.6 / 45c35e4 没有 tree；OMP 也没有 |
 | 实现位置 | vendor/oh-my-pi/overlay/crates/pi-builtins/src/treecmd.rs（1136 行，含 29 个单测） |
-| 接入方式 | vendor/oh-my-pi/patches/0002-tree-integration.patch（46 行，只改 lib.rs / factory.rs / Cargo.toml） |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；注册在 overlay 的 `shellcmds.rs` |
 | 依赖 | 零新增 crate：clap、glob、uucore::format::human 都已在依赖里 |
 | 测试 | 32 个单测（cargo test -p pi-builtins treecmd）；pi-builtins 全量 1322 通过 |
 

@@ -67,12 +67,14 @@
 - 平台差异单独标：Windows 无 fifo、无文件权限位、无硬链接语义
 - **通过标准**：矩阵能直接翻译成测试用例清单
 
-### 3. 实现：overlay 优先，补丁最小化
+### 3. 实现：只改 overlay，接线走 shellcmds
 
 - 业务代码进 `vendor/oh-my-pi/overlay/`，不改上游文件
-- 只在必须改接入点（feature、依赖、factory 注册）时加编号补丁 `patches/00NN-<名字>.patch`，并在 `vendor/oh-my-pi/README.md` 台账补一行
+- 在 `overlay/crates/pi-builtins/src/shellcmds.rs` 的 `register()` 里加一行注册（多个调用名就加多行）
+- 上游接线只在**一个**聚合补丁 `patches/0001-shell-commands.patch` 里（`util.shellcmds` feature、依赖、`mod shellcmds`、一行 factory 调用）；**新增命令不新增补丁**，也不改 `factory.rs`
+- 依赖的引入与 `Cargo.lock` 更新同样只走这一个补丁
 - 不许动 `refs/oh-my-pi`，不许动 `node_modules`
-- **通过标准**：`pnpm vendor:check` 通过，台账有对应行
+- **通过标准**：`pnpm vendor:check` 通过，`vendor/oh-my-pi/README.md` 台账仍是单行
 
 ### 4. 测试：以兼容矩阵为准，不以覆盖率为准
 

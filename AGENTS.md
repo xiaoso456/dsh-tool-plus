@@ -122,7 +122,9 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 
 要做 brush 里没有、OMP 也没有的自研命令（例如 `zip`）时，**先读 `docs/shell-commands/README.md`**——那里有判定标准、命令清单和实现流程，按顺序走完再动手，别跳过兼容矩阵和性能两节。
 
-顺序是：立项验证（`command -v` + 上游 `git ls-tree` + `pi-builtins/src` 目录）→ 找现成库并记录许可证 → 列兼容矩阵（支持 / 语义不同 / 不支持 + 原因）→ overlay 实现、补丁入台账 → 三层测试 + 变异验证 → 性能数据（耗时 / CPU / IO）→ 文档落 `docs/shell-commands/<命令>.md`。
+顺序是：立项验证（`command -v` + 上游 `git ls-tree` + `pi-builtins/src` 目录）→ 找现成库并记录许可证 → 列兼容矩阵（支持 / 语义不同 / 不支持 + 原因）→ overlay 实现 → 三层测试 + 变异验证 → 性能数据（耗时 / CPU / IO）→ 文档落 `docs/shell-commands/<命令>.md`。
+
+**接线只改 overlay**：所有自研命令统一在 `overlay/crates/pi-builtins/src/shellcmds.rs` 里注册，上游只打一个聚合补丁 `patches/0001-shell-commands.patch`（`util.shellcmds` feature + 依赖 + 一行 factory 调用）。新增命令**不新增补丁**，也不改 `factory.rs`。
 
 那个目录是 `.gitignore` 里 `docs/*` 的例外，随仓库发布；新增命令要同步在清单表里加一行。
 

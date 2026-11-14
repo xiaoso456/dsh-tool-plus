@@ -6,7 +6,7 @@
 | 实现层 | 内建命令（brush + pi-builtins）；`zstd` / `unzstd` / `zstdcat` 三个调用名共用一份实现 |
 | 上游来源 | GNU zstd；**Windows 上完全缺失**（Git Bash 也不带） |
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/zstdcmd.rs`（约 620 行，含 9 个单测） |
-| 接入方式 | `vendor/oh-my-pi/patches/0005-zstd-integration.patch`（4 处：pi-builtins 的 Cargo.toml / lib.rs / factory.rs，pi-natives 的 feature 列表） |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；三个调用名在 overlay 的 `shellcmds.rs` 里注册 |
 | 依赖 | `zstd 0.14`（已在 lock 里，MIT；zstd-sys 用 cc 构建，无需 cmake） |
 | 测试 | 9 个单测（含真实 shell 的调用名测试） |
 

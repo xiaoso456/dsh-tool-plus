@@ -6,7 +6,7 @@
 | 实现层 | brush 内建（Rust，`pi-builtins` crate），进程内执行 |
 | 上游来源 | 无。上游 pin `v18.12.6`（commit `45c35e4`）的 `crates/pi-builtins/src` 下没有 `zipcmd` |
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/zipcmd*/ `，5 个文件共 3421 行 |
-| 接入方式 | `vendor/oh-my-pi/patches/0001-zip-integration.patch`（350 行）：`util.zip` feature、`zip` 依赖、factory 注册、Bazel feature |
+| 接入方式 | 统一接线补丁 `vendor/oh-my-pi/patches/0001-shell-commands.patch` 提供的 `util.shellcmds` feature；本命令在 overlay 的 `shellcmds.rs` 里加一行注册 |
 | 依赖 | `zip` crate 9.1.2 |
 | 测试 | `zipcmd.rs` 内 77 个 `#[test]` |
 
@@ -77,6 +77,6 @@
 
 ## 维护要点
 
-- 上游升版本时：重拷 `vendor/oh-my-pi/upstream` 到新 commit、确认 `0001-zip-integration.patch` 仍能应用（重点看 `util` feature 与 factory 注册点有没有变）、重跑 `cargo test -p pi-builtins zipcmd`
+- 上游升版本时：重拷 `vendor/oh-my-pi/upstream` 到新 commit、确认 `0001-shell-commands.patch` 仍能应用（重点看 `util` feature 与 factory 注册点有没有变）、重跑 `cargo test -p pi-builtins zipcmd`
 - overlay 只放新增源码，接入点一律走编号补丁并登记到 `vendor/oh-my-pi/README.md` 的 patch 台账
 - 删掉 zip 的条件写在台账里：上游自带 zip，或 shell 不再暴露进程内工具
