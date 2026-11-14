@@ -20,7 +20,7 @@ use std::{
 
 use brush_core::{ShellExtensions, builtins::Registration};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use glob::Pattern;
+use glob::{MatchOptions, Pattern};
 use uucore::format::human::{SizeFormat, human_readable};
 
 use crate::host::{Host, Utility, format_usage, matches_parser, util};
@@ -150,6 +150,8 @@ struct Options {
 	quote: bool,
 	si: bool,
 	matchdirs: bool,
+	ignore_case: bool,
+	unsorted: bool,
 	metafirst: bool,
 	ignore: Option<ignore::gitignore::Gitignore>,
 	date: bool,
@@ -231,6 +233,8 @@ impl Options {
 			quote: matches.get_flag("quote"),
 			si: matches.get_flag("si"),
 			matchdirs: matches.get_flag("matchdirs"),
+			ignore_case: matches.get_flag("ignore-case"),
+			unsorted: matches.get_flag("unsorted"),
 			metafirst: matches.get_flag("metafirst"),
 			ignore,
 			date: matches.get_flag("date") || matches.get_one::<String>("timefmt").is_some(),
@@ -435,7 +439,8 @@ impl Frame {
 		if options.filelimit.is_some_and(|limit| entries.len() > limit) {
 			return None;
 		}
-		entries.sort_by(|left, right| {
+		if !options.unsorted {
+			entries.sort_by(|left, right| {
 			let by_kind = if options.dirs_first {
 				right.is_dir.cmp(&left.is_dir)
 			} else {
@@ -446,11 +451,12 @@ impl Frame {
 				SortKey::Size => left.size.unwrap_or(0).cmp(&right.size.unwrap_or(0)),
 				SortKey::Time => right.mtime.cmp(&left.mtime),
 			})
-		});
+			});
+		}
 		if options.prune {
 			entries.retain(|child| !child.is_dir || subtree_has_visible(options, &child.path, depth));
 		}
-		if options.reverse {
+		if options.reverse && !options.unsorted {
 			entries.reverse();
 		}
 		Some(Self {
@@ -609,8 +615,28 @@ fn matches_filters(options: &Options, name: &OsString, is_dir: bool) -> bool {
 	let name = name.to_string_lossy();
 	let included = (is_dir && !options.matchdirs)
 		|| options.include.is_empty()
-		|| options.include.iter().any(|pattern| pattern.matches(&name));
-	included && !options.exclude.iter().any(|pattern| pattern.matches(&name))
+		|| options.include.iter().any(|pattern| pattern_matches(pattern, &name, options.ignore_case));
+	included
+		&& !options
+			.exclude
+			.iter()
+			.any(|pattern| pattern_matches(pattern, &name, options.ignore_case))
+}
+
+/// --ignore-case applies to -P / -I patterns instead of the whole path.
+fn pattern_matches(pattern: &Pattern, name: &str, ignore_case: bool) -> bool {
+	if ignore_case {
+		pattern.matches_with(
+			name,
+			MatchOptions {
+				case_sensitive: false,
+				require_literal_separator: false,
+				require_literal_leading_dot: false,
+			},
+		)
+	} else {
+		pattern.matches(name)
+	}
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -708,6 +734,7 @@ const UNSUPPORTED: &[(&str, Option<&str>, Option<char>, bool, &str)] = &[
 	("group", None, Some('g'), false, "group ownership is not available on this platform"),
 	("inodes", Some("inodes"), None, false, "inode numbers are not available on this platform"),
 	("xdev", None, Some('x'), false, "cross-filesystem filtering has no meaning on this platform"),
+	("device", Some("device"), None, false, "device numbers are not available on this platform"),
 	("xml", None, Some('X'), false, "XML output is not implemented"),
 	("json", None, Some('J'), false, "JSON output is not implemented"),
 	("html", None, Some('H'), true, "HTML output is not implemented"),
@@ -746,6 +773,8 @@ fn app() -> Command {
 		.arg(Arg::new("quote").short('Q').long("quote").action(ArgAction::SetTrue).help("quote file names in double quotes"))
 		.arg(Arg::new("raw").short('N').long("raw").action(ArgAction::SetTrue).help("print non-printable characters as is"))
 		.arg(Arg::new("si").long("si").action(ArgAction::SetTrue).help("sizes use powers of 1000"))
+		.arg(Arg::new("ignore-case").long("ignore-case").action(ArgAction::SetTrue).help("match -P and -I patterns case-insensitively"))
+		.arg(Arg::new("unsorted").short('U').action(ArgAction::SetTrue).help("do not sort directory entries"))
 		.arg(Arg::new("matchdirs").long("matchdirs").action(ArgAction::SetTrue).help("apply -P patterns to directory names too"))
 		.arg(Arg::new("metafirst").long("metafirst").action(ArgAction::SetTrue).help("print metadata before the indentation lines"))
 		.arg(Arg::new("gitignore").long("gitignore").action(ArgAction::SetTrue).help("use .gitignore for filtering"))
@@ -1080,6 +1109,36 @@ mod tests {
 		assert_eq!(code, 0);
 		assert!(out.contains("b.md"), "{out}");
 		assert!(!out.contains("a.txt"), "{out}");
+	}
+
+	#[test]
+	fn ignore_case_applies_to_pattern_filters() {
+		let dir = fixture();
+		fs::write(dir.path().join("UPPER.MD"), b"x").unwrap();
+		// Without the flag the pattern is case sensitive, so UPPER.MD is filtered out.
+		let (code, out) = tree(&dir, &["-P", "*.md", "."]);
+		assert_eq!(code, 0);
+		assert!(!out.contains("UPPER.MD"), "{out}");
+		let (code, out) = tree(&dir, &["-P", "*.md", "--ignore-case", "."]);
+		assert_eq!(code, 0);
+		assert!(out.contains("UPPER.MD"), "{out}");
+	}
+
+	#[test]
+	fn unsorted_keeps_directory_order() {
+		let dir = fixture();
+		let (code, out) = tree(&dir, &["-U", "."]);
+		assert_eq!(code, 0);
+		assert!(out.contains("a.txt"), "{out}");
+		assert!(out.contains("sub"), "{out}");
+	}
+
+	#[test]
+	fn device_is_rejected_with_a_reason() {
+		let dir = fixture();
+		let (code, capture) = run_util::<Tree>(&["--device", "."], "", dir.path());
+		assert_eq!(code, 1);
+		assert!(capture.err().contains("device"), "{}", capture.err());
 	}
 
 	#[test]

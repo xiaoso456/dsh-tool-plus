@@ -8,7 +8,7 @@
 | 实现位置 | vendor/oh-my-pi/overlay/crates/pi-builtins/src/treecmd.rs（1136 行，含 29 个单测） |
 | 接入方式 | vendor/oh-my-pi/patches/0002-tree-integration.patch（46 行，只改 lib.rs / factory.rs / Cargo.toml） |
 | 依赖 | 零新增 crate：clap、glob、uucore::format::human 都已在依赖里 |
-| 测试 | 29 个单测（cargo test -p pi-builtins treecmd）；pi-builtins 全量 1309 通过 |
+| 测试 | 32 个单测（cargo test -p pi-builtins treecmd）；pi-builtins 全量 1322 通过 |
 
 ## 为什么自研
 
@@ -21,9 +21,9 @@
 | 类别 | 参数 |
 |---|---|
 | 列目录 | -a 全部、-d 只目录、-L N 最大深度、-f 完整路径、-i 不画缩进线 |
-| 过滤 | -P 只列匹配文件（目录保留）、-I 排除、--matchdirs 让 -P 也匹配目录名、| 分隔多模式、--gitignore 用根级 .gitignore、--gitfile 指定 ignore 文件 |
+| 过滤 | -P 只列匹配文件（目录保留）、-I 排除、--ignore-case 模式不区分大小写、--matchdirs 让 -P 也匹配目录名、| 分隔多模式、--gitignore 用根级 .gitignore、--gitfile 指定 ignore 文件 |
 | 显示 | -F 类型标记、-s 字节大小、-h 人类可读、--si 十进制单位、-q 不可打印字符显示为 ?、-N 原样输出、-Q 双引号包裹 |
-| 排序 | -r 反序、--dirsfirst 目录优先、--sort=name|size|time、-t 按修改时间 |
+| 排序 | -r 反序、-U 不排序、--dirsfirst 目录优先、--sort=name|size|time、-t 按修改时间 |
 | 结构 | -l 跟随目录符号链接（带环路检测）、--filelimit=N 条目过多不展开、--prune 剪掉过滤后为空的目录 |
 | 大小 | --du 目录累计大小（隐含 -s，汇总行附总字节数） |
 | 时间 | -D 打印修改时间（本地时区，默认 %b %e %H:%M）、--timefmt FORMAT 自定义 strftime 格式 |
@@ -49,6 +49,7 @@
 | -X -J -H -T -R | 结构化输出与递归 HTML 未实现 |
 | -c | 状态变更时间（ctime）在本平台不可用 |
 | -x | 跨文件系统判断在本平台无意义 |
+| --device | 设备号在本平台不存在 |
 | --skip-ignore | 不属于 tree 2.1 的选项，未声明 |
 | --info --infofile --fromfile --fromtabfile | .info 注释与文件输入未实现 |
 
@@ -62,9 +63,13 @@
 - -P 只过滤文件，目录保留，否则子目录里的匹配项永远到不了（--matchdirs 才让目录参与）。
 - 输出先写进内存缓冲，-o 时一次落盘，避免半截文件。
 
+## 测试来源
+
+上游 tree 2.1.1 的源码包**没有任何测试**（只有 C 源码、文档和构建脚本），没有可移植的用例。这里的 32 个用例是按 GNU tree 手册的语义逐条写的；Windows 自带的 tree.com 行为与 GNU 不同（参数都不认），不能当对拍基线。
+
 ## 测试与验证
 
-- cargo test -p pi-builtins treecmd → 27 通过（1 个 unix-only 符号链接用例在 Windows 上 ignored）
+- `cargo test -p pi-builtins treecmd` → 32 通过（1 个 unix-only 符号链接用例在 Windows 上 ignored）
 - cargo test -p pi-builtins → 1307 通过（无回归）
 - 覆盖：嵌套连接线、-a、-d、-L、-I、-P、-F、-s、--noreport、-i、-r、--dirsfirst、--filelimit、--prune、--du、-o、-Q、--matchdirs、--sort=size、-S、-D/--timefmt、--metafirst、--gitignore、--gitfile、-v、路径不存在、拒绝项报原因
 - 真实 shell 通道：runs_inside_a_real_shell 用 brush 的 Shell::builder 构建真 shell、跑脚本 `tree -L 1 -F .`，经解析器与 builtin 分发验证（比 run_util 更接近真实调用）

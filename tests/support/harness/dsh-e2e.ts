@@ -43,7 +43,7 @@ const EXPECTATIONS: ReadonlyArray<{ turn: string; tool: string; expect?: RegExp 
     tool: 'bash',
     // Opt-in: only a rebuilt addon ships the tree builtin, so CI keeps the loose check.
     expect: process.env.PI_E2E_EXPECT_TREE
-      ? /MOCK_E2E_BASH_OK[\s\S]*tree 1\./
+      ? /MOCK_E2E_BASH_OK[\s\S]*tree 1\.[\s\S]*gzip-ok/
       : /MOCK_E2E_BASH_OK/,
   },
   { turn: '02-write', tool: 'write' },

@@ -8,7 +8,7 @@
 | 实现位置 | `vendor/oh-my-pi/overlay/crates/pi-builtins/src/zipcmd*/ `，5 个文件共 3421 行 |
 | 接入方式 | `vendor/oh-my-pi/patches/0001-zip-integration.patch`（350 行）：`util.zip` feature、`zip` 依赖、factory 注册、Bazel feature |
 | 依赖 | `zip` crate 9.1.2 |
-| 测试 | `zipcmd.rs` 内 68 个 `#[test]` |
+| 测试 | `zipcmd.rs` 内 77 个 `#[test]` |
 
 ## 为什么自研
 
@@ -20,7 +20,7 @@
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `zipcmd.rs` | 2220 | 参数定义、分流、创建/更新/列表/测试/注释/过滤/日志等主流程，内含 68 个单测 |
+| `zipcmd.rs` | 2220 | 参数定义、分流、创建/更新/列表/测试/注释/过滤/日志等主流程，内含 77 个单测 |
 | `zipcmd/update.rs` | 536 | 更新已有归档：读中央目录、增删改条目、写回 |
 | `zipcmd/entry.rs` | 504 | 条目级处理：路径规整、名字匹配、条目重建 |
 | `zipcmd/line_endings.rs` | 83 | `-l` / `-ll` 的换行转换 |
@@ -38,22 +38,34 @@
 - **加密**：`-P` 直接给密码、`-e` 交互输入，均为 AES-256
 - **信息**：`-L` 许可、`-V` 版本
 
-## 与 Info-ZIP 的差异
+## 参数缺口（每个都有明确原因）
 
-三类缺口（完整清单见 [../draft/zip-builtin-gaps.md](../draft/zip-builtin-gaps.md)）：
+分三类。**未声明的**参数现在会得到 clap 的 `unexpected argument`，`接受但无效` 的会照常执行但什么都不做——这两类都属于已知缺口，不是静默伪实现。
 
-- **接受但本平台不适用**：`-FI/--fifo`、`-N/--notes`
-- **crate 做不到**：`-s` 分卷（`-sp/-sb/-sv`）、`-F/-FF` 修复、`-A/-J` SFX 调整
-- **有意不做**：`-a -B -C/-C2/-C5 -E -w -! -I`
+| 状态 | 参数 | 原因 |
+|---|---|---|
+| 声明并拒绝 · crate 做不到 | `-F` / `-FF` 修复 | `ZipArchive` 只能从中央目录读，目录坏了打不开；crate 没有遍历本地文件头（`0x04034b50`）的入口，也没有按原始字节重写档案的出口（crate 内 `grep -ri repair` 零命中）。要做等于自写扫描器 + 重打包器 |
+| 未声明（`-s` 已被占用）· crate 做不到 | `-s` 分卷（`-sp/-sb/-sv`） | `zip` crate 的 writer 在三处把 `disk_number` 写死为 0（`write.rs` 1667/1695/2660），没有换盘续写接口 |
+| 声明并拒绝 · crate 做不到 | `-A` / `-J` SFX 前缀调整 | 没有前缀偏移调整 API；writer 从 0 开始算偏移，没有预留空位入口 |
+| 接受但无效 | `-FI` / `--fifo` | Windows 无 FIFO 语义，解析后不产生行为 |
+| 接受但无效 | `-N` / `--notes` | 归档备注未实现（Info-ZIP 的 `-N` 是 notes，不是文件名编码） |
+| 语义不同 | `-s` | 在本实现里是 `--show-files` 的别名，**不是** Info-ZIP 的分卷大小 |
+| 语义不同 | `-e` / `-P` | 产出 AES-256（WinZip AES），不是 Info-ZIP 的 ZipCrypto；旧工具打不开。crate 同时支持 `with_deprecated_encryption`（`write.rs:3537`）与 `with_aes_encryption`，对齐成本很小，可单独做 |
+| 声明并拒绝 · 有意不做 | `-a` `-E` `-w` `-I` | 平台特有或与 Windows 语义冲突 |
+| 未声明 · 有意不做 | `-B` `-C/-C2/-C5` `-!` | 同上；未声明项会得到 clap 的 `unexpected argument` |
 
-容易踩的两处：
+## 容易踩的语义差异
 
-- `-s` 在这里是 `--show-files` 的别名，**不是** Info-ZIP 的分卷大小
-- `-e` / `-P` 产出 AES-256（WinZip AES），不是 Info-ZIP 的 ZipCrypto；旧工具打不开。这条可以修，crate 同时支持 `with_deprecated_encryption`（`write.rs:3537`）与 `with_aes_encryption`
+- `-s` 是 `--show-files`，不要当分卷用。
+- `-e` / `-P` 产出的加密格式是 WinZip AES；需要兼容老工具时应改用 `--deprecated-encryption` 方向（尚未接线）。
+- 带档案的 `-v` 只做普通操作，没有 Info-ZIP 的逐条明细。
+## 测试来源
+
+测试是按 Info-ZIP 手册语义自写的（该项目的发布物里没有可直接移植的单元测试），覆盖创建/更新/freshen/grow/删除/测试/列表/注释/过滤/日志等主流程，外加 `declares_repair_and_sfx_flags_with_reasons` 这类拒绝用例。
 
 ## 测试与验证
 
-- 单测：`cargo test -p pi-builtins zipcmd`（68 个 `#[test]`，记录中全 crate 1280 项全绿）
+- 单测：`cargo test -p pi-builtins zipcmd`（77 个 `#[test]`）
 - 本地真机：编出 debug addon 后用 `PI_NATIVES_DIR` 指向独立目录（`<PI_NATIVES_DIR>/<pi-natives 版本>/<addon 文件名>`），实测 `zip -L` / `-V` / `-du` 均 exit 0
 - 不要改 `node_modules/@oh-my-pi/pi-natives/native/`，也不要拷进 `~/.omp/natives/`，否则桌面端和其它 profile 会吃到未发布的产物
 

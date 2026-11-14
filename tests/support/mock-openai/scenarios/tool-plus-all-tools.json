@@ -18,7 +18,7 @@
         {
           "id": "call_bash",
           "name": "bash",
-          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version\",\"description\":\"Echo the marker and the tree version\"}",
+          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version; printf gzip-ok | gzip -c | gunzip\",\"description\":\"Marker, tree version, gzip round-trip\"}",
           "argumentChunks": 3
         }
       ]

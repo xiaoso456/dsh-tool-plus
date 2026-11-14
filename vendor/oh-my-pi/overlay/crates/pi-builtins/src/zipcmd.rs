@@ -54,6 +54,19 @@ pub(crate) struct Zip {
 
 matches_parser!(Zip, app);
 
+/// Info-ZIP flags this builtin deliberately does not implement. Declaring them
+/// keeps the failure readable ("zip: -F ..."), instead of clap's generic
+/// "unexpected argument".
+const UNSUPPORTED: &[(&str, Option<char>, &str)] = &[
+	("unsupported-repair", Some('F'), "repairing a damaged archive needs a local-header scanner, which the zip crate does not expose"),
+	("unsupported-sfx-adjust", Some('A'), "adjusting a self-extractor prefix has no API in the zip crate"),
+	("unsupported-sfx-strip", Some('J'), "stripping a self-extractor prefix has no API in the zip crate"),
+	("unsupported-ascii", Some('a'), "text/ascii conversion is not implemented"),
+	("unsupported-symlink-attributes", Some('E'), "symlink attribute handling does not match Info-ZIP"),
+	("unsupported-wipe", Some('w'), "wiping any file attribute bits is not implemented"),
+	("unsupported-ignore-archive", Some('I'), "ignoring unmatched archive names is not implemented"),
+];
+
 impl Utility for Zip {
 	const NAME: &'static str = "zip";
 	const USAGE_ERROR: u8 = 16;
@@ -117,6 +130,18 @@ impl Utility for Zip {
 	}
 
 	fn run(self, host: &mut Host) -> i32 {
+		for (id, _, reason) in UNSUPPORTED {
+			if self.matches.get_flag(id) {
+				let spelling = match *id {
+					"unsupported-repair" => "-F/-FF".to_string(),
+					"unsupported-sfx-adjust" => "-A".to_string(),
+					"unsupported-sfx-strip" => "-J".to_string(),
+					id => format!("zip: {}", id.trim_start_matches("unsupported-")),
+				};
+				host.error(format!("zip: {spelling} {reason}"), i32::from(Zip::USAGE_ERROR));
+				return i32::from(Zip::USAGE_ERROR);
+			}
+		}
 		run_zip(&self.matches, host)
 	}
 }
@@ -565,6 +590,19 @@ fn app() -> Command {
 				.action(ArgAction::SetTrue)
 				.help(if digit == 0 { "store uncompressed" } else { "compress with level 0..9" }),
 		);
+	}
+
+	for (id, short, reason) in UNSUPPORTED {
+		// -FF is a distinct Info-ZIP spelling: allow the same flag twice.
+		let mut arg = Arg::new(*id)
+			.action(ArgAction::SetTrue)
+			.overrides_with(*id)
+			.hide(true)
+			.help(*reason);
+		if let Some(short) = *short {
+			arg = arg.short(short);
+		}
+		command = command.arg(arg);
 	}
 
 	command
@@ -1216,6 +1254,17 @@ mod tests {
 	}
 
 	#[test]
+	#[test]
+	fn declares_repair_and_sfx_flags_with_reasons() {
+		let dir = tempdir().unwrap();
+		fs::write(dir.path().join("a.txt"), b"x").unwrap();
+		for flag in ["-F", "-FF", "-A", "-J", "-a"] {
+			let (code, capture) = run_util::<Zip>(&[flag, "out.zip", "a.txt"], "", dir.path());
+			assert_eq!(code, 16, "{flag} must be a usage error");
+			assert!(capture.err().contains("zip: "), "{flag}: {}", capture.err());
+		}
+	}
+
 	fn appends_zip_extension() {
 		let fixture = tempdir().unwrap();
 		fs::write(fixture.path().join("hello.txt"), b"hello").unwrap();
