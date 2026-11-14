@@ -1,41 +1,38 @@
 //! Single registration point for the self-written shell commands.
 //!
-//! Every command lives in its own module under the overlay; this file is the
-//! only wiring that names them. Adding a command therefore means: add the
-//! module, add one push here - no new vendor patch, no extra hunk in
-//! factory.rs.
+//! Every command lives in this module directory; the file only declares the
+//! modules and registers their names. Adding a command therefore means: add
+//! the module file, add one `mod` line, add its registration - no vendor patch
+//! and no change to lib.rs / factory.rs.
+
+mod bccmd;
+mod envsubstcmd;
+mod gzipcmd;
+mod treecmd;
+mod xzcmd;
+mod zipcmd;
+mod zstdcmd;
 
 use brush_core::{
 	ShellExtensions,
 	builtins::Registration,
 };
 
-/// Registers every self-written utility that its feature enables.
+/// Registers every self-written utility.
 pub(crate) fn register<SE: ShellExtensions>(
 	builtins: &mut Vec<(&'static str, Registration<SE>)>,
 ) {
-	#[cfg(feature = "util.zip")]
-	builtins.push(("zip", crate::zipcmd::zip_builtin::<SE>()));
-	#[cfg(feature = "util.tree")]
-	builtins.push(("tree", crate::treecmd::tree_builtin::<SE>()));
-	#[cfg(feature = "util.gzip")]
-	{
-		builtins.push(("gzip", crate::gzipcmd::gzip_builtin::<SE>()));
-		builtins.push(("gunzip", crate::gzipcmd::gzip_builtin::<SE>()));
-		builtins.push(("zcat", crate::gzipcmd::gzip_builtin::<SE>()));
-	}
-	#[cfg(feature = "util.envsubst")]
-	builtins.push(("envsubst", crate::envsubstcmd::envsubst_builtin::<SE>()));
-	#[cfg(feature = "util.zstd")]
-	{
-		builtins.push(("zstd", crate::zstdcmd::zstd_builtin::<SE>()));
-		builtins.push(("unzstd", crate::zstdcmd::zstd_builtin::<SE>()));
-		builtins.push(("zstdcat", crate::zstdcmd::zstd_builtin::<SE>()));
-	}
-	#[cfg(feature = "util.xz")]
-	{
-		builtins.push(("xz", crate::xzcmd::xz_builtin::<SE>()));
-		builtins.push(("unxz", crate::xzcmd::xz_builtin::<SE>()));
-		builtins.push(("xzcat", crate::xzcmd::xz_builtin::<SE>()));
-	}
+	builtins.push(("zip", zipcmd::zip_builtin::<SE>()));
+	builtins.push(("tree", treecmd::tree_builtin::<SE>()));
+	builtins.push(("gzip", gzipcmd::gzip_builtin::<SE>()));
+	builtins.push(("gunzip", gzipcmd::gzip_builtin::<SE>()));
+	builtins.push(("zcat", gzipcmd::gzip_builtin::<SE>()));
+	builtins.push(("envsubst", envsubstcmd::envsubst_builtin::<SE>()));
+	builtins.push(("zstd", zstdcmd::zstd_builtin::<SE>()));
+	builtins.push(("unzstd", zstdcmd::zstd_builtin::<SE>()));
+	builtins.push(("zstdcat", zstdcmd::zstd_builtin::<SE>()));
+	builtins.push(("xz", xzcmd::xz_builtin::<SE>()));
+	builtins.push(("unxz", xzcmd::xz_builtin::<SE>()));
+	builtins.push(("xzcat", xzcmd::xz_builtin::<SE>()));
+	builtins.push(("bc", bccmd::bc_builtin::<SE>()));
 }

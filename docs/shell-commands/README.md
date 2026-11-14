@@ -18,6 +18,7 @@
 
 | 命令 | 上游 OMP | brush（v18.12.6） | 实现位置 | 状态 | 文档 |
 |---|---|---|---|---|---|
+| `bc` | 无 | 无 | `overlay/crates/pi-builtins/src/shellcmds/bccmd.rs` | 代码完成、13 单测绿；GNU bc 的 7 个参数全支持，表达式/变量/进制/`-l` 已实现，函数与流程控制明确报未实现 | [bc.md](./bc.md) |
 | `xz` | 无 | 无 | `overlay/crates/pi-builtins/src/xzcmd.rs` | 代码完成、8 单测绿；未进发布包 | [xz.md](./xz.md) |
 | `unxz` | 无 | 无 | 同上（同一实现，隐含 `-d`） | 同上 | [unxz.md](./unxz.md) |
 | `xzcat` | 无 | 无 | 同上（同一实现，隐含 `-dc`） | 同上 | [xzcat.md](./xzcat.md) |
@@ -39,7 +40,7 @@
 |---|---|---|
 | **内建** | pi-builtins 工厂注册，无进程开销 | bassum/base64/cat/chmod/cksum/cmp/comm/cp/cut/date/dd/df/diff/dirname/du/env/fd/find/fold/grep/rg/head/hostname/id/jq/zip/ln/ls/md5sum/mkdir/mktemp/mv/nl/nproc/od/paste/printenv/readlink/realpath/rm/rmdir/sed/seq/sha*sum/sort/sponge/stat/tac/tail/tee/touch/tr/tree/truncate/ts/uname/uniq/uptime/wc/which/whoami/xargs/yes/pgrep/pkill/ps/sleep/timeout/top |
 | **Git Bash 外部 exe** | 能用，但依赖 Git 安装、每次 spawn 进程 | unzip / tar / column / shuf / patch / file / awk / less / xxd / split / join / expr |
-| **完全缺失** | 哪都没有 | bc / hexdump / strings / rev / cal / units / nc / watch（`envsubst`、`gzip`/`gunzip`/`zcat`、`zstd`/`unzstd`/`zstdcat` 已内建，见清单） |
+| **完全缺失** | 哪都没有 | hexdump / strings / rev / cal / units / nc / watch（`bc`、`envsubst`、`gzip`/`gunzip`/`zcat`、`xz`/`unxz`/`xzcat`、`zstd`/`unzstd`/`zstdcat` 已内建，见清单） |
 
 **优先级原则（用户 2026-11-14 定）**：Git Bash 已提供的降优先级——它们不是不能用，只是没内建；优先补 `完全缺失` 这一类。
 

@@ -18,7 +18,7 @@
         {
           "id": "call_bash",
           "name": "bash",
-          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version; printf gzip-ok | gzip -c | gunzip; export PI_E2E_V=envsubst-ok; printf '$PI_E2E_V' | envsubst; printf zstd-ok | zstd -q | unzstd; printf xz-ok | xz -q | unxz\",\"description\":\"tree/gzip/envsubst/zstd/xz round-trips\"}",
+          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version; printf gzip-ok | gzip -c | gunzip; export PI_E2E_V=envsubst-ok; printf '$PI_E2E_V' | envsubst; printf zstd-ok | zstd -q | unzstd; printf xz-ok | xz -q | unxz; echo 'obase = 16; 255' | bc\",\"description\":\"tree/gzip/envsubst/zstd/xz/bc round-trips\"}",
           "argumentChunks": 3
         }
       ]

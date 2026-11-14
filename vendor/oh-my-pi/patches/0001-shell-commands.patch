@@ -349,7 +349,7 @@ index 9fec727d..2056fb52 100644
      ],
      crate_name = "pi_builtins",
 diff --git a/crates/pi-builtins/Cargo.toml b/crates/pi-builtins/Cargo.toml
-index 21583eda..24cdc6c3 100644
+index 21583eda..b27b73e6 100644
 --- a/crates/pi-builtins/Cargo.toml
 +++ b/crates/pi-builtins/Cargo.toml
 @@ -33,6 +33,10 @@ path = "src/lib.rs"
@@ -363,21 +363,15 @@ index 21583eda..24cdc6c3 100644
  brush-core = "^0.5.0"
  brush-parser = "^0.4.0"
  cfg-if = "1.0.4"
-@@ -188,6 +192,13 @@ pretty_assertions = { version = "1.4.1", features = ["unstable"] }
+@@ -188,6 +192,7 @@ pretty_assertions = { version = "1.4.1", features = ["unstable"] }
  tempfile = "3"
  
  [features]
-+"util.shellcmds" = ["util.zip", "util.tree", "util.gzip", "util.envsubst", "util.zstd", "util.xz"]
-+"util.zip" = []
-+"util.tree" = []
-+"util.gzip" = []
-+"util.envsubst" = []
-+"util.zstd" = []
-+"util.xz" = []
++"util.shellcmds" = []
  default = ["base", "utils"]
  
  # Every upstream POSIX/bash builtin.
-@@ -393,6 +404,7 @@ base = [
+@@ -393,6 +398,7 @@ base = [
  "util.yes" = []
  
  utils = [
@@ -399,19 +393,13 @@ index c39b3668..1c72e4fa 100644
  	#[cfg(feature = "util.b2sum")]
  	m.push(("b2sum", b2sum::b2sum_builtin::<SE>()));
 diff --git a/crates/pi-builtins/src/lib.rs b/crates/pi-builtins/src/lib.rs
-index efde45ab..ad2eba82 100644
+index efde45ab..9bb4ef7c 100644
 --- a/crates/pi-builtins/src/lib.rs
 +++ b/crates/pi-builtins/src/lib.rs
-@@ -322,6 +322,13 @@ mod whoami;
+@@ -322,6 +322,7 @@ mod whoami;
  mod xargs;
  #[cfg(feature = "util.yes")]
  mod yes;
-+#[cfg(feature = "util.zip")] mod zipcmd;
-+#[cfg(feature = "util.tree")] mod treecmd;
-+#[cfg(feature = "util.gzip")] mod gzipcmd;
-+#[cfg(feature = "util.envsubst")] mod envsubstcmd;
-+#[cfg(feature = "util.zstd")] mod zstdcmd;
-+#[cfg(feature = "util.xz")] mod xzcmd;
 +#[cfg(feature = "util.shellcmds")] mod shellcmds;
  
  pub use builder::ShellBuilderExt;
