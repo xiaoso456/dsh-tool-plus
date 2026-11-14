@@ -1,0 +1,101 @@
+diff --git a/crates/pi-builtins/Cargo.toml b/crates/pi-builtins/Cargo.toml
+index 21583eda..c6ca04ea 100644
+--- a/crates/pi-builtins/Cargo.toml
++++ b/crates/pi-builtins/Cargo.toml
+@@ -108,6 +108,7 @@ xutf.workspace = true
+ libc = "0.2.172"
+ uutils_term_grid = "0.8"
+ yansi = "1.0.1"
++zip = { version = "9.1", default-features = false, features = ["deflate", "aes-crypto"] }
+ 
+ [dependencies.uucore]
+ version = "0.8.0"
+@@ -382,6 +383,7 @@ base = [
+ "util.tee" = []
+ "util.touch" = []
+ "util.tr" = []
++"util.tree" = []
+ "util.truncate" = []
+ "util.uname" = []
+ "util.uniq" = []
+@@ -391,6 +393,7 @@ base = [
+ "util.whoami" = []
+ "util.xargs" = []
+ "util.yes" = []
++"util.zip" = []
+ 
+ utils = [
+   "util.b2sum",
+@@ -466,6 +469,7 @@ utils = [
+   "util.tee",
+   "util.touch",
+   "util.tr",
++  "util.tree",
+   "util.truncate",
+   "util.uname",
+   "util.uniq",
+@@ -475,6 +479,7 @@ utils = [
+   "util.whoami",
+   "util.xargs",
+   "util.yes",
++  "util.zip",
+ ]
+ 
+ # Deliberately NOT `lints.workspace = true`: most of this crate is ported
+diff --git a/crates/pi-builtins/src/factory.rs b/crates/pi-builtins/src/factory.rs
+index c39b3668..a9214c39 100644
+--- a/crates/pi-builtins/src/factory.rs
++++ b/crates/pi-builtins/src/factory.rs
+@@ -256,6 +256,8 @@ pub fn utility_builtins<SE: brush_core::ShellExtensions>()
+ 	m.push(("isutf8", isutf8::isutf8_builtin::<SE>()));
+ 	#[cfg(feature = "util.jq")]
+ 	m.push(("jq", jq::jq_builtin::<SE>()));
++	#[cfg(feature = "util.zip")]
++	m.push(("zip", zipcmd::zip_builtin::<SE>()));
+ 	#[cfg(feature = "util.ln")]
+ 	m.push(("ln", ln::ln_builtin::<SE>()));
+ 	#[cfg(feature = "util.ls")]
+@@ -316,6 +318,8 @@ pub fn utility_builtins<SE: brush_core::ShellExtensions>()
+ 	m.push(("touch", touch::touch_builtin::<SE>()));
+ 	#[cfg(feature = "util.tr")]
+ 	m.push(("tr", tr::tr_builtin::<SE>()));
++	#[cfg(feature = "util.tree")]
++	m.push(("tree", treecmd::tree_builtin::<SE>()));
+ 	#[cfg(feature = "util.truncate")]
+ 	m.push(("truncate", truncate::truncate_builtin::<SE>()));
+ 	#[cfg(feature = "util.ts")]
+diff --git a/crates/pi-builtins/src/lib.rs b/crates/pi-builtins/src/lib.rs
+index efde45ab..0aae950c 100644
+--- a/crates/pi-builtins/src/lib.rs
++++ b/crates/pi-builtins/src/lib.rs
+@@ -227,6 +227,8 @@ mod ifne;
+ mod isutf8;
+ #[cfg(feature = "util.jq")]
+ mod jq;
++#[cfg(feature = "util.zip")]
++mod zipcmd;
+ #[cfg(feature = "util.ln")]
+ mod ln;
+ #[cfg(feature = "util.ls")]
+@@ -302,6 +304,8 @@ mod tee;
+ mod touch;
+ #[cfg(feature = "util.tr")]
+ mod tr;
++#[cfg(feature = "util.tree")]
++mod treecmd;
+ #[cfg(feature = "util.truncate")]
+ mod truncate;
+ #[cfg(feature = "util.ts")]
+diff --git a/crates/pi-natives/Cargo.toml b/crates/pi-natives/Cargo.toml
+index 908191b7..65f75ee6 100644
+--- a/crates/pi-natives/Cargo.toml
++++ b/crates/pi-natives/Cargo.toml
+@@ -61,7 +61,7 @@ pdf-inspector.workspace = true
+ phf.workspace = true
+ flume.workspace = true
+ pi-ast.workspace = true
+-pi-builtins = { workspace = true, features = ["util.grep"] }
++pi-builtins = { workspace = true, features = ["util.grep", "util.tree"] }
+ pi-diff.workspace = true
+ pi-edit.workspace = true
+ pi-iso.workspace = true

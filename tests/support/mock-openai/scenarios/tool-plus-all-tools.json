@@ -18,7 +18,7 @@
         {
           "id": "call_bash",
           "name": "bash",
-          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK\",\"description\":\"Echo the mock marker\"}",
+          "arguments": "{\"command\":\"echo MOCK_E2E_BASH_OK; tree --version\",\"description\":\"Echo the marker and the tree version\"}",
           "argumentChunks": 3
         }
       ]

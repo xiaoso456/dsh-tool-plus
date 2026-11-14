@@ -60,3 +60,6 @@ docs/*
 # Benchmark report linked from the README (must ship so the GitHub link works)
 !docs/benchmark/
 !docs/benchmark/**
+# 自研 shell 命令的实现流程与命令文档（AGENTS.md 直接引用，必须随仓库发布）
+!docs/shell-commands/
+!docs/shell-commands/**

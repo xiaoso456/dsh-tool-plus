@@ -38,7 +38,14 @@ const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS ?? '300000')
  * 断言的是效果（文件真被写了、真被改了），不是工具的措辞。
  */
 const EXPECTATIONS: ReadonlyArray<{ turn: string; tool: string; expect?: RegExp }> = [
-  { turn: '01-bash', tool: 'bash', expect: /MOCK_E2E_BASH_OK/ },
+  {
+    turn: '01-bash',
+    tool: 'bash',
+    // Opt-in: only a rebuilt addon ships the tree builtin, so CI keeps the loose check.
+    expect: process.env.PI_E2E_EXPECT_TREE
+      ? /MOCK_E2E_BASH_OK[\s\S]*tree 1\./
+      : /MOCK_E2E_BASH_OK/,
+  },
   { turn: '02-write', tool: 'write' },
   { turn: '03-read', tool: 'read', expect: /GREETING/ },
   { turn: '04-edit', tool: 'edit' },

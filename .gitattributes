@@ -1,0 +1,3 @@
+# Vendored patches must stay byte-identical: CRLF breaks `git apply` on an
+# LF working tree, so keep these files out of any eol conversion.
+vendor/oh-my-pi/patches/*.patch -text

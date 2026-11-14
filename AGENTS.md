@@ -118,11 +118,21 @@ e2e/tsconfig.json            独立配置，不进主 tsconfig 的 include（主
 - pi-natives 兼容走双轨：pnpm 补丁（patches/）+ 非.pnpm 安装的 postinstall 自愈脚本，两者都不许删；消费者侧另加启动期自愈入口 `lib/pi-natives-bootstrap.mjs`（在 import pi-natives 前执行 patch，写入走 copy-on-patch 断硬链接，避免 pnpm store 跨 profile 串改），postinstall 保留为安装时兜底。**跟随上游升级时要核对这份补丁**：确认 `patches/@oh-my-pi__pi-natives.patch` 仍能 apply（对一下新包 `native/loader-state.js` 里还有没有 `import.meta.dir`）；上游自己改成 `import.meta.dirname` 后补丁会失效，届时删补丁文件、只留 postinstall/bootstrap 的幂等判断
 - 改动源码后必须跑完第 2 步验证链再交付
 
+## 新增 shell 命令
+
+要做 brush 里没有、OMP 也没有的自研命令（例如 `zip`）时，**先读 `docs/shell-commands/README.md`**——那里有判定标准、命令清单和实现流程，按顺序走完再动手，别跳过兼容矩阵和性能两节。
+
+顺序是：立项验证（`command -v` + 上游 `git ls-tree` + `pi-builtins/src` 目录）→ 找现成库并记录许可证 → 列兼容矩阵（支持 / 语义不同 / 不支持 + 原因）→ overlay 实现、补丁入台账 → 三层测试 + 变异验证 → 性能数据（耗时 / CPU / IO）→ 文档落 `docs/shell-commands/<命令>.md`。
+
+那个目录是 `.gitignore` 里 `docs/*` 的例外，随仓库发布；新增命令要同步在清单表里加一行。
+
 ## 本地 native 开发（vendor 产物隔离）
 
 - 验证 `vendor/oh-my-pi` 编出的 addon 时，用 `PI_NATIVES_DIR` 指向独立目录；**不要**改 `node_modules/@oh-my-pi/pi-natives/native/`，也不要拷进全局 `~/.omp/natives/`。后者会让 desktop 和其他 profile 一起吃到未发布的 vendor 产物。
 - 目录结构必须是 `<PI_NATIVES_DIR>/<pi-natives 版本>/<addon 文件名>`，例如 `.../dev-natives/18.12.6/pi_natives.win32-x64-modern.node`；版本以 `vendor/oh-my-pi/lock.json` 的 `version` 为准。Windows 下 loader 会优先查这个版本缓存目录。
 - 只在启动 dev profile 的那个 shell 里设置 `PI_NATIVES_DIR`；desktop 从图标启动不会继承，继续用 npm 包的 baseline。启动时带 `PI_DEBUG_STARTUP=1` 可确认日志出现 `native:require:pi_natives.win32-x64-modern.node`。
+- 自己编的 release addon **必须打版本戳**才能被 loader 接受：`node scripts/stamp-pi-natives.mjs target/release/pi_natives.dll <out> <pi-natives 版本>`。源码里的 stamp 槽是 64 字节占位（magic + 全 0），不打戳会被判定「没有 release identity」，现象是插件整体不激活（`Error: unknown tool "bash"`）。
+- 端到端验证配方（构建 → 打戳 → 替换 leaf 包的 .node → `PI_E2E_EXPECT_TREE=1 pnpm e2e` → 还原）记在 `docs/shell-commands/tree.md` 的「在真 addon 里验证」一节。
 - 这是本地验证通道；正式分发仍等 npm 平台包/wrapper 接线，不要把 vendor 产物或缓存路径写进发布包。
 
 ## 代码要求
