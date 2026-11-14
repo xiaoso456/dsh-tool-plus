@@ -163,6 +163,11 @@ numbered patch and a row here.
 
 | patch | area | change | why | upstream issue/PR | applies to | test | removal condition |
 |---|---|---|---|---|---|---|---|
+| `0002-tree-integration.patch` | `pi-builtins` | `util.tree` feature, module, factory registration, pi-natives feature | brush and upstream have no `tree`; Windows `tree.com` has unrelated semantics | — | `v18.12.6` | `cargo test -p pi-builtins treecmd` | remove when upstream ships a `tree` builtin |
+| `0003-gzip-integration.patch` | `pi-builtins` | `util.gzip` feature, `flate2` dependency, factory registration for `gzip`/`gunzip`/`zcat`, pi-natives feature | Git Bash only ships an external gzip; `gunzip`/`zcat` are absent on Windows | — | `v18.12.6` | `cargo test -p pi-builtins gzipcmd` | remove when upstream ships gzip builtins |
+| `0004-envsubst-integration.patch` | `pi-builtins` | `util.envsubst` feature, module, factory registration, pi-natives feature | envsubst is completely missing on Windows (Git Bash does not ship gettext) | — | `v18.12.6` | `cargo test -p pi-builtins envsubstcmd` | remove when upstream ships envsubst |
+| `0005-zstd-integration.patch` | `pi-builtins` | `util.zstd` feature, `zstd` dependency, factory registration for `zstd`/`unzstd`/`zstdcat`, pi-natives feature | zstd is completely missing on Windows; `.tar.zst` is a common distribution format | — | `v18.12.6` | `cargo test -p pi-builtins zstdcmd` | remove when upstream ships zstd |
+| `0006-xz-integration.patch` | `pi-builtins` | `util.xz` feature, `xz2` dependency, factory registration for `xz`/`unxz`/`xzcat`, pi-natives feature, and the cumulative `Cargo.lock` entries for zstd + xz | xz is completely missing on Windows; `.tar.xz` is still the dominant source format | — | `v18.12.6` | `cargo test -p pi-builtins xzcmd` | remove when upstream ships xz |
 | `0001-zip-integration.patch` | `pi-builtins` | wires the tracked `overlay/` zip source into the crate: `util.zip` feature, `zip` dependency, factory registration, Bazel feature | brush has no `zip`; shell users need a drop-in archive command without a system binary | — | `v18.12.6` | `cargo test -p pi-builtins zipcmd` | remove when upstream ships a `zip` builtin, or when the shell no longer exposes in-process utilities |
 
 Rules:
@@ -171,4 +176,5 @@ Rules:
 - Record the upstream issue/PR when there is one; prefer upstreaming.
 - A patch that only patches the JS loader belongs in
   `patches/@oh-my-pi__pi-natives.patch` (pnpm patch), not here.
+- Patches apply in strict numeric order; they are cumulative. `0006` carries the `Cargo.lock` entries for both zstd and xz because `0005` was generated before the lock update.
 - Re-check the whole ledger on every upstream bump.
