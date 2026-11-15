@@ -1,0 +1,85 @@
+diff --git a/crates/pi-builtins/src/host.rs b/crates/pi-builtins/src/host.rs
+index e3aab202..bb5af5b0 100644
+--- a/crates/pi-builtins/src/host.rs
++++ b/crates/pi-builtins/src/host.rs
+@@ -2448,6 +2448,29 @@ mod testing {
+ 			assert!(capture.err().starts_with("naive: write error: Broken pipe"), "{:?}", capture.err());
+ 		}
+ 	}
++
++	/// Contract: after `cd`, a relative path to an external executable is
++	/// resolved against the shell's working directory, not the host process
++	/// cwd. Windows `CreateProcess` otherwise resolves `./name` against the
++	/// parent process, which is the brush embedding process, not the shell.
++	#[cfg(windows)]
++	#[tokio::test]
++	async fn relative_external_command_resolves_after_cd() {
++		let dir = tempfile::tempdir().unwrap();
++		let sub = dir.path().join("sub");
++		std::fs::create_dir(&sub).unwrap();
++		let system_root =
++			std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
++		let source = system_root.join("System32").join("where.exe");
++		let tool = sub.join("relative-exec-probe.exe");
++		std::fs::copy(&source, &tool).unwrap_or_else(|error| {
++			panic!("copy {} to {}: {error}", source.display(), tool.display())
++		});
++
++		let (code, out, err) = run_script("cd sub\n./relative-exec-probe.exe cmd.exe", "", dir.path()).await;
++		assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
++		assert!(out.to_ascii_lowercase().contains("cmd.exe"), "stdout: {out}");
++	}
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/vendor/brush-core/src/commands.rs b/crates/vendor/brush-core/src/commands.rs
+index 1ea5bab9..c8f31c95 100644
+--- a/crates/vendor/brush-core/src/commands.rs
++++ b/crates/vendor/brush-core/src/commands.rs
+@@ -332,6 +332,11 @@ pub async fn compose_std_command<S: AsRef<OsStr>, SE: extensions::ShellExtension
+ 			program = host_path(filesystem, &spelled)
+ 				.await?
+ 				.ok_or_else(|| error::ErrorKind::ExternalCommandIsVirtual(spelled))?;
++		} else {
++			#[cfg(windows)]
++			{
++				program = sys::fs::normalize_executable_path(&spelled).into_owned();
++			}
+ 		}
+ 	}
+ 
+diff --git a/crates/vendor/brush-core/src/sys/fs.rs b/crates/vendor/brush-core/src/sys/fs.rs
+index 3c60e178..c579b342 100644
+--- a/crates/vendor/brush-core/src/sys/fs.rs
++++ b/crates/vendor/brush-core/src/sys/fs.rs
+@@ -29,6 +29,30 @@ pub fn normalize_shell_path(path: &Path) -> Cow<'_, Path> {
+ 	}
+ }
+ 
++/// Collapse a shell-resolved executable path before spawning it.
++///
++/// Windows resolves a relative executable name against the *parent* process's
++/// current directory in `CreateProcess`, before the child's `current_dir`
++/// takes effect. The caller passes the path already resolved against the
++/// shell's working directory, so normalizing it here makes the program path
++/// independent of the embedding process's cwd.
++///
++/// Other platforms pass the path through unchanged: the OS resolves it in the
++/// child after `chdir`.
++#[allow(clippy::missing_const_for_fn, reason = "Windows implementation allocates")]
++pub fn normalize_executable_path(path: &Path) -> Cow<'_, Path> {
++	#[cfg(windows)]
++	{
++		use normalize_path::NormalizePath as _;
++
++		Cow::Owned(path.normalize())
++	}
++	#[cfg(not(windows))]
++	{
++		Cow::Borrowed(path)
++	}
++}
++
+ /// Expand 8.3 short-name components (e.g. `ADMINI~1`) in `path` to their long
+ /// form, leaving the path otherwise unchanged.
+ #[cfg(windows)]
