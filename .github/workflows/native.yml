@@ -71,9 +71,13 @@ jobs:
           - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm, family: linux }
           - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04, family: linux }
           - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm, family: linux }
-          # Darwin: explicit targets so the x64 artifact stays baseline.
-          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15, family: darwin, saveInputs: true, saveActions: true }
-          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel, family: darwin, saveActions: true }
+          # Darwin runs on Linux like upstream's cross job: the hermetic clang +
+          # ld64.lld + macOS SDK toolchain is exec-gated to linux hosts
+          # (MODULE.bazel), so a Mac runner would fall back to a host toolchain
+          # that only targets its own architecture. macos-15-intel was also the
+          # slowest job in the matrix by a factor of ~4.
+          - { artifact: darwin-arm64, target: darwin-arm64, runner: ubuntu-22.04, family: darwin, saveInputs: true, saveActions: true }
+          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: ubuntu-22.04, family: darwin, saveActions: true }
           # Windows: OMP's msvc cross toolchain runs on Linux/mac exec hosts.
           - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04, family: win32, saveInputs: true }
           - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04, family: win32 }
@@ -194,6 +198,9 @@ jobs:
           name: pi-natives-${{ matrix.artifact }}
           path: build/${{ matrix.artifact }}/*.node
           if-no-files-found: error
+          # A test run is disposable: nine 44 MB addons kept for the default 90
+          # days is a lot of dead weight on the repo's artifact storage.
+          retention-days: 7
       # One writer per family. Concurrent saves to one key lose the race and
       # only warn, so a designated representative owns each entry.
       - name: Save bazel/cargo inputs
