@@ -14,16 +14,20 @@
  * @module tests
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveConfig } from '../../src/config/settings.ts'
 
-const { executeBashMock } = vi.hoisted(() => ({ executeBashMock: vi.fn() }))
+const { executeBashMock, createWarmShellMock } = vi.hoisted(() => ({
+  executeBashMock: vi.fn(),
+  createWarmShellMock: vi.fn(async () => null),
+}))
 
 vi.mock('../../src/tools/bash/bash-executor.ts', () => ({
   executeBash: (...args: unknown[]) => executeBashMock(...args),
+  createWarmShell: () => createWarmShellMock(),
 }))
 
-import { startBashJob } from '../../src/tools/bash/background.ts'
+import { closeSessionWarmShells, startBashJob } from '../../src/tools/bash/background.ts'
 
 /** A minimal successful executor result; override the fields under test. */
 function executorResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -40,9 +44,9 @@ function executorResult(overrides: Record<string, unknown> = {}): Record<string,
 }
 
 /** Start a job against the mocked executor and await its completion result. */
-async function startJob(config: ReturnType<typeof resolveConfig>, command = 'echo ok') {
+async function startJob(config: ReturnType<typeof resolveConfig>, command = 'echo ok', sessionId = 'spec') {
   const job = startBashJob({
-    sessionId: 'spec',
+    sessionId,
     command,
     cwd: process.cwd(),
     timeoutMs: 5000,
@@ -51,6 +55,45 @@ async function startJob(config: ReturnType<typeof resolveConfig>, command = 'ech
   })
   return job.completion
 }
+
+afterEach(() => {
+  closeSessionWarmShells()
+})
+
+describe('background job warm shells', () => {
+  it('leases a refilled shell for the next job and never for the first', async () => {
+    executeBashMock.mockReset()
+    createWarmShellMock.mockReset()
+    const created: Array<{ abort: ReturnType<typeof vi.fn> }> = []
+    createWarmShellMock.mockImplementation(async () => {
+      const shell = { abort: vi.fn(async () => undefined) }
+      created.push(shell)
+      return shell
+    })
+    executeBashMock.mockResolvedValue(executorResult())
+    const config = resolveConfig({ warmShellEnabled: true, warmShellCount: 1, warmShellTtlMs: 0 })
+    await startJob(config, 'first', 'warm-session')
+    const firstOptions = executeBashMock.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(firstOptions.warmShell).toBeUndefined()
+    // The refill runs in the background after the first job; wait for adoption.
+    // Adoption trails the create promise by a microtask, so cross a macrotask
+    // boundary before the shell can actually be leased.
+    await vi.waitFor(() => expect(created).toHaveLength(1))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    await startJob(config, 'second', 'warm-session')
+    const secondOptions = executeBashMock.mock.calls[1]?.[1] as Record<string, unknown>
+    expect(secondOptions.warmShell).toBe(created[0])
+  })
+
+  it('never creates a warm shell when the pool is disabled', async () => {
+    executeBashMock.mockReset()
+    createWarmShellMock.mockReset()
+    executeBashMock.mockResolvedValue(executorResult())
+    await startJob(resolveConfig({ warmShellEnabled: false }), 'disabled', 'warm-disabled')
+    expect(createWarmShellMock).not.toHaveBeenCalled()
+  })
+})
 
 describe('background job minimized passthrough', () => {
   it('carries minimized + originalSpillPath into the completion result', async () => {

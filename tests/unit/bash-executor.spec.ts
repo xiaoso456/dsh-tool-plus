@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { afterAll, describe, expect, it } from 'vitest'
-import { buildMinimizerOptions, closeSessionShells, executeBash, getShellConfig } from '../../src/tools/bash/bash-executor.ts'
+import { buildMinimizerOptions, closeSessionShells, createWarmShell, executeBash, getShellConfig } from '../../src/tools/bash/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
   try {
@@ -61,6 +61,20 @@ describeBash('executeBash', () => {
     })
     expect(result.cancelled).toBe(true)
     expect(result.exitCode).toBeUndefined()
+  })
+
+  it('runs on a pristine warm shell without installing it as the persistent session', async () => {
+    const warm = await createWarmShell({ snapshotEnabled: false, initScriptEnabled: false, rmSafe: false })
+    expect(warm).not.toBeNull()
+    const sessionKey = `unit-warm-${randomBytes(4).toString('hex')}:async:1`
+    const result = await executeBash('echo warm-lease && pwd', { sessionKey, warmShell: warm! })
+    expect(result.exitCode).toBe(0)
+    expect(result.output).toContain('warm-lease')
+    // The lease is one-shot: a second call on the same key cold-creates its own
+    // shell instead of finding the (never stored) warm shell in the map.
+    const second = await executeBash('echo second', { sessionKey })
+    expect(second.output).toContain('second')
+    await warm!.abort()
   })
 
   it('truncates oversized output but keeps the head window', async () => {

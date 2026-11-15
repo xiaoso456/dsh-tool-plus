@@ -19,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { checkBashInterception, DEFAULT_BASH_INTERCEPTOR_RULES } from './tools/bash/bash-interceptor.ts'
 import { closeSessionShells, executeBash } from './tools/bash/bash-executor.ts'
 import { allocateSpillFile, saveOriginalText, sweepStaleSpillFiles } from './tools/bash/adapter/spill.ts'
-import { startBashJob, type ManagedBashJob } from './tools/bash/background.ts'
+import { closeSessionWarmShells, startBashJob, type ManagedBashJob } from './tools/bash/background.ts'
 import { extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
@@ -348,8 +348,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   bashSurfaceReady = true
   registerBashSurface()
 
-  ctx.effect(() => () => { closeSessionShells(''); cleanupSnapshots(); sessionStates.clear(); disposeBrowserProbe() }, 'bash-plus teardown')
-  ctx.on('agent/disposed', ({ agent }) => { closeSessionShells(agent.session.id); sessionStates.delete(agent.session.id) })
+  ctx.effect(() => () => { closeSessionShells(''); closeSessionWarmShells(); cleanupSnapshots(); sessionStates.clear(); disposeBrowserProbe() }, 'bash-plus teardown')
+  ctx.on('agent/disposed', ({ agent }) => { closeSessionShells(agent.session.id); closeSessionWarmShells(agent.session.id); sessionStates.delete(agent.session.id) })
 
   // file tools — now that fs is a hard inject, these always have ctx.fs
   // （read/edit/ast_grep/ast_edit 已由 registerModeSensitive 注册，支持 editMode

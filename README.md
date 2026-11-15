@@ -94,6 +94,8 @@ dsh plugin --profile web add link:<本仓库路径>
 
 Shell 初始化脚本（`bashInitEnabled`，默认开）：每次创建 shell 时执行一段可编辑脚本。内置默认会把真正的 Git Bash 排到系统目录之前——Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL 转发 stub，没装 WSL 发行版时裸 `bash` 会报 `execvpe(/bin/bash) failed`。在 设置 → Tool Plus → Bash → Shell 初始化 里编辑、试运行、恢复默认。
 
+Shell 预热（`warmShellEnabled`，默认开）：会话首次执行 bash 后，在后台预建空闲 Shell；下一条命令直接租用一个已经初始化好的 Shell，省掉启动与 snapshot/初始化脚本开销。`warmShellCount` 默认每会话 2 个，用掉即弃并补足；`warmShellTtlMs` 默认 5 分钟（0 表示不过期）。只保留从未执行过命令的 Shell，用过的不会放回池里。
+
 ## 性能
 
 标准模式/标准模式增强下，在 Linux 上跑 SWE-bench Multilingual（20 题 × 3 轮）：

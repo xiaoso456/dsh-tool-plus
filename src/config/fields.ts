@@ -80,6 +80,9 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
   // 是「全局」tab 里的一个分组，标题走同一张表，避免第二处文案来源。
   preset: 'groupPresets',
   timing: 'groupTiming',
+  // 「Shell 预热」自成一卡：它管的是 shell 的生命周期（什么时候建、留几个、
+  // 放多久），和超时/后台阈值不是一类东西，塞进 timing 会让人以为它也影响超时。
+  warmShell: 'groupWarmShell',
   output: 'groupOutput',
   truncation: 'groupTruncation',
   behavior: 'groupBehavior',
@@ -117,6 +120,11 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'defaultTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'defaultTimeoutMs', hintKey: 'defaultTimeoutMsHint', group: 'timing', tool: 'bash' },
   { name: 'maxTimeoutMs', kind: 'number', default: 3_600_000, labelKey: 'maxTimeoutMs', hintKey: 'maxTimeoutMsHint', group: 'timing', tool: 'bash' },
   { name: 'maxBackgroundJobs', kind: 'number', default: 15, labelKey: 'maxBackgroundJobs', hintKey: 'maxBackgroundJobsHint', group: 'timing', tool: 'bash' },
+  // Bash: per-job shell warm pool, in its own group. The switch precedes its
+  // gated fields.
+  { name: 'warmShellEnabled', kind: 'boolean', default: true, labelKey: 'warmShellEnabled', hintKey: 'warmShellEnabledHint', group: 'warmShell', tool: 'bash' },
+  { name: 'warmShellCount', kind: 'number', default: 2, labelKey: 'warmShellCount', hintKey: 'warmShellCountHint', group: 'warmShell', tool: 'bash', visibility: { requiresEnabled: 'warmShellEnabled' } },
+  { name: 'warmShellTtlMs', kind: 'number', default: 300_000, labelKey: 'warmShellTtlMs', hintKey: 'warmShellTtlMsHint', group: 'warmShell', tool: 'bash', visibility: { requiresEnabled: 'warmShellEnabled' } },
   // Bash (output)
   { name: 'outputMaxBytes', kind: 'number', default: 51_200, labelKey: 'outputMaxBytes', hintKey: 'outputMaxBytesHint', group: 'output', tool: 'bash' },
   { name: 'outputSinkTailBytes', kind: 'number', default: 51_200, labelKey: 'outputSinkTailBytes', hintKey: 'outputSinkTailBytesHint', group: 'output', tool: 'bash' },

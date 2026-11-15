@@ -42,6 +42,7 @@ const { executeBashMock } = vi.hoisted(() => ({ executeBashMock: vi.fn() }))
 
 vi.mock('../../src/tools/bash/bash-executor.ts', () => ({
   executeBash: (...args: unknown[]) => executeBashMock(...args),
+  createWarmShell: async () => null,
 }))
 
 import { startBashJob } from '../../src/tools/bash/background.ts'

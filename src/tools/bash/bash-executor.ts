@@ -14,7 +14,7 @@
  *   `args` currently have no consumer beyond the user-shell spawn path.
  */
 import * as fs from "node:fs";
-import { type MinimizerOptions, Shell, type ShellRunResult } from "@oh-my-pi/pi-natives";
+import { type MinimizerOptions, Shell, type ShellOptions, type ShellRunResult } from "@oh-my-pi/pi-natives";
 import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
@@ -126,6 +126,13 @@ export interface BashExecutorOptions {
 	minimizerSettings?: ShellMinimizerSettings;
 	/** Wrap the command in `bash -c '…'` before execution (full bash environment). */
 	useShellCommandWrapper?: boolean;
+	/**
+	 * A pristine Shell leased from the warm pool for this one-shot execution.
+	 * Honoured only for `:async:` session keys: a borrowed shell is never
+	 * installed into the persistent-session map, and it is dropped (or retained
+	 * for live background children) after the run.
+	 */
+	warmShell?: Shell;
 	/** OutputSink tail rolling budget (bytes). Falls back to DEFAULT_MAX_BYTES (50KB). */
 	spillThreshold?: number;
 	/** OutputSink head window (bytes). Falls back to 20KB. */
@@ -356,7 +363,25 @@ function resolveUserShellConfig(baseConfig: ShellConfig): ShellConfig {
 	};
 }
 
-export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+/** Everything a shell needs before a run: options, command form, and identity. */
+interface PreparedBashExecution {
+	finalCommand: string;
+	commandCwd: string | undefined;
+	commandEnv: Record<string, string>;
+	injectionFailedMarker: Pick<BashResult, "rmSafeInjectionFailed">;
+	shellOptions: ShellOptions;
+	sessionKey: string;
+}
+
+/**
+ * Resolve the shell-side setup shared by {@link executeBash} and
+ * {@link createWarmShell}. Keeping it in one place is what makes a warmed
+ * shell byte-for-byte interchangeable with a cold one.
+ */
+async function prepareBashExecution(
+	command: string,
+	options?: BashExecutorOptions,
+): Promise<PreparedBashExecution> {
 	// Automatically wrap in bash -c for full bash environment
 	if (options?.useShellCommandWrapper === true) {
 		// Standard bash escaping: escape single quotes using '"'"' pattern
@@ -382,7 +407,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	});
 	const initSourceLine = init.sourceLine;
 	const captureUserRc = options?.snapshotEnabled !== false;
-	let snapshotPath =
+	const snapshotPath =
 		bashShell && (captureUserRc || initSourceLine !== undefined)
 			? await getOrCreateSnapshot(shell, shellEnv, { initSourceLine, captureUserRc })
 			: null;
@@ -403,7 +428,9 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		}
 	}
 	// Carried on every result path so the renderer can surface the warning.
-	const injectionFailedMarker = rmSafeInjectionFailed ? { rmSafeInjectionFailed: true } : {};
+	const injectionFailedMarker: Pick<BashResult, "rmSafeInjectionFailed"> = rmSafeInjectionFailed
+		? { rmSafeInjectionFailed: true }
+		: {};
 
 	const minimizerSettings = options?.minimizerSettings ?? DEFAULT_MINIMIZER_SETTINGS;
 	const minimizerEnabled = options?.minimizerEnabled ?? minimizerSettings.enabled;
@@ -418,6 +445,68 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		options?.useUserShell === true && !bashShell
 			? buildUserShellCommand(shell, args, prefixedCommand)
 			: prefixedCommand;
+
+	// The init script's default content consumes its own env (the Git Bash
+	// prefix on Windows, empty on POSIX); no env is injected when the feature
+	// is off, so turning it off cannot change PATH order by accident.
+	const sessionEnv = Object.keys(init.env).length > 0 ? { ...shellEnv, ...init.env } : shellEnv;
+	const shellOptions: ShellOptions = {
+		sessionEnv,
+		snapshotPath: snapshotPath ?? undefined,
+		minimizer,
+	};
+	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
+
+	return {
+		finalCommand,
+		commandCwd,
+		commandEnv,
+		injectionFailedMarker,
+		shellOptions,
+		sessionKey,
+	};
+}
+
+/** A warm shell must finish initialization promptly; a hung init is discarded. */
+const WARM_SHELL_INIT_TIMEOUT_MS = 30_000;
+
+/**
+ * Create and initialize one pristine shell for the warm pool. The no-op run is
+ * what actually pays the process start, snapshot sourcing and init-script
+ * cost; returning a shell that has never run a command keeps it reusable.
+ * @param options - the same shell-affecting options a real run would use.
+ * @returns the initialized shell, or null when it could not be produced.
+ */
+export async function createWarmShell(options?: BashExecutorOptions): Promise<Shell | null> {
+	let shell: Shell | undefined;
+	try {
+		const prepared = await prepareBashExecution(":", options);
+		shell = new Shell(prepared.shellOptions);
+		const result = await shell.run({
+			command: prepared.finalCommand,
+			cwd: prepared.commandCwd,
+			env: prepared.commandEnv,
+			timeoutMs: WARM_SHELL_INIT_TIMEOUT_MS,
+		});
+		if (result.cancelled || result.timedOut || result.exitCode !== 0) {
+			void shell.abort().catch(() => undefined);
+			return null;
+		}
+		return shell;
+	} catch (error) {
+		if (shell !== undefined) void shell.abort().catch(() => undefined);
+		runtimeLogger().debug("warm shell initialization failed", error);
+		return null;
+	}
+}
+
+export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+	const prepared = await prepareBashExecution(command, options);
+	const { finalCommand, commandCwd, commandEnv, injectionFailedMarker, shellOptions, sessionKey } = prepared;
+	const borrowedWarmShell =
+		options?.warmShell !== undefined && options.sessionKey?.includes(":async:") === true
+			? options.warmShell
+			: undefined;
 
 	// Create output sink for truncation and artifact handling
 	const sink = new OutputSink({
@@ -447,6 +536,9 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	};
 
 	if (options?.signal?.aborted) {
+		if (borrowedWarmShell !== undefined) {
+			void borrowedWarmShell.abort().catch(() => undefined);
+		}
 		return {
 			exitCode: undefined,
 			cancelled: true,
@@ -455,16 +547,6 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		};
 	}
 
-	// The init script's default content consumes its own env (the Git Bash
-	// prefix on Windows, empty on POSIX); no env is injected when the feature
-	// is off, so turning it off cannot change PATH order by accident.
-	const sessionEnv = Object.keys(init.env).length > 0 ? { ...shellEnv, ...init.env } : shellEnv;
-	const shellOptions = {
-		sessionEnv,
-		snapshotPath: snapshotPath ?? undefined,
-		minimizer,
-	};
-	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
 	const persistentSessionBroken = brokenShellSessions.has(sessionKey);
 	if (persistentSessionBroken) {
 		shellSessions.delete(sessionKey);
@@ -475,13 +557,20 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	// parallel bash calls overlap on the same key, the first one owns the
 	// persistent session; the rest degrade to isolated one-shot shells — the
 	// same path quarantined sessions take.
-	const sessionBusy = shellSessionsInUse.has(sessionKey);
-	let shellSession = persistentSessionBroken || sessionBusy ? undefined : shellSessions.get(sessionKey);
-	if (!shellSession && !persistentSessionBroken && !sessionBusy) {
+	//
+	// A warm lease is already exclusive (the pool pops it synchronously), so it
+	// never enters the persistent map: the map is keyed by the agent's session,
+	// while the lease belongs to exactly one `:async:` job.
+	const useWarmShell = borrowedWarmShell !== undefined;
+	const sessionBusy = !useWarmShell && shellSessionsInUse.has(sessionKey);
+	let shellSession = useWarmShell || persistentSessionBroken || sessionBusy
+		? undefined
+		: shellSessions.get(sessionKey);
+	if (!useWarmShell && !shellSession && !persistentSessionBroken && !sessionBusy) {
 		shellSession = new Shell(shellOptions);
 		shellSessions.set(sessionKey, shellSession);
 	}
-	const executionShell = shellSession ?? new Shell(shellOptions);
+	const executionShell = shellSession ?? borrowedWarmShell ?? new Shell(shellOptions);
 	const ownsPersistentSession = shellSession !== undefined;
 	if (ownsPersistentSession) {
 		shellSessionsInUse.add(sessionKey);
@@ -671,6 +760,12 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 					await retainShellWithLiveBackgroundJobs(shellSession);
 				}
 			}
+		} else if (borrowedWarmShell !== undefined && !resetSession) {
+			// The lease is never returned to the pool (it is dirty). If it left a
+			// live background child, keep the Shell alive exactly like a per-job
+			// Shell; otherwise the local reference is the last one and drop kills
+			// the native session.
+			await retainShellWithLiveBackgroundJobs(borrowedWarmShell);
 		}
 	}
 }

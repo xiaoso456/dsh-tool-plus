@@ -49,6 +49,12 @@ export interface Config {
   rmSafe?: boolean
   /** Wrap every command in `bash -c '…'` for a full bash environment. */
   useShellCommandWrapper?: boolean
+  /** Keep per-job shells warm so the next command skips shell startup (default true). */
+  warmShellEnabled?: boolean
+  /** Idle warm shells kept per session (0 disables the pool). */
+  warmShellCount?: number
+  /** Idle warm-shell lifetime in ms (0 = no expiry). */
+  warmShellTtlMs?: number
 }
 
 /** {@link Config} with every field resolved to its default. */
