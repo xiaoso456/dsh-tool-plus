@@ -100,7 +100,13 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - name: Install Bazelisk
         shell: bash
-        run: npm install --global "@bazel/bazelisk@${BAZELISK_VERSION}"
+        # GitHub 托管的 Linux/macOS runner 上 /usr/local 归 root，`npm install -g`
+        # 会以 EACCES 失败在 rename 那一步（不是找不到包）。装到用户可写的
+        # prefix，再把它的 bin 目录挂进后续步骤的 PATH。
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" "@bazel/bazelisk@${BAZELISK_VERSION}"
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
       - name: Install pinned Rust toolchain
         shell: bash
         working-directory: vendor/oh-my-pi/upstream
