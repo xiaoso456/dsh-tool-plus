@@ -72,8 +72,8 @@ jobs:
           - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04, family: linux }
           - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm, family: linux }
           # Darwin: explicit targets so the x64 artifact stays baseline.
-          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15, family: darwin, saveInputs: true }
-          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel, family: darwin }
+          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15, family: darwin, saveInputs: true, saveActions: true }
+          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel, family: darwin, saveActions: true }
           # Windows: OMP's msvc cross toolchain runs on Linux/mac exec hosts.
           - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04, family: win32, saveInputs: true }
           - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04, family: win32 }
@@ -116,7 +116,6 @@ jobs:
           key: native-inputs-${{ runner.os }}-${{ matrix.family }}-${{ hashFiles('vendor/oh-my-pi/upstream/MODULE.bazel', 'vendor/oh-my-pi/upstream/Cargo.lock') }}
           restore-keys: |
             native-inputs-${{ runner.os }}-${{ matrix.family }}-
-            native-inputs-${{ runner.os }}-
       - name: Restore xwin MSVC sysroot
         id: xwin-cache
         if: matrix.family == 'win32'
@@ -125,6 +124,22 @@ jobs:
           path: ~/.cache/xwin
           key: xwin-sysroot-${{ matrix.artifact }}-${{ hashFiles('vendor/oh-my-pi/upstream/MODULE.bazel') }}
           restore-keys: xwin-sysroot-${{ matrix.artifact }}-
+      # Round 2: persist bazel's action cache too, so an unchanged tree skips
+      # the compile instead of only its downloads. Action keys are per target
+      # configuration, so a cache is worth its bytes only for the jobs that set
+      # the run's wall clock (the darwin pair); `saveActions` marks those. The
+      # other jobs leave the flag off: they neither restore nor enable
+      # --disk_cache, so nothing but those two entries enters the cache budget.
+      - name: Restore bazel action cache
+        id: action-cache
+        if: matrix.saveActions
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: bazel-actions-${{ matrix.artifact }}-${{ hashFiles('vendor/oh-my-pi/upstream/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-actions-${{ matrix.artifact }}-${{ hashFiles('vendor/oh-my-pi/upstream/Cargo.lock') }}-
+            bazel-actions-${{ matrix.artifact }}-
       # bazel-natives.ts reads OMP_BAZEL_RC and hands the fragment to every
       # bazel invocation, so the cache wiring stays out of the build script.
       - name: Compose bazel cache config
@@ -135,6 +150,10 @@ jobs:
           {
             echo "build --repository_cache=$HOME/.cache/bazel-repo"
             echo "build --repo_env=OMP_XWIN_CACHE_DIR=$HOME/.cache/xwin"
+            # Only participants get a disk cache: a non-participant would
+            # write gigabytes here and then throw them away.
+            [ "${{ matrix.saveActions }}" = "true" ] && echo "build --disk_cache=$HOME/.cache/bazel-disk"
+            true
           } > "$rc"
           cat "$rc"
           echo "OMP_BAZEL_RC=$rc" >> "$GITHUB_ENV"
@@ -192,6 +211,15 @@ jobs:
         with:
           path: ~/.cache/xwin
           key: ${{ steps.xwin-cache.outputs.cache-primary-key }}
+      - name: Save bazel action cache
+        # `always()` keeps the save alive when the build fails after populating
+        # the cache (partial hits still help the next run); the hit check keeps
+        # a repeated run from re-uploading bytes it just restored.
+        if: always() && matrix.saveActions && steps.action-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: ${{ steps.action-cache.outputs.cache-primary-key }}
 
   # Native Windows smoke build. It is not a release artifact: it proves the
   # local Cargo/N-API path still works with the current VS Build Tools image.
