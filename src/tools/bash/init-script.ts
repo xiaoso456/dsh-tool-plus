@@ -87,11 +87,23 @@ export function readInitScript(
   }
 }
 
+/** Last resolved prefix; see {@link computePathPrefix}. */
+let cachedPathPrefix: {
+  env: NodeJS.ProcessEnv
+  platform: NodeJS.Platform
+  whereGit: (() => string | undefined) | undefined
+  value: string
+} | undefined
+
 /**
  * Platform-specific PATH prefix, ending with the platform separator.
  *
  * Windows only: the real Git Bash directories (issue #5). POSIX returns an
  * empty string, which makes the default script's guard a no-op.
+ *
+ * `where git` costs ~100ms on Windows and `executeBash` asks for this prefix
+ * on every command, so remember the last lookup. The key is argument
+ * identity: a caller passing a fresh `env` (tests) still gets a fresh probe.
  */
 export function computePathPrefix(
   env: NodeJS.ProcessEnv = process.env,
@@ -99,13 +111,23 @@ export function computePathPrefix(
   whereGit?: () => string | undefined,
 ): string {
   if (platform !== 'win32') return ''
+  if (
+    cachedPathPrefix !== undefined
+    && cachedPathPrefix.env === env
+    && cachedPathPrefix.platform === platform
+    && cachedPathPrefix.whereGit === whereGit
+  ) {
+    return cachedPathPrefix.value
+  }
   const dirs = resolveGitBashDirs(env, whereGit)
-  if (!dirs) return ''
-  const toPosix = (value: string): string => value.replace(/\\/g, '/')
-  return [dirs.bin, dirs.usrBin]
-    .filter((dir): dir is string => Boolean(dir))
-    .map(toPosix)
-    .join(';') + ';'
+  const value = dirs
+    ? [dirs.bin, dirs.usrBin]
+        .filter((dir): dir is string => Boolean(dir))
+        .map((dir) => dir.replace(/\\/g, '/'))
+        .join(';') + ';'
+    : ''
+  cachedPathPrefix = { env, platform, whereGit, value }
+  return value
 }
 
 /** Where the shell writes init-script errors (settings row shows the tail). */

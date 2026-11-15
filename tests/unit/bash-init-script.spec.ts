@@ -90,6 +90,26 @@ describe('computePathPrefix', () => {
   it('stays empty when no Git install is found', () => {
     expect(computePathPrefix({}, 'win32', () => undefined)).toBe('')
   })
+
+  it('discovers Git once across repeated calls with the same environment', () => {
+    const root = tempDir()
+    fs.mkdirSync(path.join(root, 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'bin', 'bash.exe'), '')
+    const env = { GIT_INSTALL_ROOT: root }
+    let calls = 0
+    const whereGit = () => {
+      calls++
+      return undefined
+    }
+    try {
+      const first = computePathPrefix(env, 'win32', whereGit)
+      const second = computePathPrefix(env, 'win32', whereGit)
+      expect(first).toBe(second)
+      expect(calls).toBe(1)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('buildInitSourceLine', () => {
