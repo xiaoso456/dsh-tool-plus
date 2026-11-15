@@ -176,7 +176,10 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/native-v')
+    # 只发干净版本号的 tag（native-v18.12.6）。带后缀的测试 tag
+    # （native-v0.0.0-dev.1 / -test.1 / -rc.1）只跑构建、不建 Release，
+    # 否则每验证一次链路都会在 Releases 页面留一个垃圾条目。
+    if: startsWith(github.ref, 'refs/tags/native-v') && !contains(github.ref_name, '-')
     needs: [vendor, build]
     runs-on: ubuntu-22.04
     permissions:
