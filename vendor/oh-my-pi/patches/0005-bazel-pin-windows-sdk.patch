@@ -1,0 +1,22 @@
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 4ea9b089..0099908b 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -245,7 +245,16 @@ llvm_msvc_tools(name = "llvm_msvc_tools")
+ 
+ xwin_sysroot = use_repo_rule("//bazel/toolchains/msvc:sysroot.bzl", "xwin_sysroot_repository")
+ 
+-xwin_sysroot(name = "xwin_sysroot")
++# Both arches pin an SDK version. Left implicit, xwin resolves "latest",
++# which moves with the SDK release train (10.0.26100 as of 2026-11) — and the
++# pinned xwin 0.6.5 cannot splat that payload: `Error: unable to find x86_64
++# headers for Win11SDK_10.0.26100` fails the repo fetch before any compile.
++# 10.0.22621 is the version this toolchain was validated against (arm64 already
++# pinned it for the same class of manifest breakage).
++xwin_sysroot(
++    name = "xwin_sysroot",
++    sdk_version = "10.0.22621",
++)
+ 
+ xwin_sysroot(
+     name = "xwin_sysroot_arm64",
