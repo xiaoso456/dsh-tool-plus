@@ -63,3 +63,6 @@ docs/*
 # 自研 shell 命令的实现流程与命令文档（AGENTS.md 直接引用，必须随仓库发布）
 !docs/shell-commands/
 !docs/shell-commands/**
+# Windows 路径方言参考（模型/维护者共用的路径契约，随仓库发布）
+!docs/reference/
+!docs/reference/**

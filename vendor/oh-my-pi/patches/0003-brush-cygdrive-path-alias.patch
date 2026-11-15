@@ -1,0 +1,119 @@
+diff --git a/crates/pi-builtins/src/host.rs b/crates/pi-builtins/src/host.rs
+index bb5af5b0..f849801e 100644
+--- a/crates/pi-builtins/src/host.rs
++++ b/crates/pi-builtins/src/host.rs
+@@ -2471,6 +2471,27 @@ mod testing {
+ 		assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
+ 		assert!(out.to_ascii_lowercase().contains("cmd.exe"), "stdout: {out}");
+ 	}
++
++	/// Contract: Cygwin's default `/cygdrive/<drive>` spelling is accepted by
++	/// every path consumer that goes through the shell's absolute-path
++	/// boundary: `cd`, `test`, external commands, and glob expansion.
++	#[cfg(windows)]
++	#[tokio::test]
++	async fn cygwin_drive_alias_is_accepted() {
++		let script = "cd /cygdrive/c/Windows && echo CD_OK\n\
++			pwd\n\
++			test -d /cygdrive/c/Windows && echo TEST_OK\n\
++			/cygdrive/c/Windows/System32/where.exe cmd.exe >/dev/null && echo EXEC_OK\n\
++			set -- /cygdrive/c/Windows/System32/where.*\n\
++			test -e $1 && echo GLOB_OK";
++		let (code, out, err) = run_script(script, "", &std::env::temp_dir()).await;
++		assert_eq!(code, 0, "stdout: {out}\nstderr: {err}");
++		assert!(out.contains("CD_OK"), "stdout: {out}\nstderr: {err}");
++		assert!(out.contains("C:\\Windows"), "stdout: {out}");
++		assert!(out.contains("TEST_OK"), "stdout: {out}\nstderr: {err}");
++		assert!(out.contains("EXEC_OK"), "stdout: {out}\nstderr: {err}");
++		assert!(out.contains("GLOB_OK"), "stdout: {out}\nstderr: {err}");
++	}
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/vendor/brush-core/src/sys/fs.rs b/crates/vendor/brush-core/src/sys/fs.rs
+index c579b342..f0a34194 100644
+--- a/crates/vendor/brush-core/src/sys/fs.rs
++++ b/crates/vendor/brush-core/src/sys/fs.rs
+@@ -170,6 +170,13 @@ fn pattern_drive_alias_root_impl(
+ 		return Some((drive_root_path(drive.as_bytes()[0]), 3));
+ 	}
+ 
++	if let (Some(mount), Some(drive)) = (second, third)
++		&& mount.eq_ignore_ascii_case("cygdrive")
++		&& is_ascii_drive_component(drive)
++	{
++		return Some((drive_root_path(drive.as_bytes()[0]), 3));
++	}
++
+ 	None
+ }
+ 
+@@ -271,6 +278,17 @@ fn drive_alias_parts(bytes: &[u8]) -> Option<(u8, &[u8])> {
+ 		return Some((bytes[5], tail));
+ 	}
+ 
++	if bytes.len() >= 11
++		&& bytes[0] == b'/'
++		&& bytes[1..9].eq_ignore_ascii_case(b"cygdrive")
++		&& bytes[9] == b'/'
++		&& bytes[10].is_ascii_alphabetic()
++		&& bytes.get(11).is_none_or(|byte| *byte == b'/')
++	{
++		let tail = if bytes.len() > 11 { &bytes[12..] } else { &[] };
++		return Some((bytes[10], tail));
++	}
++
+ 	None
+ }
+ 
+@@ -349,6 +367,50 @@ mod tests {
+ 		);
+ 	}
+ 
++	#[test]
++	fn cygwin_drive_aliases_translate_to_windows_roots() {
++		assert_eq!(
++			translate_unix_drive_path(Path::new("/cygdrive/c")).as_deref(),
++			Some(Path::new("C:\\")),
++		);
++		assert_eq!(
++			translate_unix_drive_path(Path::new("/cygdrive/d/project/app")).as_deref(),
++			Some(Path::new("D:\\project\\app")),
++		);
++		assert_eq!(
++			translate_unix_drive_path(Path::new("/CYGDRIVE/D/Project")).as_deref(),
++			Some(Path::new("D:\\Project")),
++		);
++		assert_eq!(
++			translate_unix_drive_path(Path::new("/cygdrive/c/Users/José/file")).as_deref(),
++			Some(Path::new("C:\\Users\\José\\file")),
++		);
++	}
++
++	#[test]
++	fn cygwin_drive_alias_rejects_non_drives() {
++		assert_eq!(translate_unix_drive_path(Path::new("/cygdrive")), None);
++		assert_eq!(translate_unix_drive_path(Path::new("/cygdrive/")), None);
++		assert_eq!(translate_unix_drive_path(Path::new("/cygdrive/data")), None);
++		assert_eq!(translate_unix_drive_path(Path::new("/cygdrive/cc/foo")), None);
++	}
++
++	#[test]
++	fn pattern_cygwin_drive_alias_roots_report_consumed_components() {
++		assert_eq!(
++			pattern_drive_alias_root_impl(true, "", Some("cygdrive"), Some("d"), || PathBuf::from(r"C:\Temp")),
++			Some((PathBuf::from("D:/"), 3)),
++		);
++		assert_eq!(
++			pattern_drive_alias_root_impl(true, "", Some("CYGDRIVE"), Some("C"), || PathBuf::from(r"C:\Temp")),
++			Some((PathBuf::from("C:/"), 3)),
++		);
++		assert_eq!(
++			pattern_drive_alias_root_impl(true, "", Some("cygdrive"), Some("data"), || PathBuf::from(r"C:\Temp")),
++			None,
++		);
++	}
++
+ 	#[test]
+ 	fn unix_tmp_alias_maps_onto_system_temp_dir() {
+ 		let temp = PathBuf::from(r"C:\Users\Adam\AppData\Local\Temp");

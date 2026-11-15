@@ -132,7 +132,7 @@ split archives (`-s/-sp/-sb/-sv`), repair (`-F/-FF`), and SFX adjustment
 for `--show-files`.
 
 Tests: `cargo test -p pi-builtins zipcmd` covers the builtin; the full
-`cargo test -p pi-builtins` run currently passes 1280 tests.
+`cargo test -p pi-builtins --lib` run passes 1449 tests (11 ignored, 2026-11-15).
 
 ## CI
 
@@ -167,6 +167,7 @@ do not.
 |---|---|---|---|---|---|---|---|
 | `0001-shell-commands.patch` | `pi-builtins` | one aggregated wiring patch: `util.shellcmds` feature (pulls `util.zip`/`util.tree`/`util.gzip`/`util.envsubst`/`util.zstd`/`util.xz`), four dependencies (`zip`, `flate2`, `zstd`, `xz2`), `mod shellcmds`, one `shellcmds::register(&mut m)` call in `factory.rs`, the pi-natives feature switch, the Bazel feature line, and the cumulative `Cargo.lock` entries | brush has no `zip`/`tree`/gzip trio/envsubst/zstd/xz; Windows users need these in-process | - | `v18.12.6` | `cargo test -p pi-builtins` (all command modules) | remove once upstream ships these builtins; then delete the patch and the matching `overlay/` modules |
 | `0002-brush-windows-relative-exec.patch` | `brush-core` | `compose_std_command` normalizes a native-local executable path against the shell working directory on Windows; new `sys::fs::normalize_executable_path`, regression test in `pi-builtins` | Windows `CreateProcess` resolves a relative image name against the parent process cwd, not the shell cwd, so `cd dir; ./tool.exe` failed with 127 | [#1251](https://github.com/reubeno/brush/issues/1251), [#1252](https://github.com/reubeno/brush/pull/1252), [#1463](https://github.com/reubeno/brush/pull/1463), [#1518](https://github.com/reubeno/brush/pull/1518), [#1519](https://github.com/reubeno/brush/pull/1519) | `v18.12.6` | `cargo test -p pi-builtins --lib relative_external_command_resolves_after_cd` | #1252 or #1463 merged into pinned `brush-core`; delete patch + note + row, keep the regression test (#1518/#1519 alone are not enough) |
+| `0003-brush-cygdrive-path-alias.patch` | `brush-core` | accepts Cygwin's default `/cygdrive/<drive>` spelling as an input alias in `normalize_shell_path` and in glob roots; no output/argument conversion | Cygwin tools emit `/cygdrive/c/...`; native brush treated it as `<current-drive>:\cygdrive\c`, so `cd` and external commands failed | [#1142](https://github.com/reubeno/brush/issues/1142), [#1157](https://github.com/reubeno/brush/issues/1157), [#1463](https://github.com/reubeno/brush/pull/1463) | `v18.12.6` | `cargo test -p pi-builtins --lib cygwin_drive_alias_is_accepted` | upstream #1142/#1463 supports the alias; delete patch + note + row, keep the regression tests |
 
 Rules:
 
