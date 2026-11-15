@@ -60,19 +60,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `family` groups targets that download the same third-party payloads, so
+        # one representative per family can save the shared input cache; `family`
+        # also keeps those entries apart (a Linux runner builds both gnu and
+        # win32 targets, and they fetch different toolchains).
         include:
           # Linux gnu: build both x64 ISA floors natively via Bazel.
-          - { artifact: linux-x64-baseline, target: linux-x64-baseline, runner: ubuntu-22.04 }
-          - { artifact: linux-x64-modern, target: linux-x64-modern, runner: ubuntu-22.04 }
-          - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm }
-          - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04 }
-          - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm }
+          - { artifact: linux-x64-baseline, target: linux-x64-baseline, runner: ubuntu-22.04, family: linux, saveInputs: true }
+          - { artifact: linux-x64-modern, target: linux-x64-modern, runner: ubuntu-22.04, family: linux }
+          - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm, family: linux }
+          - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04, family: linux }
+          - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm, family: linux }
           # Darwin: explicit targets so the x64 artifact stays baseline.
-          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15 }
-          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel }
+          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15, family: darwin, saveInputs: true }
+          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel, family: darwin }
           # Windows: OMP's msvc cross toolchain runs on Linux/mac exec hosts.
-          - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04 }
-          - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04 }
+          - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04, family: win32, saveInputs: true }
+          - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04, family: win32 }
     steps:
       - uses: actions/checkout@v4
       - name: Checkout pinned oh-my-pi
@@ -95,6 +99,45 @@ jobs:
             echo "applying $patch"
             git -C vendor/oh-my-pi/upstream apply "$PWD/$patch"
           done
+      # A cold Bazel run re-downloads everything it needs before compiling a
+      # single crate: the LLVM toolchain, the xwin MSVC sysroot (~1 GiB on the
+      # win32 targets), every external repository, and — because .bazelrc sets
+      # CARGO_BAZEL_ISOLATED=0 — the crates.io index through the host ~/.cargo.
+      # All three are pure inputs keyed by content, so caching them can only
+      # change how long the run takes, never what it produces.
+      - name: Restore bazel/cargo inputs
+        id: inputs-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: native-inputs-${{ runner.os }}-${{ matrix.family }}-${{ hashFiles('vendor/oh-my-pi/upstream/MODULE.bazel', 'vendor/oh-my-pi/upstream/Cargo.lock') }}
+          restore-keys: |
+            native-inputs-${{ runner.os }}-${{ matrix.family }}-
+            native-inputs-${{ runner.os }}-
+      - name: Restore xwin MSVC sysroot
+        id: xwin-cache
+        if: matrix.family == 'win32'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/xwin
+          key: xwin-sysroot-${{ matrix.artifact }}-${{ hashFiles('vendor/oh-my-pi/upstream/MODULE.bazel') }}
+          restore-keys: xwin-sysroot-${{ matrix.artifact }}-
+      # bazel-natives.ts reads OMP_BAZEL_RC and hands the fragment to every
+      # bazel invocation, so the cache wiring stays out of the build script.
+      - name: Compose bazel cache config
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc="$RUNNER_TEMP/bazel-cache.rc"
+          {
+            echo "build --repository_cache=$HOME/.cache/bazel-repo"
+            echo "build --repo_env=OMP_XWIN_CACHE_DIR=$HOME/.cache/xwin"
+          } > "$rc"
+          cat "$rc"
+          echo "OMP_BAZEL_RC=$rc" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -132,6 +175,23 @@ jobs:
           name: pi-natives-${{ matrix.artifact }}
           path: build/${{ matrix.artifact }}/*.node
           if-no-files-found: error
+      # One writer per family. Concurrent saves to one key lose the race and
+      # only warn, so a designated representative owns each entry.
+      - name: Save bazel/cargo inputs
+        if: always() && matrix.saveInputs && steps.inputs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.inputs-cache.outputs.cache-primary-key }}
+      - name: Save xwin MSVC sysroot
+        if: always() && matrix.family == 'win32' && steps.xwin-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/xwin
+          key: ${{ steps.xwin-cache.outputs.cache-primary-key }}
 
   # Native Windows smoke build. It is not a release artifact: it proves the
   # local Cargo/N-API path still works with the current VS Build Tools image.
