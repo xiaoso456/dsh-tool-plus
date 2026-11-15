@@ -1,7 +1,7 @@
 # 0002 Windows relative executable resolution
 
 - Patch: `patches/0002-brush-windows-relative-exec.patch`
-- Upstream issue/PR: [#1251](https://github.com/reubeno/brush/issues/1251), [#1252](https://github.com/reubeno/brush/pull/1252), [#1518](https://github.com/reubeno/brush/pull/1518), [#1519](https://github.com/reubeno/brush/pull/1519)
+- Upstream issue/PR: [#1251](https://github.com/reubeno/brush/issues/1251), [#1252](https://github.com/reubeno/brush/pull/1252), [#1463](https://github.com/reubeno/brush/pull/1463); related: [#1303](https://github.com/reubeno/brush/issues/1303)/[#1304](https://github.com/reubeno/brush/pull/1304), [#1518](https://github.com/reubeno/brush/pull/1518)/[#1519](https://github.com/reubeno/brush/pull/1519)
 - Status: local
 - Files: `crates/vendor/brush-core/src/sys/fs.rs` (`normalize_executable_path`), `crates/vendor/brush-core/src/commands.rs` (`compose_std_command`), `crates/pi-builtins/src/host.rs` (regression test)
 
@@ -105,11 +105,17 @@ cargo test -p pi-builtins --lib
 
 ## Removal condition
 
-Remove this patch once the pinned or published `brush-core` contains an
-upstream fix for relative executable resolution on Windows (for example
-[#1252](https://github.com/reubeno/brush/pull/1252) or
+Remove this patch once the pinned or published `brush-core` resolves a
+relative native-local executable against the shell's working directory on
+Windows. Today the replacement candidates are
+[#1252](https://github.com/reubeno/brush/pull/1252) or the broader
+[#1463](https://github.com/reubeno/brush/pull/1463);
 [#1518](https://github.com/reubeno/brush/pull/1518)/[#1519](https://github.com/reubeno/brush/pull/1519)
-merged), and the vendored version is bumped.
+only cover relative PATH/hash lookup and do not fix `./tool.exe` alone.
+[#1304](https://github.com/reubeno/brush/pull/1304) (opt-in process-cwd sync)
+can hide the symptom for standalone shells, but it is off by default and
+unsafe for multi-shell embedding, so it is not a replacement. Bump the
+vendored version and re-run the test after removing.
 
 After deleting the patch:
 
