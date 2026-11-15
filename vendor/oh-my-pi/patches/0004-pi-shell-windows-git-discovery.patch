@@ -1,0 +1,165 @@
+diff --git a/crates/pi-shell/src/windows.rs b/crates/pi-shell/src/windows.rs
+index 443a1b5a..fad10bbd 100644
+--- a/crates/pi-shell/src/windows.rs
++++ b/crates/pi-shell/src/windows.rs
+@@ -99,16 +99,39 @@ struct GitDiscovery {
+ }
+ 
+ fn discover_git() -> GitDiscovery {
+-	discover_git_with(query_git_install_path_from_registry, query_git_install_path_from_where)
++	discover_git_with(query_git_install_path_from_registry, query_git_install_path_from_where, true)
+ }
+ 
+-fn discover_git_with<R, W>(registry_query: R, where_query: W) -> GitDiscovery
++/// True when the registry points at a Git install that can provide the Git
++/// Bash directories this shell needs. A stale or non-installer registry entry
++/// must keep the PATH probe alive.
++fn git_install_is_usable(install_root: &str) -> bool {
++	let root = Path::new(install_root.trim().trim_matches('"'));
++	root.join("bin").join("bash.exe").is_file()
++}
++
++fn discover_git_with<R, W>(registry_query: R, where_query: W, prefer_registry: bool) -> GitDiscovery
+ where
+ 	R: FnOnce() -> Option<String>,
+ 	W: FnOnce() -> Option<String>,
+ {
+ 	let registry_path = registry_query();
+-	let where_path = where_query();
++	// A usable registry install is authoritative: where git costs ~90ms on
++	// Windows and the registry is the installer's own record. Fall back to the
++	// PATH probe for portable installs, absent registry keys, or a stale path.
++	let where_path =
++		if prefer_registry && registry_path.as_deref().is_some_and(git_install_is_usable) {
++			None
++		} else {
++			where_query()
++		};
++	combine_git_discovery(registry_path, where_path)
++}
++
++fn combine_git_discovery(
++	registry_path: Option<String>,
++	where_path: Option<String>,
++) -> GitDiscovery {
+ 	let mut install_roots = Vec::new();
+ 	let mut paths = Vec::new();
+ 	let mut seen_roots = HashSet::new();
+@@ -294,6 +317,7 @@ mod tests {
+ 		}
+ 		fs::write(cmd.join("git.exe"), []).expect("cmd Git fixture");
+ 		fs::write(bin.join("git.exe"), []).expect("bin Git fixture");
++		fs::write(bin.join("bash.exe"), []).expect("bin Bash fixture");
+ 		fs::write(usr_bin.join("ls.exe"), []).expect("usr/bin fixture");
+ 		root
+ 	}
+@@ -313,6 +337,7 @@ mod tests {
+ 					where_calls.set(where_calls.get() + 1);
+ 					None
+ 				},
++				false,
+ 			);
+ 			assert!(discovery.install_roots.is_empty());
+ 			assert!(discovery.paths.is_empty());
+@@ -322,6 +347,74 @@ mod tests {
+ 		assert_eq!(where_calls.get(), 2);
+ 	}
+ 
++	#[test]
++	fn git_discovery_skips_the_path_probe_for_a_usable_registry_install() {
++		let registry_root = git_install_fixture();
++		let where_calls = Cell::new(0);
++
++		let discovery = discover_git_with(
++			|| Some(registry_root.path().to_string_lossy().into_owned()),
++			|| {
++				where_calls.set(where_calls.get() + 1);
++				None
++			},
++			true,
++		);
++
++		assert_eq!(where_calls.get(), 0);
++		assert_eq!(discovery.install_roots, vec![registry_root.path().to_path_buf()]);
++		assert_eq!(discovery.paths, vec![
++			registry_root
++				.path()
++				.join("cmd")
++				.to_string_lossy()
++				.into_owned(),
++			registry_root
++				.path()
++				.join("bin")
++				.to_string_lossy()
++				.into_owned(),
++			registry_root
++				.path()
++				.join("usr")
++				.join("bin")
++				.to_string_lossy()
++				.into_owned(),
++		]);
++	}
++
++	#[test]
++	fn git_discovery_falls_back_to_the_path_probe_for_an_unusable_registry_install() {
++		let registry_root = tempfile::tempdir().expect("empty registry fixture");
++		let where_root = git_install_fixture();
++		let where_calls = Cell::new(0);
++
++		let discovery = discover_git_with(
++			|| Some(registry_root.path().to_string_lossy().into_owned()),
++			|| {
++				where_calls.set(where_calls.get() + 1);
++				Some(where_root.path().to_string_lossy().into_owned())
++			},
++			true,
++		);
++
++		assert_eq!(where_calls.get(), 1);
++		assert_eq!(discovery.install_roots, vec![
++			registry_root.path().to_path_buf(),
++			where_root.path().to_path_buf()
++		]);
++		assert_eq!(discovery.paths, vec![
++			where_root.path().join("cmd").to_string_lossy().into_owned(),
++			where_root.path().join("bin").to_string_lossy().into_owned(),
++			where_root
++				.path()
++				.join("usr")
++				.join("bin")
++				.to_string_lossy()
++				.into_owned(),
++		]);
++	}
++
+ 	#[test]
+ 	fn git_discovery_preserves_provider_and_candidate_order() {
+ 		let registry_root = git_install_fixture();
+@@ -329,7 +422,7 @@ mod tests {
+ 		let registry_path = registry_root.path().to_string_lossy().into_owned();
+ 		let where_path = where_root.path().to_string_lossy().into_owned();
+ 
+-		let discovery = discover_git_with(|| Some(registry_path), || Some(where_path));
++		let discovery = discover_git_with(|| Some(registry_path), || Some(where_path), false);
+ 
+ 		assert_eq!(discovery.install_roots, vec![
+ 			registry_root.path().to_path_buf(),
+@@ -369,7 +462,7 @@ mod tests {
+ 		let registry_path = root.path().to_string_lossy().into_owned();
+ 		let where_path = registry_path.clone();
+ 
+-		let discovery = discover_git_with(|| Some(registry_path), || Some(where_path));
++		let discovery = discover_git_with(|| Some(registry_path), || Some(where_path), false);
+ 
+ 		assert_eq!(discovery.install_roots, vec![root.path().to_path_buf()]);
+ 		assert_eq!(discovery.paths, vec![
+@@ -390,7 +483,7 @@ mod tests {
+ 		let clean_path = root.path().to_string_lossy().into_owned();
+ 		let decorated_path = format!("  \"{clean_path}\"  ");
+ 
+-		let discovery = discover_git_with(|| Some(decorated_path), || Some(clean_path));
++		let discovery = discover_git_with(|| Some(decorated_path), || Some(clean_path), false);
+ 
+ 		assert_eq!(discovery.paths, vec![
+ 			root.path().join("cmd").to_string_lossy().into_owned(),
