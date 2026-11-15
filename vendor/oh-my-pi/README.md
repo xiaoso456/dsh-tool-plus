@@ -158,8 +158,10 @@ build and the wrapper loader are proven.
 
 ## Patch ledger
 
-Business code lives in `overlay/`; only upstream integration points get a
-numbered patch and a row here.
+Business code lives in `overlay/`; only upstream integration points or
+behaviour changes get a numbered patch and a row here. Behaviour patches also
+get a note under [`patches/notes/`](./patches/notes/README.md); wiring patches
+do not.
 
 | patch | area | change | why | upstream issue/PR | applies to | test | removal condition |
 |---|---|---|---|---|---|---|---|
@@ -167,9 +169,14 @@ numbered patch and a row here.
 
 Rules:
 
-- Keep one patch. Every self-written command registers through
+- Keep one **wiring** patch. Every self-written command registers through
   `overlay/crates/pi-builtins/src/shellcmds.rs`; adding a command touches the
   overlay only, never the patch.
+- A semantic change to existing upstream behaviour (`brush-core`,
+  `brush-parser`, or an upstream `pi-builtins` builtin) gets its own numbered
+  patch (`0002+`) and a note under `patches/notes/`. Do not append it to
+  `0001`, and do not hide it in an overlay copy of an upstream file.
+- Every patch, wiring or semantic, gets a ledger row.
 - Record the upstream issue/PR when there is one; prefer upstreaming.
 - A patch that only patches the JS loader belongs in
   `patches/@oh-my-pi__pi-natives.patch` (pnpm patch), not here.
