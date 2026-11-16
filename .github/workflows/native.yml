@@ -229,6 +229,91 @@ jobs:
           path: ~/.cache/bazel-disk
           key: ${{ steps.action-cache.outputs.cache-primary-key }}
 
+  # npm publish of the six platform packages. Only `-plus.` tags publish: a test
+  # tag (native-v0.0.0-dev.1) must never reach the registry, and a clean tag
+  # (native-v18.12.6) names a version we never publish, because our packages are
+  # always `<pin>-plus.<n>`.
+  #
+  # Auth is dual on purpose. Trusted publishing (OIDC) is the long-term answer
+  # and needs no secret, but it cannot bootstrap: a trusted publisher is
+  # configured on an existing package's settings page. So while NPM_TOKEN is
+  # set we write a throwaway .npmrc and use it; deleting the secret later
+  # switches this job to OIDC without touching the file.
+  publish-npm:
+    name: Publish npm platform packages
+    if: startsWith(github.ref, 'refs/tags/native-v') && contains(github.ref_name, '-plus.')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      # Trusted publishing exchanges this for a short-lived npm token.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      # OIDC publishing needs npm >= 11.5.1; the runner image ships an older
+      # one. The pack script itself only uses node:fs/node:path, so the version
+      # here is about npm, not about the script.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pi-natives-*
+          path: dl
+      - name: Lay artifacts out for the pack script
+        shell: bash
+        # download-artifact nests each upload under its own name
+        # (dl/pi-natives-<artifact>/*.node); build-native-packages.mjs expects
+        # <dir>/<artifact>/<file>.node, the same layout the build job uses.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dir in dl/pi-natives-*; do
+            artifact="${dir#dl/pi-natives-}"
+            mkdir -p "build/$artifact"
+            cp "$dir"/*.node "build/$artifact/"
+          done
+          find build -type f -name '*.node' -printf '%p %s bytes\n' | sort
+      - name: Assemble platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-native-packages.mjs \
+            --version "${GITHUB_REF_NAME#native-v}" \
+            --artifacts build
+      - name: Publish to npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          registry="https://registry.npmjs.org/"
+          auth=()
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            cfg="$RUNNER_TEMP/npmrc"
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$cfg"
+            chmod 600 "$cfg"
+            auth=(--userconfig "$cfg")
+            echo "auth: token from secrets.NPM_TOKEN"
+          else
+            echo "auth: trusted publishing (OIDC)"
+          fi
+          # Iterate what the pack script produced rather than repeating its
+          # platform list here: a change to PLATFORMS must not need a second edit.
+          for dir in dist-natives/dsh-tool-plus-natives-*; do
+            name="$(node -p "require('./$dir/package.json').name")"
+            version="$(node -p "require('./$dir/package.json').version")"
+            # Idempotent: six sequential publishes, and a rerun after a partial
+            # failure must skip what already landed instead of dying on E403.
+            if npm view "$name@$version" version --registry "$registry" \
+                ${auth[@]+"${auth[@]}"} >/dev/null 2>&1; then
+              echo "skip $name@$version (already published)"
+              continue
+            fi
+            npm publish "$dir" --tag native --access public \
+              --registry "$registry" ${auth[@]+"${auth[@]}"}
+          done
+
   # Native Windows smoke build. It is not a release artifact: it proves the
   # local Cargo/N-API path still works with the current VS Build Tools image.
   windows-host-smoke:

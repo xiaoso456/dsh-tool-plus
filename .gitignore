@@ -69,3 +69,5 @@ docs/*
 
 # 平台包产物（scripts/build-native-packages.mjs 生成，发布时不入库）
 dist-natives/
+# CI/本地摊包前的 addon 暂存目录（.github/workflows/native.yml 用）
+/build/
