@@ -1,0 +1,41 @@
+diff --git a/crates/pi-natives/Cargo.toml b/crates/pi-natives/Cargo.toml
+index 908191b7..d4fb7e4e 100644
+--- a/crates/pi-natives/Cargo.toml
++++ b/crates/pi-natives/Cargo.toml
+@@ -113,7 +113,7 @@ libc.workspace = true
+ 
+ [target.'cfg(windows)'.dependencies]
+ windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem"] }
+-windows-sys = { workspace = true, features = ["Wdk_Storage_FileSystem", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_Packaging_Appx", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Environment", "Win32_System_Pipes", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
++windows-sys = { workspace = true, features = ["Wdk_Storage_FileSystem", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_Packaging_Appx", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Environment", "Win32_System_Pipes", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+ clipboard-win.workspace = true
+ enigo = { version = "=0.6.1", default-features = false }
+ uiautomation = "=0.25.1"
+diff --git a/crates/pi-natives/src/lib.rs b/crates/pi-natives/src/lib.rs
+index ed6de01a..beeafab6 100644
+--- a/crates/pi-natives/src/lib.rs
++++ b/crates/pi-natives/src/lib.rs
+@@ -40,6 +40,8 @@ pub mod glob_util;
+ pub mod grammars;
+ pub mod grep;
+ pub mod highlight;
++/// 宿主控制台：给 GUI 子系统进程补一个不可见控制台（Windows）。
++pub mod hostconsole;
+ /// HDiffPatch single-stream binary patch application.
+ pub mod hpatch;
+ pub mod html;
+@@ -310,6 +312,14 @@ pub fn pi_natives_build_version() -> Option<String> {
+ 	String::from_utf8(payload).ok()
+ }
+ 
++/// 给宿主进程补一个不可见控制台，让 console 子进程继承它而不是各自新建窗口。
++///
++/// 失败不抛：返回值是给日志用的一档结果（见 [`hostconsole`]）。
++#[napi(js_name = "hideHostConsole")]
++pub fn hide_host_console() -> String {
++	hostconsole::hide_host_console()
++}
++
+ /// Native module entry point: install crash diagnostics before any tool can
+ /// invoke a panicking or allocating native call. This runs during `.node`
+ /// load, while the dynamic-loader lock is held, so it MUST NOT spawn threads —

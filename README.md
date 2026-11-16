@@ -46,13 +46,24 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 #### Web 端
 
 ```sh
-dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
-`--allow-build` 放行安装脚本（本包和 `koffi` 各一次），需要 pnpm ≥ 10.4；pnpm 11 起不加会直接报 `ERR_PNPM_IGNORED_BUILDS` 装不上。用不了该参数（pnpm 版本过低）时，先任选一种放行方式，再重跑安装命令：
+插件自带编译好的原生 addon（`optionalDependencies` 里的六个平台包，按系统自动只装一个），安装时不编译、也没有安装脚本要放行——**不需要** `--allow-build`，也不用 `pnpm approve-builds`。
 
-- 往 `~/.dsh/profiles/web/pnpm-workspace.yaml` 追加三行：`allowBuilds:`、`  '@xiaoso/dsh-tool-plus': true`、`  koffi: true`
-- 或执行 `cd ~/.dsh/profiles/web && pnpm approve-builds --all`（需 pnpm ≥ 10.32）
+装完还要让它进 profile 的 bundle 列表。`dsh plugin add` 只写 `dependencies`，不写 `dsh.profile.bundles`，而宿主的 bundle 列表只在建 profile 时生成一次。打开 `~/.dsh/profiles/web/package.json`，把插件加进 `dsh.profile.bundles`：
+
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": ["@deepseek-ai/dsh-base", "@xiaoso/dsh-tool-plus"]
+    }
+  }
+}
+```
+
+漏这一步的表现是「包装上了但插件没加载」：工具面还是官方原版，`dsh --profile web --dump-config | grep tool-plus` 也是空的。
 
 #### 桌面端
 
@@ -60,8 +71,10 @@ profile 由桌面应用独占，`dsh plugin --profile desktop` 会被拒；要�
 
 ```sh
 cd ~/.dsh/profiles/desktop
-pnpm add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+pnpm add @xiaoso/dsh-tool-plus
 ```
+
+bundle 列表同样手动加一次（同一个 `package.json`）。
 
 ### 本地开发
 

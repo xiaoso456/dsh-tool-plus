@@ -6,112 +6,75 @@
  * 终端是 Windows Terminal → 每条命令闪一个窗口。宿主自己 `AllocConsole()` +
  * `SW_HIDE` 之后，子进程就只是继承它，不再新建。
  *
- * 三条硬约束（都有测试钉住）：只在 win32 生效、宿主已有控制台时零副作用；
- * `AllocConsole` 会重指标准句柄，必须先存后还（宿主 stdio 是启动方给的 pipe）；
- * 任何失败只降级不抛。FFI 只从本包自己的依赖取，拿不到就降级。
+ * Win32 那半在 Rust 里（`crates/pi-natives/src/hostconsole.rs`，本地补丁 0007），
+ * 经本包自己的 addon 暴露成 `hideHostConsole()`：**不再依赖 koffi**，消费者安装时
+ * 也就没有安装脚本要放行。句柄保存/还原在原生侧完成（`AllocConsole` 会重指标准
+ * 句柄，而宿主 stdio 是启动方给的 pipe）。
+ *
+ * 三条硬约束（都有测试钉住）：只在 win32 生效、addon 没有该导出或调用抛错时只降级
+ * 不抛、未知返回值按不可用处理。
  * @module @xiaoso/dsh-tool-plus/host/win32-console
  */
 
-import { createRequire } from 'node:module'
-
-/** Win32 调用集合；真实实现走 koffi，测试注入 fake。 */
-export interface Win32ConsoleBindings {
-  /** 本进程当前的控制台窗口；没有控制台时为 null。 */
-  getConsoleWindow(): unknown
-  /** 分配一个控制台；本进程已有控制台时返回 false。 */
-  allocConsole(): boolean
-  /** 显示/隐藏窗口（`SW_HIDE` = 0）。 */
-  showWindow(window: unknown, show: number): unknown
-  /** 读标准句柄（-10 输入 / -11 输出 / -12 错误）。 */
-  getStdHandle(index: number): unknown
-  /** 写回标准句柄。 */
-  setStdHandle(index: number, handle: unknown): unknown
-}
+import * as natives from '@oh-my-pi/pi-natives'
 
 /** 一次安装的结果；调用方只用来记日志。 */
 export type HiddenConsoleOutcome =
   | 'not-windows'
-  | 'ffi-unavailable'
+  | 'native-unavailable'
   | 'console-present'
   | 'alloc-failed'
   | 'allocated'
 
-/** 三个标准句柄的 Win32 编号，顺序即存取顺序。 */
-const STD_HANDLES = [-10, -11, -12] as const
+/** 原生侧会返回的三种结果；其余（含空串）都按不可用处理。 */
+const NATIVE_OUTCOMES = ['console-present', 'alloc-failed', 'allocated'] as const
+type NativeOutcome = (typeof NATIVE_OUTCOMES)[number]
 
-/** `ShowWindow` 的 `SW_HIDE`。 */
-const SW_HIDE = 0
+function isNativeOutcome(value: string): value is NativeOutcome {
+  return (NATIVE_OUTCOMES as readonly string[]).includes(value)
+}
+
+/** 补丁 0007 新增的导出；上游 `.d.ts` 没有，故按结构收窄。 */
+interface HostConsoleNative {
+  hideHostConsole?: () => string
+}
 
 /**
- * 安装隐藏控制台（幂等）。宿主已有控制台时返回 `console-present` 且零副作用。
+ * 安装隐藏控制台（幂等）。宿主已有控制台时原生侧返回 `console-present` 且零副作用。
  * @param platform - 当前平台（注入以便测试非 win32 分支）。
- * @param load - 取 Win32 调用集合；拿不到（没有 koffi）时返回 undefined。
+ * @param call - 调原生导出；addon 没有这个符号（回落到上游 addon）时传 undefined。
  * @returns 本次安装的结果。
  */
 export function installHiddenHostConsole(
   platform: NodeJS.Platform,
-  load: () => Win32ConsoleBindings | undefined,
+  call: (() => string) | undefined,
 ): HiddenConsoleOutcome {
   if (platform !== 'win32') return 'not-windows'
+  if (call === undefined) return 'native-unavailable'
+  let outcome: string
   try {
-    const bindings = load()
-    if (bindings === undefined) return 'ffi-unavailable'
-    if (bindings.getConsoleWindow() !== null) return 'console-present'
-
-    // 先存标准句柄：AllocConsole 会把它们指向新控制台，而宿主的 stdio 是启动方
-    // 给的 pipe（shell 那侧 `stdio: ['ignore','pipe','pipe','ipc']`）。
-    const saved = STD_HANDLES.map(index => bindings.getStdHandle(index))
-    if (!bindings.allocConsole()) return 'alloc-failed'
-
-    const window = bindings.getConsoleWindow()
-    // 没有窗口的控制台是合法的（宿主本来就被 CREATE_NO_WINDOW 启动时就是这种），
-    // 此时不要给 null 调 ShowWindow。
-    if (window !== null) bindings.showWindow(window, SW_HIDE)
-    STD_HANDLES.forEach((index, at) => bindings.setStdHandle(index, saved[at]))
-    return 'allocated'
+    outcome = call()
   } catch {
-    // FFI 加载成功但调用失败（缺符号、ABI 不符等）：一样只降级。
-    return 'ffi-unavailable'
+    // napi 会把 Rust panic 转成 JS 异常，ABI 不符也在这里冒出来：一样只降级。
+    return 'native-unavailable'
   }
-}
-
-/** koffi 的最小结构面（不引 koffi 的类型，加载失败也要能编译）。 */
-interface KoffiLike {
-  load(library: string): { func(signature: string): (...args: never[]) => unknown }
-}
-
-/** 把 koffi 的 `func()` 产物收窄成本模块的调用签名。 */
-function asCall<T>(value: unknown): T {
-  return value as T
+  if (isNativeOutcome(outcome)) return outcome
+  // JS 侧比 addon 新（拿到的是别的字符串）：当没有这个能力处理，别把未知状态当成功。
+  return 'native-unavailable'
 }
 
 /**
- * 真实加载：只从**本包自己的依赖**解析 koffi（`optionalDependencies`）。
- *
- * 刻意不去宿主运行时的 node_modules 里找：宿主的内部布局不是契约，跨包按路径解析
- * 是耦合。拿不到（没装、平台没有预编译包）就返回 undefined，功能降级。
+ * 取本包 addon 的原生导出。回落到上游 addon（没装我们的平台包）时为 undefined。
  */
-function loadKoffiBindings(): Win32ConsoleBindings | undefined {
-  try {
-    const koffi = createRequire(import.meta.url)('koffi') as KoffiLike
-    const kernel32 = koffi.load('kernel32.dll')
-    const user32 = koffi.load('user32.dll')
-    return {
-      getConsoleWindow: asCall<Win32ConsoleBindings['getConsoleWindow']>(kernel32.func('void *GetConsoleWindow()')),
-      allocConsole: asCall<Win32ConsoleBindings['allocConsole']>(kernel32.func('bool AllocConsole()')),
-      showWindow: asCall<Win32ConsoleBindings['showWindow']>(user32.func('bool ShowWindow(void *hWnd, int nCmdShow)')),
-      getStdHandle: asCall<Win32ConsoleBindings['getStdHandle']>(kernel32.func('void *GetStdHandle(int nStdHandle)')),
-      setStdHandle: asCall<Win32ConsoleBindings['setStdHandle']>(kernel32.func('bool SetStdHandle(int nStdHandle, void *h)')),
-    }
-  } catch {
-    return undefined
-  }
+function loadHostConsoleCall(): (() => string) | undefined {
+  const fn = (natives as unknown as HostConsoleNative).hideHostConsole
+  return typeof fn === 'function' ? () => fn() : undefined
 }
 
 /**
- * 插件入口调用：win32 且能拿到 FFI 时才安装，结果只用于日志。
+ * 插件入口调用：win32 且 addon 带该导出时才安装，结果只用于日志。
  * @returns 本次安装的结果。
  */
 export function ensureInheritableHiddenConsole(): HiddenConsoleOutcome {
-  return installHiddenHostConsole(process.platform, loadKoffiBindings)
+  return installHiddenHostConsole(process.platform, loadHostConsoleCall())
 }

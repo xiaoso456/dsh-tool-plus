@@ -46,13 +46,24 @@ Settings panel (Bash tab):
 #### Web
 
 ```sh
-dsh plugin --profile web add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
-`--allow-build` lets install scripts run (once for this package, once for `koffi`); it requires pnpm ≥ 10.4, and on pnpm 11+ omitting it fails the install with `ERR_PNPM_IGNORED_BUILDS`. If your pnpm is too old for the flag, allow the scripts first and re-run:
+The plugin ships its native addon prebuilt (six platform packages behind `optionalDependencies`; exactly one is installed for your system), so there is nothing to compile and no install script to approve — **no** `--allow-build`, no `pnpm approve-builds`.
 
-- Append to `~/.dsh/profiles/web/pnpm-workspace.yaml`: `allowBuilds:`, `  '@xiaoso/dsh-tool-plus': true` and `  koffi: true`
-- Or run `cd ~/.dsh/profiles/web && pnpm approve-builds --all` (pnpm ≥ 10.32)
+One more step: put the plugin on the profile's bundle list. `dsh plugin add` only writes `dependencies`; the host writes `dsh.profile.bundles` once, when the profile is created. Open `~/.dsh/profiles/web/package.json` and add the plugin there:
+
+```json
+{
+  "dsh": {
+    "profile": {
+      "bundles": ["@deepseek-ai/dsh-base", "@xiaoso/dsh-tool-plus"]
+    }
+  }
+}
+```
+
+Miss it and the package installs but never loads: the tool surface stays stock, and `dsh --profile web --dump-config | grep tool-plus` prints nothing.
 
 #### Desktop
 
@@ -60,8 +71,10 @@ The profile is owned by the desktop app, so `dsh plugin --profile desktop` is re
 
 ```sh
 cd ~/.dsh/profiles/desktop
-pnpm add --allow-build=@xiaoso/dsh-tool-plus --allow-build=koffi @xiaoso/dsh-tool-plus
+pnpm add @xiaoso/dsh-tool-plus
 ```
+
+Add the bundle entry by hand there too (same `package.json`).
 
 ### Local development
 

@@ -196,7 +196,6 @@
     "@xiaoso/dsh-tool-plus-natives-linux-arm64": "18.12.6-plus.1",
     "@xiaoso/dsh-tool-plus-natives-linux-x64": "18.12.6-plus.1",
     "@xiaoso/dsh-tool-plus-natives-win32-arm64": "18.12.6-plus.1",
-    "@xiaoso/dsh-tool-plus-natives-win32-x64": "18.12.6-plus.1",
-    "koffi": "^3.3.1"
+    "@xiaoso/dsh-tool-plus-natives-win32-x64": "18.12.6-plus.1"
   }
 }

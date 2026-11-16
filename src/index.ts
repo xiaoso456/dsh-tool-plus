@@ -119,7 +119,8 @@ export function apply(ctx: Context, config: Config = {}): void {
   // Windows：宿主是没有控制台的 GUI 镜像，它的每个 console 子进程（上游 pi-shell
   // 的 `where git` 探测、快照 bash、任何插件 spawn 的 CLI）都要新建一个控制台窗口
   // → 每条命令闪一次。先给宿主自己拿一个不可见控制台，子进程就只是继承它。
-  // 详情与限制见 src/host/win32-console.ts；失败只降级，不影响插件。
+  // Win32 那半在 addon 里（`hideHostConsole`，见 src/host/win32-console.ts）；
+  // 没装我们的平台包或调用失败都只降级，不影响插件。
   runtimeLogger().debug('host console', { outcome: ensureInheritableHiddenConsole() })
   // Best-effort sweep of orphaned spill files (>24h old) left by earlier runs,
   // including the legacy flat tmpdir naming.
