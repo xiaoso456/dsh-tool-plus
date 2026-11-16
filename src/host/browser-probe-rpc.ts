@@ -40,7 +40,8 @@ import * as fs from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
-import { BROWSER_DETECT_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, TOOL_PLUS_RPC_CHANNEL } from '../tools/shared/browser-rpc-channel.ts'
+import { BROWSER_DETECT_ENDPOINT, NATIVE_STATUS_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, TOOL_PLUS_RPC_CHANNEL } from '../tools/shared/browser-rpc-channel.ts'
+import { readNativeStatus } from '../tools/shared/native-status.ts'
 import { probeBrowsers } from '../tools/shared/browser-detect.ts'
 import { runtimeLogger } from '../tools/bash/logger.ts'
 import { handlePresetEndpoint, type PresetRpcDeps } from './preset-rpc.ts'
@@ -165,6 +166,13 @@ export function installBrowserProbeRpc(ctx: Context, deps: ToolPlusRpcDeps): () 
           try {
             const found = probeBrowsers()
             return { ok: true, value: { found } }
+          } catch (error) {
+            return failure(error)
+          }
+        }
+        if (endpoint === NATIVE_STATUS_ENDPOINT) {
+          try {
+            return { ok: true, value: readNativeStatus() }
           } catch (error) {
             return failure(error)
           }

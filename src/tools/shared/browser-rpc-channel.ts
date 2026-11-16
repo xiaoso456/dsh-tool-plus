@@ -19,6 +19,25 @@ export const BROWSER_DETECT_ENDPOINT = 'browser/detect'
 /** Endpoint that reports the rmSafe injection status (query = ensure + verify). */
 export const RM_SAFE_STATUS_ENDPOINT = 'rmSafe/status'
 
+/**
+ * Endpoint that reports which native addon this install runs: our own build
+ * (with the extra shell builtins) or the upstream package.
+ */
+export const NATIVE_STATUS_ENDPOINT = 'native/status'
+
+/**
+ * native/status result. `active` means the vendored loader resolved OUR
+ * platform package; `fallback` means it will run the upstream addon, whose
+ * shell lacks the tool-plus builtins.
+ */
+export type NativeStatusValue =
+  | { status: 'active'; platformTag: string; packageName: string; version: string }
+  | {
+    status: 'fallback'
+    platformTag: string
+    reason: 'platform-unsupported' | 'package-missing' | 'version-mismatch'
+  }
+
 /** Payload of a browser/detect call (currently empty). */
 export interface BrowserDetectPayload {}
 

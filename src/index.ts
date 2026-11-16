@@ -28,6 +28,7 @@ import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig
 import { defaultInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
+import { readNativeStatus } from './tools/shared/native-status.ts'
 import { ensureInheritableHiddenConsole } from './host/win32-console.ts'
 import { applyPresetAction, comparePresetAgainstTemplate, listPresetStatuses } from './host/preset-host.ts'
 import { bashCardMeta } from './web/host/bash.ts'
@@ -158,6 +159,20 @@ export function apply(ctx: Context, config: Config = {}): void {
   // The preset endpoints never touch the filesystem themselves: the write path
   // is the harness's own `ctx.configEditor`, which owns the profile lock, the
   // atomic write, the rollback and the precedence check.
+  // One line per start: which native addon this install runs. Silence here is
+  // what made "zip: command not found" look like a bug in the tool rather than
+  // a missing platform package; the settings panel shows the same state.
+  {
+    const nativeStatus = readNativeStatus()
+    if (nativeStatus.status === 'active') {
+      runtimeLogger().info(`native addon: ${nativeStatus.packageName}@${nativeStatus.version}`)
+    } else {
+      runtimeLogger().warn(
+        `native addon: upstream package (${nativeStatus.reason}); zip/tree/uuidgen/strings/hexdump/rev/free/bc are unavailable`,
+      )
+    }
+  }
+
   const disposeBrowserProbe = installBrowserProbeRpc(ctx, {
     getRmSafe: () => cfg.rmSafe,
     bashInit: {

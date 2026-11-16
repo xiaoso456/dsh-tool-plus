@@ -31,11 +31,12 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { IconCheckOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
-import { TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
+import { TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, type NativeStatusValue, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
 import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
+import { nativeStatusText } from './native-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
 import { BashInitPanel } from './BashInitPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
@@ -316,8 +317,65 @@ function ToolTabPanel(props: {
           />
         )
         : null}
+      {tab.id === 'web' ? <NativeStatusRow t={t} /> : null}
       {tab.id === 'web' ? <PresetPanel t={t} /> : null}
     </>
+  )
+}
+
+/**
+ * Which native addon this install runs. Read-only host state (`native/status`),
+ * not a setting: it sits in the plugin-level tab next to the preset panel
+ * because it belongs to the package as a whole rather than to one tool.
+ */
+function NativeStatusRow(props: { t: (key: BashPlusLocaleKey) => string }): ReactNode {
+  const { t } = props
+  const [state, setState] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const rpc = createWebConnectionRpc()
+      const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, {})
+      if (!result.ok) {
+        setState({ ok: false, text: t('nativeStatusCheckFailed') })
+        return
+      }
+      const value = result.value as NativeStatusValue
+      setState({ ok: value.status === 'active', text: nativeStatusText(t, value) })
+    } catch {
+      // No RPC channel (CLI-only deployment): stay silent rather than guess.
+    }
+  }, [t])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  return (
+    <div className="tp-actionField">
+      <div className="tp-actionHead">
+        <div className="tp-actionInfo">
+          <div className="tp-actionTitle">{t('nativeStatus')}</div>
+          <div className="tp-actionDesc">{t('nativeStatusHint')}</div>
+        </div>
+        <button
+          type="button"
+          className="tp-actionButton"
+          onClick={() => {
+            void refresh()
+          }}
+        >
+          {t('nativeStatusRefresh')}
+        </button>
+      </div>
+      {state !== null
+        ? (
+          <p className="tp-actionResult" role="status" data-state={state.ok ? 'ok' : 'error'}>
+            {state.text}
+          </p>
+        )
+        : null}
+    </div>
   )
 }
 
