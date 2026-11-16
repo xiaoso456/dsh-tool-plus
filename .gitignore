@@ -71,3 +71,4 @@ docs/*
 dist-natives/
 # CI/本地摊包前的 addon 暂存目录（.github/workflows/native.yml 用）
 /build/
+/dl/
