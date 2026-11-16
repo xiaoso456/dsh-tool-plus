@@ -1,3 +1,9 @@
 # Vendored patches must stay byte-identical: CRLF breaks `git apply` on an
 # LF working tree, so keep these files out of any eol conversion.
 vendor/oh-my-pi/patches/*.patch -text
+
+# The vendored pi-natives loader is a generated file set that `pnpm natives:check`
+# compares byte-for-byte against the pin, so it must not go through eol
+# conversion either (a CRLF checkout would fail the check on Windows).
+src/vendor/pi-natives/** text eol=lf
+

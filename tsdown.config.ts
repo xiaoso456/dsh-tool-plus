@@ -67,16 +67,23 @@ export default defineConfig([
       // Thin adapter over the upstream Rust hashline engine (pi-natives); the
       // former in-repo TypeScript engine was deleted once upstream moved it.
       '@oh-my-pi/hashline': SHIM('src/tools/hashline/native/index.ts'),
+      // pi-natives itself is vendored (src/vendor/pi-natives = pinned upstream
+      // + patches/0006) instead of being resolved from node_modules: the
+      // plugin must ship a loader that prefers our own platform package. The
+      // subpaths come first so the prefix match cannot swallow them.
+      '@oh-my-pi/pi-natives/path': SHIM('src/vendor/pi-natives/path.js'),
+      '@oh-my-pi/pi-natives/desktop': SHIM('src/vendor/pi-natives/desktop.js'),
+      '@oh-my-pi/pi-natives': SHIM('src/vendor/pi-natives/index.js'),
     },
     deps: {
-      // @deepseek-ai/* and pi-natives resolve through node_modules (workspace
-      // links / profile install). @oh-my-pi/* source packages (main →
+      // @deepseek-ai/* resolve through node_modules (workspace links / profile
+      // install). @oh-my-pi/* source packages (main →
       // src/*.ts) are pure-TS — Node cannot strip types under node_modules,
       // so they MUST be bundled in (deps.alwaysBundle).
       // puppeteer-core stays external: it is a runtime dependency resolved
       // from the install tree (never bundled — bundling it would re-trigger
       // the beta.4 86MiB npm-pack cap).
-      neverBundle: [/^@deepseek-ai\//, /^@oh-my-pi\/pi-natives/, /^sharp$/, /^puppeteer-core$/, /^trash$/],
+      neverBundle: [/^@deepseek-ai\//, /^sharp$/, /^puppeteer-core$/, /^trash$/],
       alwaysBundle: [
         /^@oh-my-pi\/pi-utils/,
         /^@oh-my-pi\/pi-tui/,
@@ -85,6 +92,10 @@ export default defineConfig([
         /^@oh-my-pi\/pi-catalog/,
         /^@oh-my-pi\/pi-wire/,
         /^@oh-my-pi\/hashline/,
+        // Force the aliased vendored loader in: a bare specifier that is also a
+        // package.json dependency is externalized by default, which would ship
+        // the upstream (unpatched) loader instead.
+        /^@oh-my-pi\/pi-natives/,
       ],
     },
   },

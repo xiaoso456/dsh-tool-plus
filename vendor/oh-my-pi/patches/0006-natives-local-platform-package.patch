@@ -1,0 +1,92 @@
+diff --git a/packages/natives/native/loader-state.js b/packages/natives/native/loader-state.js
+index 1c1e959e..c1d425b8 100644
+--- a/packages/natives/native/loader-state.js
++++ b/packages/natives/native/loader-state.js
+@@ -3,7 +3,6 @@ import * as fs from "node:fs";
+ import { createRequire } from "node:module";
+ import * as os from "node:os";
+ import * as path from "node:path";
+-import packageJson from "../package.json" with { type: "json" };
+ import { embeddedAddon } from "./embedded-addon.js";
+ import { bindingsHaveReleaseIdentity, bindingsReleaseVersion, containsVersionStamp } from "./version-sentinel.js";
+ 
+@@ -71,10 +70,51 @@ function getNativesDir() {
+ 	return path.join(os.homedir(), ".omp", "natives");
+ }
+ 
++/**
++ * Directory of the platform package that carries the `.node` for this host.
++ * tool-plus ships its own addon (upstream + the in-process shell builtins) as
++ * `@xiaoso/dsh-tool-plus-natives-<platform>-<arch>`, so that name wins; the
++ * upstream package stays as the fallback for installs without ours, where the
++ * addon simply lacks the extra builtins.
++ */
+ function resolveLeafPackageDir(platformTag) {
++	// Two anchors on purpose. Our own platform package is a dependency of the
++	// plugin the loader is bundled into, so it resolves from this module. The
++	// upstream package is an optional dependency of `@oh-my-pi/pi-natives`,
++	// and package managers keep those next to that package's real path, not
++	// next to ours — resolve it from there.
++	const anchors = [createRequire(import.meta.url)];
++	try {
++		anchors.push(createRequire(createRequire(import.meta.url).resolve("@oh-my-pi/pi-natives")));
++	} catch {
++		// pi-natives not installed; only our package can answer
++	}
++	const names = [`@xiaoso/dsh-tool-plus-natives-${platformTag}`, `@oh-my-pi/pi-natives-${platformTag}`];
++	for (const require_ of anchors) {
++		for (const packageName of names) {
++			try {
++				return path.dirname(require_.resolve(`${packageName}/package.json`));
++			} catch {
++				// try the next candidate
++			}
++		}
++	}
++	return null;
++}
++
++/**
++ * Read `version` from the installed `@oh-my-pi/pi-natives` manifest.
++ * A static `import ... from "../package.json"` cannot be used here: this file
++ * is bundled into the consuming plugin, where that relative path resolves to
++ * the plugin's own manifest. The version drives both the per-version cache
++ * directory and the addon release-stamp check, so it must be the real one.
++ */
++function readInstalledPackageVersion() {
+ 	try {
+ 		const require_ = createRequire(import.meta.url);
+-		return path.dirname(require_.resolve(`@oh-my-pi/pi-natives-${platformTag}/package.json`));
++		const entry = require_.resolve("@oh-my-pi/pi-natives");
++		const manifest = JSON.parse(fs.readFileSync(path.join(path.dirname(entry), "..", "package.json"), "utf8"));
++		return typeof manifest.version === "string" ? manifest.version : null;
+ 	} catch {
+ 		return null;
+ 	}
+@@ -781,8 +821,8 @@ function buildHelpMessage(ctx) {
+ export function initLoaderContext(overrides = {}) {
+ 	const platform = overrides.platform ?? process.platform;
+ 	const platformTag = `${platform}-${process.arch}`;
+-	const packageVersion = packageJson.version;
+-	const nativeDir = overrides.nativeDir ?? path.join(import.meta.dir, "..", "native");
++	const packageVersion = readInstalledPackageVersion() ?? "0.0.0";
++	const nativeDir = overrides.nativeDir ?? path.join(import.meta.dirname, "..", "native");
+ 	const execDir = path.dirname(process.execPath);
+ 	const nativesDir = getNativesDir();
+ 	const versionedDir = path.join(nativesDir, packageVersion);
+@@ -803,8 +843,14 @@ export function initLoaderContext(overrides = {}) {
+ 		!isCompiledBinary &&
+ 		!normalizedNativeDir.includes("\\node_modules\\") &&
+ 		!normalizedNativeDir.includes("/node_modules/");
++	// Upstream drops the platform package when the native dir sits outside
++	// node_modules, so a monorepo build in `native/` is never shadowed by an
++	// installed package. tool-plus has no such build — its addon only lives in
++	// a platform package — and the plugin is linked from a workspace while
++	// developing, so keeping the guard would leave every dev install without
++	// an addon.
+ 	const leafPackageDir =
+-		isCompiledBinary || isWorkspaceLoad
++		isCompiledBinary
+ 			? null
+ 			: overrides.leafPackageDir === undefined
+ 				? resolveLeafPackageDir(platformTag)

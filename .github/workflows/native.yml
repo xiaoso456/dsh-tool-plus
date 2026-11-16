@@ -64,13 +64,12 @@ jobs:
         # one representative per family can save the shared input cache; `family`
         # also keeps those entries apart (a Linux runner builds both gnu and
         # win32 targets, and they fetch different toolchains).
+        # Only the targets a platform package is published for are built: the
+        # modern (AVX2) variant and both musl targets exist as bazel targets but
+        # nothing ships or consumes them (upstream publishes exactly this set).
         include:
-          # Linux gnu: build both x64 ISA floors natively via Bazel.
           - { artifact: linux-x64-baseline, target: linux-x64-baseline, runner: ubuntu-22.04, family: linux, saveInputs: true }
-          - { artifact: linux-x64-modern, target: linux-x64-modern, runner: ubuntu-22.04, family: linux }
           - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm, family: linux }
-          - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04, family: linux }
-          - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm, family: linux }
           # Darwin stays on Mac runners. Building it on Linux (like upstream's
           # cross job) needs @macos_sdk, whose pinned CLTools package URL is dead
           # -- 403 from a residential IP too, so it is not a runner-network

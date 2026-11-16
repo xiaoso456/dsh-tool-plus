@@ -20,6 +20,10 @@ export default defineConfig({
       'bun:test': SHIM('tests/bun-test-shim.ts'),
       'node:fs/promises': SHIM('src/tools/shared/fs-promises-shim.ts'),
       '@oh-my-pi/hashline': SHIM('src/tools/hashline/native/index.ts'),
+      // Same vendored pi-natives the build bundles (subpaths first).
+      '@oh-my-pi/pi-natives/path': SHIM('src/vendor/pi-natives/path.js'),
+      '@oh-my-pi/pi-natives/desktop': SHIM('src/vendor/pi-natives/desktop.js'),
+      '@oh-my-pi/pi-natives': SHIM('src/vendor/pi-natives/index.js'),
     },
   },
   plugins: [

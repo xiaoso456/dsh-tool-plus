@@ -117,5 +117,3 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/cosmokit@1.8.6'
   - '@deepseek-ai/dsh-working-directory@0.2.1-rc.1 || 0.2.2-alpha.2 || 0.2.2-rc.1'
   - '@deepseek-ai/schemastery@3.18.5'
-patchedDependencies:
-  '@oh-my-pi/pi-natives': patches/@oh-my-pi__pi-natives.patch

@@ -13,10 +13,7 @@
   },
   "targets": [
     "linux-x64-baseline",
-    "linux-x64-modern",
     "linux-arm64",
-    "linux-musl-x64-baseline",
-    "linux-musl-arm64",
     "darwin-arm64",
     "darwin-x64-baseline",
     "win32-x64-baseline",

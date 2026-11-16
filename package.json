@@ -36,13 +36,13 @@
     "node": ">=24.9.0",
     "dsh": ">=0.2.2-0 <0.3.0-0"
   },
-  "main": "lib/pi-natives-bootstrap.mjs",
+  "main": "lib/index.mjs",
   "types": "lib/types/index.d.ts",
   "icon": "./assets/icon.png",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
-      "default": "./lib/pi-natives-bootstrap.mjs"
+      "default": "./lib/index.mjs"
     },
     "./client": {
       "types": "./lib/types/client/index.d.ts",
@@ -58,7 +58,6 @@
     "cordis.patch.yml",
     "presets/tool-plus-standard.patch.yml",
     "presets/tool-plus-ptc.patch.yml",
-    "scripts/patch-pi-natives.mjs",
     "src/bash-runtime/shell-snapshot-fn-env.sh",
     "README.md",
     "LICENSE",
@@ -90,6 +89,8 @@
     "test": "vitest run --config vitest.config.ts",
     "presets:build": "node scripts/build-preset-patches.mjs",
     "presets:check": "node scripts/build-preset-patches.mjs --check",
+    "natives:sync": "node scripts/vendor-natives-js.mjs sync",
+    "natives:check": "node scripts/vendor-natives-js.mjs check",
     "e2e": "tsx tests/support/harness/dsh-e2e.ts",
     "e2e:browser": "e2e run --config e2e/e2e.config.ts",
     "mock:llm": "tsx tests/support/mock-openai/cli.ts",
@@ -100,7 +101,7 @@
     "vendor:sync": "node scripts/vendor.mjs sync",
     "vendor:apply": "node scripts/vendor.mjs apply",
     "vendor:check": "node scripts/vendor.mjs check",
-    "postinstall": "node scripts/patch-pi-natives.mjs"
+    "natives:pack": "node scripts/build-native-packages.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",

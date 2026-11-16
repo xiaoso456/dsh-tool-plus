@@ -66,3 +66,6 @@ docs/*
 # Windows 路径方言参考（模型/维护者共用的路径契约，随仓库发布）
 !docs/reference/
 !docs/reference/**
+
+# 平台包产物（scripts/build-native-packages.mjs 生成，发布时不入库）
+dist-natives/
