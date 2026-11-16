@@ -310,7 +310,11 @@ jobs:
               echo "skip $name@$version (already published)"
               continue
             fi
-            npm publish "$dir" --tag native --access public \
+            # MUST be `./$dir`: npm parses a bare `dir/subdir` argument as the
+            # `owner/repo` GitHub shorthand and tries `git ls-remote
+            # ssh://git@github.com/dist-natives/...`, which fails with a publickey
+            # error instead of publishing the folder.
+            npm publish "./$dir" --tag native --access public \
               --registry "$registry" ${auth[@]+"${auth[@]}"}
           done
 
