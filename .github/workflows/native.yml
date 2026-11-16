@@ -71,13 +71,15 @@ jobs:
           - { artifact: linux-arm64, target: linux-arm64, runner: ubuntu-24.04-arm, family: linux }
           - { artifact: linux-musl-x64-baseline, target: linux-musl-x64-baseline, runner: ubuntu-22.04, family: linux }
           - { artifact: linux-musl-arm64, target: linux-musl-arm64, runner: ubuntu-24.04-arm, family: linux }
-          # Darwin runs on Linux like upstream's cross job: the hermetic clang +
-          # ld64.lld + macOS SDK toolchain is exec-gated to linux hosts
-          # (MODULE.bazel), so a Mac runner would fall back to a host toolchain
-          # that only targets its own architecture. macos-15-intel was also the
-          # slowest job in the matrix by a factor of ~4.
-          - { artifact: darwin-arm64, target: darwin-arm64, runner: ubuntu-22.04, family: darwin, saveInputs: true, saveActions: true }
-          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: ubuntu-22.04, family: darwin, saveActions: true }
+          # Darwin stays on Mac runners. Building it on Linux (like upstream's
+          # cross job) needs @macos_sdk, whose pinned CLTools package URL is dead
+          # -- 403 from a residential IP too, so it is not a runner-network
+          # problem, it is upstream's pin having bit-rotted. Fixing it means
+          # vendoring our own URL + sha256 into bazel/toolchains/darwin/sdk.bzl
+          # (a patch that must be re-kept alive on every bump) for no wall-clock
+          # gain: darwin is not the critical path, the linux/win32 jobs are.
+          - { artifact: darwin-arm64, target: darwin-arm64, runner: macos-15, family: darwin, saveInputs: true, saveActions: true }
+          - { artifact: darwin-x64-baseline, target: darwin-x64-baseline, runner: macos-15-intel, family: darwin, saveActions: true }
           # Windows: OMP's msvc cross toolchain runs on Linux/mac exec hosts.
           - { artifact: win32-x64-baseline, target: win32-x64-baseline, runner: ubuntu-22.04, family: win32, saveInputs: true }
           - { artifact: win32-arm64, target: win32-arm64, runner: ubuntu-22.04, family: win32 }
