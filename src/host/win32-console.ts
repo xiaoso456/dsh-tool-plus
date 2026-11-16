@@ -16,7 +16,8 @@
  * @module @xiaoso/dsh-tool-plus/host/win32-console
  */
 
-import * as natives from '@oh-my-pi/pi-natives'
+import { createRequire } from 'node:module'
+import { nativeAddonStatus } from '../vendor/pi-natives/loader-state.js'
 
 /** 一次安装的结果；调用方只用来记日志。 */
 export type HiddenConsoleOutcome =
@@ -65,10 +66,22 @@ export function installHiddenHostConsole(
 
 /**
  * 取本包 addon 的原生导出。回落到上游 addon（没装我们的平台包）时为 undefined。
+ *
+ * 不走 `@oh-my-pi/pi-natives` 的具名导出：那份导出表是上游按自己的 `.d.ts` 生成的
+ * 清单（vendored 逐字复制），我们的 `hideHostConsole` 不在里面。加载器把真正加载的
+ * 文件名记在 `nativeAddonStatus()`，对着同一个路径再 `require` 一次拿到的就是缓存里
+ * 那份 addon——不重复 dlopen，也不重复解析平台包。
  */
 function loadHostConsoleCall(): (() => string) | undefined {
-  const fn = (natives as unknown as HostConsoleNative).hideHostConsole
-  return typeof fn === 'function' ? () => fn() : undefined
+  const file = nativeAddonStatus()?.path
+  if (file === undefined) return undefined
+  try {
+    const bindings = createRequire(import.meta.url)(file) as HostConsoleNative
+    const fn = bindings.hideHostConsole
+    return typeof fn === 'function' ? () => fn() : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**
