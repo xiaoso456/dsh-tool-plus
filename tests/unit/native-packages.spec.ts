@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import pkg from '../../package.json'
 import lock from '../../vendor/oh-my-pi/lock.json'
 import { PLATFORMS, assertVersionMatchesPin, packageManifest } from '../../scripts/build-native-packages.mjs'
 
@@ -43,5 +44,32 @@ describe('native platform packages', () => {
 		expect(() => assertVersionMatchesPin('18.12.7-plus.1', '18.12.6')).toThrow(/does not belong/)
 		expect(() => assertVersionMatchesPin('18.12.6-plus..1', '18.12.6')).toThrow(/invalid prerelease/)
 		expect(() => assertVersionMatchesPin('18.12.6-plus 1', '18.12.6')).toThrow(/invalid prerelease/)
+	})
+
+	/**
+	 * `optionalDependencies` is the only reason npm or pnpm fetches our platform
+	 * package at install time. Forget one entry, or let a version drift away from
+	 * the pin, and that host silently falls back to the upstream addon — the
+	 * plugin keeps working, just without the shell builtins, and nothing anywhere
+	 * reports an error. This is the cheapest place to catch that.
+	 */
+	it('wires all six platform packages into the root package at one version', () => {
+		const optional = pkg.optionalDependencies ?? {}
+		const names = PLATFORMS.map(platform => `@xiaoso/dsh-tool-plus-natives-${platform.tag}`)
+		// Exact set, not just "contains": a renamed or dropped platform must fail
+		// here rather than at install time on somebody else's machine.
+		const wired = Object.keys(optional)
+			.filter(name => name.startsWith('@xiaoso/dsh-tool-plus-natives-'))
+			.sort()
+		expect(wired).toEqual([...names].sort())
+
+		const versions = new Set(names.map(name => optional[name]))
+		expect(versions.size).toBe(1)
+		const [version] = [...versions]
+		expect(() => assertVersionMatchesPin(version, lock.version)).not.toThrow()
+		// Our addon is an extra artifact of a pin, never a re-release of the pin
+		// itself: one upstream version can need several of our builds, so the
+		// suffix is mandatory.
+		expect(version.startsWith(`${lock.version}-plus.`)).toBe(true)
 	})
 })

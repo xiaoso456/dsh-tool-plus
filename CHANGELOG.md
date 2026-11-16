@@ -5,6 +5,31 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0-beta.0] - 2026-11-16
+
+> 预发布：原生包改由我们自己的平台包分发。装上即自带 zip/tree/uuidgen/strings/hexdump/rev/free/bc 八个内建命令，不再只有官方原生包那一套。
+
+### Added
+
+- **内建命令开箱可用**：安装插件时按平台自动装上我们构建的原生包（Linux x64/arm64、macOS Apple Silicon/Intel、Windows x64/ARM64），无需任何额外步骤。
+- **设置 → Tool Plus → 全局**新增「增强工具包」状态行：显示当前加载的是我们的构建还是官方原版、包名与版本，旁边可「重新检测」。未启用时按三种原因给出下一步（系统没有对应构建、安装时没装上、版本不匹配）。
+- 启动日志加一行，说明本次用的是哪个原生包；回落到官方原版时改为警告，并点名因此不可用的命令。
+
+### Changed
+
+- 原生包用独立的版本线 `<上游版本>-plus.<n>`，与插件版本解耦：以后升级插件只是几 MB，不会重新下载上百 MB 的原生包。
+- 原生构建矩阵收敛到上游实际发布的六个平台目标。
+
+### Removed
+
+- 去掉安装期改写官方原生包的做法（postinstall 脚本与启动期自愈入口）：改为直接分发我们自己的原生包，不再依赖改写第三方包内的文件。
+
+### 说明
+
+- 没有对应构建的平台（例如 Alpine/musl）会自动回落到官方原生包，八个内建命令不可用，设置页会明确说明原因。
+
+[对比 0.1.21](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.1.21...tool-plus-v0.2.0-beta.0)
+
 ## [0.1.21] - 2026-11-13
 
 > 正式版：新增可编辑的 Shell 初始化脚本，修掉 Windows 上裸 `bash` 命中 WSL 的问题；工具描述不再夸大跨调用状态保持。

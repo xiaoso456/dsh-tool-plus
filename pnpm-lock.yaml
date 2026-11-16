@@ -196,6 +196,24 @@ importers:
         specifier: ^4.1.8
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
     optionalDependencies:
+      '@xiaoso/dsh-tool-plus-natives-darwin-arm64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
+      '@xiaoso/dsh-tool-plus-natives-darwin-x64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
+      '@xiaoso/dsh-tool-plus-natives-linux-arm64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
+      '@xiaoso/dsh-tool-plus-natives-linux-x64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
+      '@xiaoso/dsh-tool-plus-natives-win32-arm64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
+      '@xiaoso/dsh-tool-plus-natives-win32-x64':
+        specifier: 18.12.6-plus.1
+        version: 18.12.6-plus.1
       koffi:
         specifier: ^3.3.1
         version: 3.3.1
@@ -2025,6 +2043,38 @@ packages:
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
+
+  '@xiaoso/dsh-tool-plus-natives-darwin-arm64@18.12.6-plus.1':
+    resolution: {integrity: sha512-q8lEtsZ/RfA4mzpcMRhAEAQO5g/za4uBV++4E57kM0LemgvpRFZd8jhR5p4iJta136vej0T2M/7zlHDKj2XYyg==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@xiaoso/dsh-tool-plus-natives-darwin-x64@18.12.6-plus.1':
+    resolution: {integrity: sha512-5TNSR3aB/v4gpW5cTqqOTq1PCmcRvxeMRdqsgI1VwQWn6Ua76PpcCQNa71PuXz3dMPWk7iG6e1zDBs+xM82zSQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@xiaoso/dsh-tool-plus-natives-linux-arm64@18.12.6-plus.1':
+    resolution: {integrity: sha512-7BKdFaLb9VBub6m8PDR0P4O6QrjXk657aCL+BXuzC6VFOr+UQSMYrrZJVVmFccvDMkGWQ89js89awA8RnwtIgg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@xiaoso/dsh-tool-plus-natives-linux-x64@18.12.6-plus.1':
+    resolution: {integrity: sha512-qaQWVfM7cNkUCXJQ/teowY5m66H8zVTcX9S9p3QxR4KtHjeWenBVmmgH0pFa1IRMD0HfM3z449KsydSejXw1Yg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@xiaoso/dsh-tool-plus-natives-win32-arm64@18.12.6-plus.1':
+    resolution: {integrity: sha512-sXG31iD/jx9cpim5hJgK/zbP+jK3fvYYbDb5RDNOubcpjXyRhgKnk6CUtq84l109YUrMGHMlVGKp6pA0lda3RQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@xiaoso/dsh-tool-plus-natives-win32-x64@18.12.6-plus.1':
+    resolution: {integrity: sha512-Kmh+1y1919r4LTgUe10D1pO2oz4kPhl9hnn34yTQJc2DVrlqG3U2x/ztnYUIr55htKG3/Ze+pZ+ew/cVUjuI+w==}
+    cpu: [x64]
+    os: [win32]
 
   '@yuku-codegen/binding-android-arm64@0.8.7':
     resolution: {integrity: sha512-C/0zV5IhgVdYhGJTwrY0v8dknxlhiKwtVJkMUaexu9/QvRmzlV4vfU3hZlUSgqc2BxQHntL1mCVbDq8j0FRFDw==}
@@ -4630,6 +4680,24 @@ snapshots:
       tinyrainbow: 3.1.1
 
   '@workflow/serde@4.1.0': {}
+
+  '@xiaoso/dsh-tool-plus-natives-darwin-arm64@18.12.6-plus.1':
+    optional: true
+
+  '@xiaoso/dsh-tool-plus-natives-darwin-x64@18.12.6-plus.1':
+    optional: true
+
+  '@xiaoso/dsh-tool-plus-natives-linux-arm64@18.12.6-plus.1':
+    optional: true
+
+  '@xiaoso/dsh-tool-plus-natives-linux-x64@18.12.6-plus.1':
+    optional: true
+
+  '@xiaoso/dsh-tool-plus-natives-win32-arm64@18.12.6-plus.1':
+    optional: true
+
+  '@xiaoso/dsh-tool-plus-natives-win32-x64@18.12.6-plus.1':
+    optional: true
 
   '@yuku-codegen/binding-android-arm64@0.8.7':
     optional: true
