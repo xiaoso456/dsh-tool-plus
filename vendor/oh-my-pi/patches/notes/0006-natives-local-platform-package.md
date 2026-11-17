@@ -61,11 +61,29 @@ After:
 
 No behaviour change for consumers that never install our platform package.
 
+### 暂存副本只能顶掉同一份构建（同一个 bug 的第二个入口）
+
+Windows 上 `shouldStageNodeModulesAddon` 会把 `.node` 镜子到
+`~/.omp/natives/<版本>/`，而 `resolveLoaderCandidates` 把这份缓存排在平台包
+**前面**（上游为了 `bun install -g` 更新安全）。但那个目录只按**上游版本号**
+命名（`18.12.6`），所有发过这个版本的分发共用同一格：早期 tool-plus（用上游
+addon）或上游自己留下的文件，会一直遮住新装的平台包，而且它「pre-sentinel」
+兼容桥还能通过校验，于是**少了只有新构建才有的导出**——`hideHostConsole`
+就是这么在桌面端丢的（宿主没拿到隐藏控制台，每条命令闪一个控制台窗口）。
+
+现在暂存副本要跟平台包**同一份构建**才允许排在前面：暂存是逐字节拷贝，所以
+比较大小即可（不同构建同长度基本不可能）。不信任的一律跳过、**绝不覆盖**
+（那份文件可能正被别的进程 map 着），让平台包直接赢。
+
+- 平台包解析不到（没有可比对象）时保持上游行为：缓存照旧优先。
+- 只在 `stageFromNodeModules` 打开时生效；非 Windows、开发目录、编译产物不变。
+
 ## Tests
 
 ```sh
 node scripts/vendor.mjs check                 # 0001 … 0006 apply in order
 node scripts/vendor-natives-js.mjs check      # vendored copy == pin + 0006
+pnpm vitest run tests/unit/native-loader-candidates.spec.ts   # 候选顺序：异构建的暂存副本不得遮住平台包
 node scripts/check-native-packages.mjs        # (added with the platform packages)
 ```
 

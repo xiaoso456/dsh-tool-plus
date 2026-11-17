@@ -188,6 +188,31 @@ export function shouldStageNodeModulesAddon({ platform, isCompiledBinary, native
 }
 
 /**
+ * Is a cached copy under `~/.omp/natives/<version>/` the same build as the
+ * installed platform package?
+ *
+ * That cache is keyed by the upstream version string alone, so every
+ * distribution that ever shipped that version shares it: an older tool-plus
+ * (or upstream itself) leaves its own addon behind at `18.12.6`, and a staged
+ * copy is tried *before* the package. A foreign binary then loads and silently
+ * loses exports only the current build has (observed: `hideHostConsole`
+ * undefined after upgrading tool-plus, which brought the Windows console
+ * window back for every command). A staged file is a verbatim copy, so equal
+ * size means same build; anything else may not shadow a package that is here.
+ *
+ * @param {{ stagedPath: string; sourcePath: string | null }} input
+ * @returns {boolean}
+ */
+function isStagedAddonCurrent({ stagedPath, sourcePath }) {
+	if (sourcePath === null) return true;
+	try {
+		return fs.statSync(stagedPath).size === fs.statSync(sourcePath).size;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * @param {{
  *   addonFilenames: string[];
  *   isCompiledBinary: boolean;
@@ -219,7 +244,16 @@ export function resolveLoaderCandidates({
 		path.join(versionedDir, filename),
 		path.join(userDataDir, filename),
 	]);
-	const stagedCandidates = stageFromNodeModules ? addonFilenames.map(filename => path.join(versionedDir, filename)) : [];
+	// A staged copy may only shadow the package when it is the same build: the
+	// cache is shared by every distribution of this version (see
+	// `isStagedAddonCurrent`).
+	const stagedCandidates = stageFromNodeModules
+		? addonFilenames.flatMap(filename => {
+				const stagedPath = path.join(versionedDir, filename);
+				const sourcePath = leafPackageDir ? path.join(leafPackageDir, filename) : null;
+				return isStagedAddonCurrent({ stagedPath, sourcePath }) ? [stagedPath] : [];
+			})
+		: [];
 	let releaseCandidates;
 	if (isCompiledBinary) {
 		releaseCandidates = [...compiledCandidates, ...baseReleaseCandidates];
@@ -580,7 +614,12 @@ function maybeStageNodeModulesAddon(ctx, errors) {
 		const targetPath = path.join(ctx.versionedDir, filename);
 
 		if (fs.existsSync(targetPath)) {
-			stagedPath = stagedPath || targetPath;
+			// Never overwrite: the file may be mapped by a running process, and a
+			// stale copy stays harmless as long as it is not trusted (see
+			// `isStagedAddonCurrent`).
+			if (isStagedAddonCurrent({ stagedPath: targetPath, sourcePath: fs.existsSync(sourcePath) ? sourcePath : null })) {
+				stagedPath = stagedPath || targetPath;
+			}
 			continue;
 		}
 		if (!fs.existsSync(sourcePath)) continue;

@@ -120,8 +120,15 @@ export function apply(ctx: Context, config: Config = {}): void {
   // 的 `where git` 探测、快照 bash、任何插件 spawn 的 CLI）都要新建一个控制台窗口
   // → 每条命令闪一次。先给宿主自己拿一个不可见控制台，子进程就只是继承它。
   // Win32 那半在 addon 里（`hideHostConsole`，见 src/host/win32-console.ts）；
-  // 没装我们的平台包或调用失败都只降级，不影响插件。
-  runtimeLogger().debug('host console', { outcome: ensureInheritableHiddenConsole() })
+  // 没装我们的平台包或调用失败都只降级，不影响插件——但降级意味着每条命令又
+  // 会闪一次窗口，所以降级走 warn：`hideHostConsole` 曾经因为加载到旧 addon
+  // 而整体失效，只记 debug 的话症状（闪窗）和原因（少了导出）在日志里对不上。
+  const hostConsole = ensureInheritableHiddenConsole()
+  if (hostConsole === 'native-unavailable' || hostConsole === 'alloc-failed') {
+    runtimeLogger().warn('host console', { outcome: hostConsole })
+  } else {
+    runtimeLogger().debug('host console', { outcome: hostConsole })
+  }
   // Best-effort sweep of orphaned spill files (>24h old) left by earlier runs,
   // including the legacy flat tmpdir naming.
   sweepStaleSpillFiles()
