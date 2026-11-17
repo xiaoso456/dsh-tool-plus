@@ -329,3 +329,70 @@ export interface BashInitTestValue {
   durationMs: number
 }
 
+
+/** Endpoint that lists every command the shell can resolve right now. */
+export const COMMAND_LIST_ENDPOINT = 'command/list'
+
+/** Endpoint that probes one command (type -a / command -v / --version). */
+export const COMMAND_PROBE_ENDPOINT = 'command/probe'
+
+/** Endpoint that writes one per-command override. */
+export const COMMAND_APPLY_ENDPOINT = 'command/apply'
+
+/** Where one row comes from, as the panel labels it. */
+export type CommandOriginValue = 'new' | 'omp' | 'bash' | 'sys' | 'fn' | 'custom'
+
+/** What wins for one name right now. */
+export type CommandActiveValue = 'builtin' | 'system' | 'function' | 'custom' | 'path'
+
+/** One row of the command panel. */
+export interface CommandEntryValue {
+  name: string
+  origin: CommandOriginValue
+  active: CommandActiveValue
+  /** System executable of the same name, when one exists. */
+  systemPath?: string
+  /** Absolute path of the user executable for a custom choice. */
+  customPath?: string
+}
+
+/** command/list result. */
+export interface CommandListValue {
+  entries: CommandEntryValue[]
+  counts: { builtin: number; system: number; function: number; custom: number; total: number }
+  /** How long the scan itself took (ms), shown next to the refresh button. */
+  scanMs: number
+}
+
+/** command/probe request. */
+export interface CommandProbePayload {
+  name: string
+}
+
+/** command/probe result: the raw lines the shell printed. */
+export interface CommandProbeValue {
+  lines: string[]
+}
+
+/** command/apply request: one of the three sources, or back to default. */
+export interface CommandApplyPayload {
+  name: string
+  mode: 'builtin' | 'system' | 'custom'
+  /** Absolute path of the user executable (custom only). */
+  path?: string
+  /** Fixed leading arguments (custom only). */
+  args?: string[]
+}
+
+/** command/apply result. */
+export interface CommandApplyValue {
+  ok: boolean
+  /** Why the write was refused (missing file, bad path). */
+  message?: string
+  /**
+   * Whether the request actually changed anything. A no-op (restoring the
+   * default of a command that never had an override) answers `false` and
+   * writes nothing, so the panel can skip the rescan and the refresh.
+   */
+  changed?: boolean
+}

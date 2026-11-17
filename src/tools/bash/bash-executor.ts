@@ -18,6 +18,7 @@ import { type MinimizerOptions, Shell, type ShellOptions, type ShellRunResult } 
 import { runtimeLogger } from "./logger.ts";
 import { buildNonInteractiveEnv } from "./non-interactive-env.ts";
 import { getOrCreateSnapshot } from "./shell-snapshot.ts";
+import { commandOverridesSnippet } from "./command-config.ts";
 import { initScriptSetup } from "./init-script.ts";
 import { quoteShellArg } from "./shell-quote.ts";
 import { injectRmSafe, rmSafeCliPath } from "./rm-safe.ts";
@@ -406,10 +407,16 @@ async function prepareBashExecution(
 		scriptPath: options?.initScriptPath,
 	});
 	const initSourceLine = init.sourceLine;
+	// Command-resolution overrides (`enable -n` for "use the system binary",
+	// forwarding functions for "use my executable") ride the snapshot too: they
+	// must be in place before the first command of the session runs, and they
+	// must be able to override anything the rc or init script defined.
+	const commandSnippet = commandOverridesSnippet();
+	const commandLines = commandSnippet === undefined ? undefined : commandSnippet.split("\n");
 	const captureUserRc = options?.snapshotEnabled !== false;
 	const snapshotPath =
-		bashShell && (captureUserRc || initSourceLine !== undefined)
-			? await getOrCreateSnapshot(shell, shellEnv, { initSourceLine, captureUserRc })
+		bashShell && (captureUserRc || initSourceLine !== undefined || commandLines !== undefined)
+			? await getOrCreateSnapshot(shell, shellEnv, { initSourceLine, captureUserRc, extraLines: commandLines })
 			: null;
 	// rmSafe: redefine `rm` to move into the system trash. The injection rides
 	// the snapshot file (sourced once at session creation), so it applies to

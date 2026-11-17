@@ -39,6 +39,7 @@ import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import { nativeStatusShort, nativeStatusText } from './native-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
 import { BashInitPanel } from './BashInitPanel.tsx'
+import { CommandDialog } from './CommandDialog.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Registration-side face: the `tool-plus` entry's shared configuration form. */
@@ -94,6 +95,12 @@ const CSS = `
 .tps-applies{flex:1;min-width:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
 .tps-unsavedDot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-business-primary);animation:tps-pulse 1.8s ease-in-out infinite}
+.tps-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 2px}
+.tps-subtab{appearance:none;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;padding:3px 12px;cursor:pointer;transition:color .16s ease,border-color .16s ease,background .16s ease}
+.tps-subtab:hover:not([aria-selected="true"]){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
+.tps-subtab[aria-selected="true"]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
+.tps-subtab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+@media (prefers-reduced-motion: reduce){.tps-subtab{transition:none}}
 .tps-discard,.tps-save{appearance:none;border:1px solid transparent;border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer;transition:transform .1s ease,background .16s ease,border-color .16s ease,color .16s ease}
 .tps-discard:active:not(:disabled),.tps-save:active:not(:disabled){transform:scale(.97)}
 .tps-discard{border-color:var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-secondary)}
@@ -128,6 +135,16 @@ function injectSectionCss(): void {
 
 /** Tool tabs with their owned fields, derived from the single-source table. */
 const TOOL_TABS = TOOL_PLUS_TABS
+
+/** Which sub-page of the Bash tab is showing. */
+type BashSubtab = 'behavior' | 'output' | 'commands'
+
+/** Sub-page strip of the Bash tab, in render order. */
+const BASH_SUBTABS: readonly { id: BashSubtab; labelKey: BashPlusLocaleKey }[] = [
+  { id: 'behavior', labelKey: 'cmdSubtabBehavior' },
+  { id: 'output', labelKey: 'cmdSubtabOutput' },
+  { id: 'commands', labelKey: 'cmdSubtabCommands' },
+]
 
 /** All fields the page edits (one shared form). */
 const ALL_FIELDS = TOOL_PLUS_FIELDS
@@ -191,8 +208,13 @@ function ToolTabPanel(props: {
   actionState: Record<string, 'idle' | 'running' | 'done'>
   actionResults: Record<string, { ok: boolean; text: string } | null>
   runAction: (field: ToolPlusField) => void
+  bashSubtab: BashSubtab
+  onBashSubtab: (next: BashSubtab) => void
+  onOpenCommands: () => void
 }): ReactNode {
-  const { tab, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction } = props
+  const { tab, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction, bashSubtab, onBashSubtab, onOpenCommands } = props
+  const commandsView = tab.id === 'bash' && bashSubtab === 'commands'
+  const outputView = tab.id === 'bash' && bashSubtab === 'output'
   if (tab.fields.length === 0) {
     return (
       <div className="tps-empty">
@@ -202,8 +224,13 @@ function ToolTabPanel(props: {
     )
   }
   const owned = new Set(tab.fields)
+  const subtabGroups = tab.id !== 'bash' ? undefined : outputView ? new Set(['output', 'truncation']) : new Set(['behavior', 'timing', 'warmShell'])
   const visible = TOOL_PLUS_FIELDS.filter(
-    field => owned.has(field.name) && isFieldVisible(field, form) && !(tab.id === 'bash' && BASH_INIT_FIELDS.has(field.name)),
+    field => owned.has(field.name)
+      && isFieldVisible(field, form)
+      && !(tab.id === 'bash' && BASH_INIT_FIELDS.has(field.name))
+      && (subtabGroups === undefined || subtabGroups.has(field.group))
+      && !commandsView,
   )
   const toggleControl = (name: string): ToggleControl | undefined =>
     form.groups.flatMap(group => group.toggles).find(control => control.field === name)
@@ -236,7 +263,38 @@ function ToolTabPanel(props: {
 
   return (
     <>
-      {groups.map(group => (
+      {tab.id === 'bash' ? (
+        <div className="tps-subtabs" role="tablist" aria-label={t('tabBash')}>
+          {BASH_SUBTABS.map(sub => (
+            <button
+              key={sub.id}
+              type="button"
+              role="tab"
+              className="tps-subtab"
+              aria-selected={bashSubtab === sub.id}
+              onClick={() => onBashSubtab(sub.id)}
+            >
+              {t(sub.labelKey)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {commandsView ? (
+        <section className="tps-group">
+          <h4 className="tps-groupTitle">{t('cmdTitle')}</h4>
+          <div className="tps-card">
+            <div className="tp-actionField">
+              <div className="tp-actionHead">
+                <div className="tp-actionInfo">
+                  <div className="tp-actionTitle">{t('cmdPanelTitle')}</div>
+                  <div className="tp-actionDesc">{t('cmdIntro')}</div>
+                </div>
+                <button type="button" className="tp-actionButton" disabled={!writable} onClick={onOpenCommands}>{t('cmdOpenPanel')}</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : groups.map(group => (
         <section key={group.group} className="tps-group">
           <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS[group.group] ?? 'title')}</h4>
           <div className="tps-card">
@@ -306,7 +364,7 @@ function ToolTabPanel(props: {
       ))}
       {/* 「全局」tab 的第二个分组：预设清单。它不进表单（没有设置键），自带
           RPC 状态与动作，所以在这里单独挂，而不是在字段表里插一个假字段。 */}
-      {tab.id === 'bash'
+      {tab.id === 'bash' && !commandsView
         ? (
           <BashInitPanel
             t={t}
@@ -437,6 +495,8 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   const [actionResults, setActionResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
   // rmSafe 状态变更后的注入测试结果，以通用 Toast 弹出。
   const [rmSafeToast, setRmSafeToast] = useState<{ text: string; ok: boolean } | null>(null)
+  // Bash 子页：行为 / 输出 / 命令。命令页是独立面板，不参与暂存表单。
+  const [bashSubtab, setBashSubtab] = useState<BashSubtab>('behavior')
 
   // Save, then — only when the rmSafe switch actually changed and is now on —
   // verify the injection (query = ensure + verify) and announce the result
@@ -587,6 +647,10 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   const selectTab = (id: string): void => setActiveId(id)
   const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
   const writable = form.shell.writable
+  // 命令页不写这套设置表单：保存条属于字段草稿，留着会误导。
+  const commandsSubtab = active === 'bash' && bashSubtab === 'commands'
+  // 命令面板体量大，放进独立弹窗（设置面板只有 760px 宽）。
+  const [commandDialogOpen, setCommandDialogOpen] = useState(false)
 
   return (
     <div ref={sectionRef} className="tps-section">
@@ -655,9 +719,13 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               actionState={actionState}
               actionResults={actionResults}
               runAction={runAction}
+              bashSubtab={bashSubtab}
+              onBashSubtab={setBashSubtab}
+              onOpenCommands={() => setCommandDialogOpen(true)}
             />
           </div>
         ))}
+      {commandsSubtab ? null : (
       <div className="tps-footer">
         {form.shell.failed ? <p className="tps-failed" role="status">{t('saveFailed')}</p> : null}
         {!form.shell.failed ? <span className="tps-applies">{t('appliesTo')}</span> : null}
@@ -681,6 +749,10 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
           {form.shell.saving ? t('saving') : t('save')}
         </button>
       </div>
+      )}
+      {commandDialogOpen
+        ? <CommandDialog t={t} writable={writable} onClose={() => setCommandDialogOpen(false)} />
+        : null}
       {rmSafeToast !== null && (
         <Toast
           text={rmSafeToast.text}
