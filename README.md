@@ -132,7 +132,7 @@ Shell 预热（`warmShellEnabled`，默认开）：会话首次执行 bash 后�
 - **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
 - **Node.js** ≥ 24.9
 - **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.2.2-rc.1（pre-release，接口可能变动）
+- 适用于 DeepSeek Harness `dsh` v0.2.2-rc.3 及以上（pre-release，接口可能变动）；更低的宿主（含 0.2.2-rc.1/rc.2 与 0.2.1）会被 `engines` 挡下，不会装上来再把预设弄坏
 
 ## 注意事项
 
