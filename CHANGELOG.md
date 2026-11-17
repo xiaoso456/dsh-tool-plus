@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0-beta.1] - 2026-11-16
+
+> 预发布：安装回到一条命令。Windows 的隐藏控制台改由我们自己的原生包完成，插件因此没有任何构建依赖。
+
+### Changed
+
+- **安装不再需要 `--allow-build`**：Windows 上「给宿主补一个不可见控制台」的逻辑从 koffi FFI 挪进我们自己的原生 addon（`hideHostConsole()`），插件不再依赖 koffi，安装时也就没有安装脚本要放行。README 的两条安装命令都简化成裸 `dsh plugin add` / `pnpm add`。
+- 原生包升到 `18.12.6-plus.2`（多出宿主控制台导出），六个平台包与 `optionalDependencies` 同步。
+- 宿主已有控制台（在终端里跑 CLI）时仍然什么都不做；只有 GUI 宿主才分配并隐藏一个新控制台。
+
+### Fixed
+
+- pnpm 11+ 上不加 `--allow-build=koffi` 时 `dsh plugin add` 以 `ERR_PNPM_IGNORED_BUILDS` 退出 1（包装上了、命令失败）——依赖去掉后这条路不存在了。
+
+[对比 0.2.0-beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.2.0-beta.0...tool-plus-v0.2.0-beta.1)
+
 ## [0.2.0-beta.0] - 2026-11-16
 
 > 预发布：原生包改由我们自己的平台包分发。装上即自带 zip/tree/uuidgen/strings/hexdump/rev/free/bc 八个内建命令，不再只有官方原生包那一套。
