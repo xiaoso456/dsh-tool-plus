@@ -73,6 +73,12 @@ describe('loader candidates: staged cache identity', () => {
     expect(candidates()[0]).toBe(staged)
   })
 
+  it('平台包里没有可比对的 .node（装了一半/被隔离）→ 缓存仍可用，不把整个插件弄挂', () => {
+    const staged = stage('the-only-binary-on-disk')
+    // 故意不 install()：平台包目录在，但里面没有 .node。
+    expect(candidates()[0]).toBe(staged)
+  })
+
   it('解析不到平台包时没有可比对象 → 缓存照旧优先', () => {
     const staged = stage('only-copy')
     const list = candidates({ leafPackageDir: null })

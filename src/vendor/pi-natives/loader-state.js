@@ -208,7 +208,11 @@ function isStagedAddonCurrent({ stagedPath, sourcePath }) {
 	try {
 		return fs.statSync(stagedPath).size === fs.statSync(sourcePath).size;
 	} catch {
-		return false;
+		// Nothing to compare against because the package's own `.node` is gone
+		// (half-finished install, quarantined file, failed extraction). The cache
+		// is then the only thing that can run, so keep upstream's behaviour
+		// instead of refusing everything and failing the whole plugin.
+		return !fs.existsSync(sourcePath);
 	}
 }
 
