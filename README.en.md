@@ -53,14 +53,11 @@ The plugin ships its native addon prebuilt (six platform packages behind `option
 
 #### Desktop
 
-The profile is owned by the desktop app, so `dsh plugin --profile desktop` is refused; install inside the profile directory instead:
+Install it from the desktop app's plugin page by entering the package name:
 
-```sh
-cd ~/.dsh/profiles/desktop
-pnpm add @xiaoso/dsh-tool-plus
+```text
+@xiaoso/dsh-tool-plus
 ```
-
-`pnpm add` only touches dependencies and does not register a bundle, so check that `dsh.profile.bundles` in that directory’s `package.json` lists `@xiaoso/dsh-tool-plus` (add the line on a first install; upgrades need nothing).
 
 ### Local development
 

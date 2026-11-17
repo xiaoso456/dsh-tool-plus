@@ -53,14 +53,11 @@ dsh plugin --profile web add @xiaoso/dsh-tool-plus
 
 #### 桌面端
 
-profile 由桌面应用独占，`dsh plugin --profile desktop` 会被拒；要装新版就进它自己的目录：
+在桌面端的插件页里输入包名安装：
 
-```sh
-cd ~/.dsh/profiles/desktop
-pnpm add @xiaoso/dsh-tool-plus
+```text
+@xiaoso/dsh-tool-plus
 ```
-
-`pnpm add` 只改依赖，不会登记 bundle，所以要确认该目录 `package.json` 的 `dsh.profile.bundles` 里有 `@xiaoso/dsh-tool-plus`（第一次装时手动补一行，之后升级不用动）。
 
 ### 本地开发
 
