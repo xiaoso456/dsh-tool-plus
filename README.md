@@ -49,21 +49,7 @@ DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 e
 dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
-插件自带编译好的原生 addon（`optionalDependencies` 里的六个平台包，按系统自动只装一个），安装时不编译、也没有安装脚本要放行——**不需要** `--allow-build`，也不用 `pnpm approve-builds`。
-
-装完还要让它进 profile 的 bundle 列表。`dsh plugin add` 只写 `dependencies`，不写 `dsh.profile.bundles`，而宿主的 bundle 列表只在建 profile 时生成一次。打开 `~/.dsh/profiles/web/package.json`，把插件加进 `dsh.profile.bundles`：
-
-```json
-{
-  "dsh": {
-    "profile": {
-      "bundles": ["@deepseek-ai/dsh-base", "@xiaoso/dsh-tool-plus"]
-    }
-  }
-}
-```
-
-漏这一步的表现是「包装上了但插件没加载」：工具面还是官方原版，`dsh --profile web --dump-config | grep tool-plus` 也是空的。
+插件自带编译好的原生 addon（`optionalDependencies` 里的六个平台包，按系统自动只装一个），安装时不编译、也没有安装脚本要放行——**不需要** `--allow-build`，也不用 `pnpm approve-builds`。这条命令会顺手把插件登记进 profile 的 `dsh.profile.bundles`，装完就能用。
 
 #### 桌面端
 
@@ -74,7 +60,7 @@ cd ~/.dsh/profiles/desktop
 pnpm add @xiaoso/dsh-tool-plus
 ```
 
-bundle 列表同样手动加一次（同一个 `package.json`）。
+`pnpm add` 只改依赖，不会登记 bundle，所以要确认该目录 `package.json` 的 `dsh.profile.bundles` 里有 `@xiaoso/dsh-tool-plus`（第一次装时手动补一行，之后升级不用动）。
 
 ### 本地开发
 
