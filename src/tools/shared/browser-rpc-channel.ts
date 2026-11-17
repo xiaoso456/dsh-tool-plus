@@ -26,16 +26,36 @@ export const RM_SAFE_STATUS_ENDPOINT = 'rmSafe/status'
 export const NATIVE_STATUS_ENDPOINT = 'native/status'
 
 /**
- * native/status result. `active` means the vendored loader resolved OUR
- * platform package; `fallback` means it will run the upstream addon, whose
- * shell lacks the tool-plus builtins.
+ * native/status result.
+ *
+ * `active` means the **file this process actually loaded** is our platform
+ * package's addon; `fallback` means something else is running. The distinction
+ * matters: an installed-but-shadowed package looks identical to a working one at
+ * the package level, and that is exactly how a stale copy in the shared
+ * `~/.omp/natives/` cache kept the Windows console fix from ever running.
  */
 export type NativeStatusValue =
-  | { status: 'active'; platformTag: string; packageName: string; version: string }
+  | {
+    status: 'active'
+    platformTag: string
+    packageName: string
+    version: string
+    /** Absolute path of the `.node` this process loaded. */
+    loadedPath: string
+  }
   | {
     status: 'fallback'
     platformTag: string
-    reason: 'platform-unsupported' | 'package-missing' | 'version-mismatch'
+    reason:
+      | 'platform-unsupported'
+      | 'package-missing'
+      | 'version-mismatch'
+      /** A different build is loaded (stale cache copy, or upstream's addon). */
+      | 'foreign-addon'
+      /** Our package is installed but nothing has loaded an addon yet. */
+      | 'addon-not-loaded'
+    /** Absolute path of the loaded `.node`, when something is loaded. */
+    loadedPath?: string
   }
 
 /** Payload of a browser/detect call (currently empty). */

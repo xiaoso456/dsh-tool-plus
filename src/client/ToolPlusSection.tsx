@@ -29,14 +29,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { IconCheckOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
 import { TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, type NativeStatusValue, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
 import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
-import { nativeStatusText } from './native-status-text.ts'
+import { nativeStatusShort, nativeStatusText } from './native-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
 import { BashInitPanel } from './BashInitPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
@@ -317,7 +317,7 @@ function ToolTabPanel(props: {
           />
         )
         : null}
-      {tab.id === 'web' ? <NativeStatusRow t={t} /> : null}
+      {tab.id === 'web' ? <NativeStatusPanel t={t} /> : null}
       {tab.id === 'web' ? <PresetPanel t={t} /> : null}
     </>
   )
@@ -327,21 +327,37 @@ function ToolTabPanel(props: {
  * Which native addon this install runs. Read-only host state (`native/status`),
  * not a setting: it sits in the plugin-level tab next to the preset panel
  * because it belongs to the package as a whole rather than to one tool.
+ *
+ * Same shell as the other panels (group heading + bordered card), one row inside.
+ * Collapsed the row is a single line that only states the result; the sentence
+ * explaining what the addon buys you and which package/version was actually loaded
+ * stay behind the toggle.
  */
-function NativeStatusRow(props: { t: (key: BashPlusLocaleKey) => string }): ReactNode {
+function NativeStatusPanel(props: { t: (key: BashPlusLocaleKey) => string }): ReactNode {
   const { t } = props
-  const [state, setState] = useState<{ ok: boolean; text: string } | null>(null)
+  // `pending` is "installed but nothing loaded yet" — neither success nor failure.
+  // Collapsed, the row is one line: title + short state + chevron. The hint and
+  // the full sentence (package, loaded path, what to do) sit behind the toggle —
+  // this row is a status readout, not something to read every time.
+  const [state, setState] = useState<{
+    tone: 'ok' | 'pending' | 'error'
+    short: string
+    detail: string
+  } | null>(null)
+  const [open, setOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
       const rpc = createWebConnectionRpc()
       const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, {})
       if (!result.ok) {
-        setState({ ok: false, text: t('nativeStatusCheckFailed') })
+        const failed = t('nativeStatusCheckFailed')
+        setState({ tone: 'error', short: failed, detail: failed })
         return
       }
       const value = result.value as NativeStatusValue
-      setState({ ok: value.status === 'active', text: nativeStatusText(t, value) })
+      const tone = value.status === 'active' ? 'ok' : value.reason === 'addon-not-loaded' ? 'pending' : 'error'
+      setState({ tone, short: nativeStatusShort(t, value), detail: nativeStatusText(t, value) })
     } catch {
       // No RPC channel (CLI-only deployment): stay silent rather than guess.
     }
@@ -351,31 +367,58 @@ function NativeStatusRow(props: { t: (key: BashPlusLocaleKey) => string }): Reac
     void refresh()
   }, [refresh])
 
+  const tone = state?.tone ?? 'pending'
+
   return (
-    <div className="tp-actionField">
-      <div className="tp-actionHead">
-        <div className="tp-actionInfo">
-          <div className="tp-actionTitle">{t('nativeStatus')}</div>
-          <div className="tp-actionDesc">{t('nativeStatusHint')}</div>
+    <section className="tps-group">
+      <h4 className="tps-groupTitle">{t('nativeStatus')}</h4>
+      <div className="tps-card">
+        <div className="tp-actionField">
+          <div className="tp-actionHead">
+            <button
+              type="button"
+              className="tp-nativeSummary"
+              aria-expanded={open}
+              aria-label={state !== null ? `${t('nativeStatus')} ${state.short}` : t('nativeStatus')}
+              onClick={() => setOpen(value => !value)}
+              data-testid="native-status-toggle"
+            >
+              {state !== null
+                ? (
+                  <span className="tp-nativeState" role="status" data-state={tone}>
+                    {state.short}
+                  </span>
+                )
+                : null}
+              <IconChevronDownOutlineRegular className="tp-nativeChevron" />
+            </button>
+            <button
+              type="button"
+              className="tp-actionButton"
+              onClick={() => {
+                void refresh()
+              }}
+            >
+              {t('nativeStatusRefresh')}
+            </button>
+          </div>
+          {open
+            ? (
+              <div className="tp-nativeDetail">
+                <p className="tp-actionDesc">{t('nativeStatusHint')}</p>
+                {state !== null
+                  ? (
+                    <p className="tp-actionResult" data-state={tone}>
+                      {state.detail}
+                    </p>
+                  )
+                  : null}
+              </div>
+            )
+            : null}
         </div>
-        <button
-          type="button"
-          className="tp-actionButton"
-          onClick={() => {
-            void refresh()
-          }}
-        >
-          {t('nativeStatusRefresh')}
-        </button>
       </div>
-      {state !== null
-        ? (
-          <p className="tp-actionResult" role="status" data-state={state.ok ? 'ok' : 'error'}>
-            {state.text}
-          </p>
-        )
-        : null}
-    </div>
+    </section>
   )
 }
 

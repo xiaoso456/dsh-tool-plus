@@ -113,9 +113,17 @@ export const SETTINGS_ROWS_CSS = `
 .tp-actionResult{margin:0;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;animation:tp-soft-in .22s cubic-bezier(.22,1,.36,1) both}
 .tp-actionResult[data-state="ok"]{color:var(--dsw-alias-label-secondary)}
 .tp-actionResult[data-state="error"]{color:var(--dsw-alias-state-error-primary)}
+.tp-nativeSummary{appearance:none;flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:0;border:0;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:4px}
+.tp-nativeSummary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.tp-nativeState{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:22px;color:var(--dsw-alias-label-primary)}
+.tp-nativeState[data-state="pending"]{color:var(--dsw-alias-label-tertiary)}
+.tp-nativeState[data-state="error"]{color:var(--dsw-alias-state-error-primary)}
+.tp-nativeChevron{flex:none;display:inline-flex;color:var(--dsw-alias-label-tertiary);transition:transform .2s cubic-bezier(.22,1,.36,1)}
+.tp-nativeSummary[aria-expanded="true"] .tp-nativeChevron{transform:rotate(180deg)}
+.tp-nativeDetail{display:flex;flex-direction:column;gap:4px}
 @keyframes tp-soft-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
-  .tp-row,.tp-reset,.tp-reset::after,.tp-input,.tp-selectTrigger,.tp-selectChevron,.tp-switchTrack,.tp-thumb,.tp-actionButton{transition:none}
+  .tp-row,.tp-reset,.tp-reset::after,.tp-input,.tp-selectTrigger,.tp-selectChevron,.tp-nativeChevron,.tp-switchTrack,.tp-thumb,.tp-actionButton{transition:none}
   .tp-invalidText,.tp-actionResult{animation:none}
 }
 `

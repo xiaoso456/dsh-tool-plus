@@ -13,6 +13,7 @@
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import { nativeAddonStatus } from '../../vendor/pi-natives/loader-state.js'
 import type { NativeStatusValue } from './browser-rpc-channel.ts'
 
 /** Platform tags we publish a package for (also the loader's `platformTag`). */
@@ -67,15 +68,62 @@ export function resolveOwnNativePackage(tag: string): { dir: string; version: st
   }
 }
 
+/** What this process actually loaded, as the loader reports it. */
+export interface LoadedAddonFacts {
+  /** Absolute path of the `.node` that was required. */
+  path: string
+  /** The addon carries a different release than the installed pi-natives. */
+  stale: boolean
+  /** The file is our platform package's build (see {@link loadedAddonIsOurs}). */
+  ours: boolean
+}
+
 /**
- * Decide the state from three facts: the host platform, whether our package is
- * installed, and whether it matches the installed pi-natives release. Pure
- * enough to unit-test by injection.
+ * Does `loadedPath` carry the build our platform package ships?
+ *
+ * The path alone cannot answer that: on Windows the loader stages the binary into
+ * `~/.omp/natives/<version>/` before loading it, and that directory is shared by
+ * every distribution that ever shipped the same upstream version — the hole that
+ * let a stale copy shadow the package. A staged file is a byte-for-byte copy, so
+ * a size match against one of the package's `.node` files identifies it, which is
+ * the same rule the loader uses to decide which copy to trust.
+ */
+export function loadedAddonIsOurs(loadedPath: string, packageDir: string): boolean {
+  const normalize = (value: string): string => path.resolve(value).toLowerCase()
+  try {
+    const loaded = normalize(loadedPath)
+    const dir = normalize(packageDir)
+    if (loaded.startsWith(`${dir}${path.sep}`)) return true
+    const size = fs.statSync(loadedPath).size
+    return fs
+      .readdirSync(packageDir)
+      .filter((name) => name.endsWith('.node'))
+      .some((name) => {
+        try {
+          return fs.statSync(path.join(packageDir, name)).size === size
+        } catch {
+          return false
+        }
+      })
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Decide the state from four facts: the host platform, whether our package is
+ * installed, whether it matches the installed pi-natives release, and — the one
+ * that actually matters — which binary the loader required.
+ *
+ * The first three are package-level and cannot see a stale cache copy that won
+ * the load order; `loaded` is runtime-level. The settings row reports the
+ * runtime answer for that reason. Pure enough to unit-test by injection.
  */
 export function nativeStatusFromFacts(facts: {
   tag: string
   pinVersion: string | null
   own: { version: string } | null
+  loaded: LoadedAddonFacts | null
   supported?: readonly string[]
 }): NativeStatusValue {
   const supported = facts.supported ?? NATIVE_PACKAGE_TAGS
@@ -88,20 +136,50 @@ export function nativeStatusFromFacts(facts: {
   if (facts.pinVersion === null || pinBaseOf(facts.own.version) !== facts.pinVersion) {
     return { status: 'fallback', reason: 'version-mismatch', platformTag: facts.tag }
   }
+  if (facts.loaded === null) {
+    return { status: 'fallback', reason: 'addon-not-loaded', platformTag: facts.tag }
+  }
+  if (!facts.loaded.ours) {
+    return {
+      status: 'fallback',
+      reason: 'foreign-addon',
+      platformTag: facts.tag,
+      loadedPath: facts.loaded.path,
+    }
+  }
+  if (facts.loaded.stale) {
+    return {
+      status: 'fallback',
+      reason: 'version-mismatch',
+      platformTag: facts.tag,
+      loadedPath: facts.loaded.path,
+    }
+  }
   return {
     status: 'active',
     platformTag: facts.tag,
     packageName: nativePackageName(facts.tag),
     version: facts.own.version,
+    loadedPath: facts.loaded.path,
   }
 }
 
-/** Read the live status of this process. */
+/** Read the live status of this process: what is installed, and what actually loaded. */
 export function readNativeStatus(): NativeStatusValue {
   const tag = `${process.platform}-${process.arch}`
+  const own = resolveOwnNativePackage(tag)
+  const addon = nativeAddonStatus()
   return nativeStatusFromFacts({
     tag,
     pinVersion: installedPinVersion(),
-    own: resolveOwnNativePackage(tag),
+    own,
+    loaded:
+      addon === null
+        ? null
+        : {
+          path: addon.path,
+          stale: addon.stale,
+          ours: own !== null && loadedAddonIsOurs(addon.path, own.dir),
+        },
   })
 }

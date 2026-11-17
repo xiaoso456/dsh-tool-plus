@@ -13,6 +13,26 @@ export function nativeFallbackReasonKey(
     case 'platform-unsupported': return 'nativeStatusReasonPlatformUnsupported'
     case 'package-missing': return 'nativeStatusReasonPackageMissing'
     case 'version-mismatch': return 'nativeStatusReasonVersionMismatch'
+    case 'foreign-addon': return 'nativeStatusReasonForeignAddon'
+    case 'addon-not-loaded': return 'nativeStatusReasonAddonNotLoaded'
+  }
+}
+
+/**
+ * Short label for the collapsed row: one glance, no sentence.
+ *
+ * The full sentence (:func:`nativeStatusText`) is what the row shows once it is
+ * expanded — the hint and the reason both live there, so the resting state stays
+ * one line.
+ */
+export function nativeStatusShort(t: (key: BashPlusLocaleKey) => string, value: NativeStatusValue): string {
+  if (value.status === 'active') return t('nativeStatusShortActive').replace('{version}', value.version)
+  switch (value.reason) {
+    case 'platform-unsupported': return t('nativeStatusShortPlatformUnsupported')
+    case 'package-missing': return t('nativeStatusShortPackageMissing')
+    case 'version-mismatch': return t('nativeStatusShortVersionMismatch')
+    case 'foreign-addon': return t('nativeStatusShortForeignAddon')
+    case 'addon-not-loaded': return t('nativeStatusShortAddonNotLoaded')
   }
 }
 
@@ -21,5 +41,8 @@ export function nativeStatusText(t: (key: BashPlusLocaleKey) => string, value: N
   if (value.status === 'active') {
     return t('nativeStatusActive').replace('{package}', value.packageName).replace('{version}', value.version)
   }
-  return t('nativeStatusFallback').replace('{reason}', t(nativeFallbackReasonKey(value.reason)))
+  // `foreign-addon` names the offending file: the whole point of that state is
+  // that the package side looks healthy, so the path is the only evidence.
+  const reason = t(nativeFallbackReasonKey(value.reason)).replace('{path}', value.loadedPath ?? '?')
+  return t('nativeStatusFallback').replace('{reason}', reason)
 }

@@ -173,10 +173,13 @@ export function apply(ctx: Context, config: Config = {}): void {
   {
     const nativeStatus = readNativeStatus()
     if (nativeStatus.status === 'active') {
-      runtimeLogger().info(`native addon: ${nativeStatus.packageName}@${nativeStatus.version}`)
+      runtimeLogger().info(`native addon: ${nativeStatus.packageName}@${nativeStatus.version} (${nativeStatus.loadedPath})`)
     } else {
+      // `loadedPath` is the only evidence for `foreign-addon`: the package side
+      // looks healthy there, so name the file that actually ran.
+      const loaded = nativeStatus.loadedPath === undefined ? '' : `, loaded ${nativeStatus.loadedPath}`
       runtimeLogger().warn(
-        `native addon: upstream package (${nativeStatus.reason}); zip/tree/uuidgen/strings/hexdump/rev/free/bc are unavailable`,
+        `native addon: not our build (${nativeStatus.reason}${loaded}); zip/tree/uuidgen/strings/hexdump/rev/free/bc are unavailable`,
       )
     }
   }
