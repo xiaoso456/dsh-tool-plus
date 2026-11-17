@@ -11,7 +11,7 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import {
   COMMAND_APPLY_ENDPOINT,
   COMMAND_LIST_ENDPOINT,
@@ -31,6 +31,19 @@ type Translate = (key: BashPlusLocaleKey) => string
 /** Row height of the virtual list; group headers use the same stride. */
 const ROW_H = 34
 
+/** What a command does when the user has not overridden it. */
+function defaultActiveOf(entry: CommandEntryValue): CommandEntryValue['active'] {
+  if (entry.origin === 'custom') return 'custom'
+  if (entry.origin === 'sys') return 'system'
+  if (entry.origin === 'fn') return 'function'
+  return 'builtin'
+}
+
+/** Whether this command runs the way its origin implies, or was pointed elsewhere. */
+function overridden(entry: CommandEntryValue): boolean {
+  return entry.active !== defaultActiveOf(entry) || entry.customPath !== undefined
+}
+
 /** Origin → group heading and note suffix. */
 const GROUP_ORDER: readonly { origin: CommandEntryValue['origin']; label: BashPlusLocaleKey }[] = [
   { origin: 'custom', label: 'cmdGroupCustom' },
@@ -47,82 +60,97 @@ type Filter = 'builtin' | 'conflict' | 'all' | CommandEntryValue['origin']
 /** One rendered line of the list: a group heading or a command row. */
 type Row = { kind: 'group'; key: string; label: string; count: number } | { kind: 'item'; entry: CommandEntryValue }
 
-const CSS = `.tpc-root{display:flex;flex-direction:column;gap:0;min-height:0}
-.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 45%,transparent)}
-.tpc-dialog{position:relative;box-sizing:border-box;display:flex;flex-direction:column;gap:0;width:min(1120px,96vw);height:min(760px,88vh);padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
-.tpc-dialogHead{display:flex;align-items:center;gap:12px;flex:none;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+const CSS = `.tpc-root{--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));display:flex;flex-direction:column;gap:0;min-height:0}
+.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:rgb(0 0 0 / .45);animation:tpc-fade .16s ease both}
+[data-ds-dark-theme] .tpc-overlay{background:rgb(0 0 0 / .62)}
+.tpc-dialog{position:relative;box-sizing:border-box;display:flex;flex-direction:column;gap:0;width:min(1120px,96vw);height:min(760px,88vh);padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden;animation:tpc-rise .24s cubic-bezier(.22,1,.36,1) both}
+@keyframes tpc-fade{from{opacity:0}}
+@keyframes tpc-rise{from{opacity:0;transform:translateY(8px)}}
+.tpc-dialogHead{display:flex;align-items:center;gap:12px;flex:none;box-sizing:border-box;min-height:56px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-dialogTitle{margin:0;font-size:15px;font-weight:600;line-height:23px;color:var(--dsw-alias-label-primary)}
 .tpc-dialogHead .tpc-btn{margin-left:auto}
+.tpc-dialogHead .tpc-confirmText{margin-left:auto;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tpc-dialogHead .tpc-confirmText ~ .tpc-btn{margin-left:0}
+.tpc-btnDanger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,var(--dsw-alias-border-l3))}
+.tpc-btnDanger:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
 .tpc-root[data-variant='dialog']{flex:1;min-height:0}
 .tpc-root[data-variant='dialog'] .tps-card{flex:1;min-height:0;overflow:hidden;padding:0;gap:0;border:0;border-radius:0;background:none}
 .tpc-surface{flex:1;min-height:0;display:grid;grid-template-columns:176px 300px minmax(0,1fr);overflow:hidden}
 .tpc-railCol{display:flex;flex-direction:column;gap:4px;min-height:0;padding:10px 8px;border-right:1px solid var(--dsw-alias-border-l2);overflow-y:auto}
 .tpc-railGroup{display:flex;flex-direction:column;gap:2px}
 .tpc-railGroup + .tpc-railGroup{margin-top:6px}
-.tpc-railTitle{padding:4px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.tpc-railTitle{padding:4px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .tpc-railBtn{appearance:none;display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:18px;text-align:left;cursor:pointer}
-.tpc-railBtn:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 10%,transparent);color:var(--dsw-alias-label-primary)}
-.tpc-railBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-state-business-primary)}
+.tpc-railBtn{transition:background-color .12s ease,color .12s ease}
+.tpc-railBtn:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent);color:var(--dsw-alias-label-primary)}
+.tpc-railBtn:active{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 20%,transparent)}
+.tpc-railBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--tpc-ink-accent)}
 .tpc-railBtn em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .tpc-railBtn[aria-pressed='true'] em{color:inherit}
-.tpc-railFoot{margin-top:auto;padding:8px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.tpc-railFoot{margin-top:auto;padding:8px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .tpc-listCol{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l2)}
 .tpc-listHead{flex:none;display:flex;align-items:center;gap:6px;padding:10px 12px}
 .tpc-listHead .tpc-search{flex:1;min-width:0}
-.tpc-listHead .tpc-btn{padding:5px 10px}
-.tpc-search{height:32px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 11px}
-.tpc-search:focus-visible{outline:none;border-color:var(--dsw-alias-state-business-primary)}
-.tpc-btn{appearance:none;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:1.5;padding:5px 12px;cursor:pointer;white-space:nowrap}
+.tpc-listHead .tpc-btn{padding:0 10px}
+.tpc-search{height:32px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 2%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 11px}
+.tpc-search:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.tpc-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:1;padding:0 12px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease,transform .1s ease}
 .tpc-btn:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
+.tpc-btn:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent);transform:scale(.98)}
 .tpc-btn:disabled{opacity:.4;cursor:default}
-.tpc-btnPrimary{background:var(--dsw-alias-label-primary);border-color:transparent;color:var(--dsw-alias-bg-layer-1)}
-.tpc-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-bg-layer-1)}
+.tpc-btnPrimary{background:var(--dsw-alias-button-primary-fill);border-color:transparent;color:var(--dsw-alias-label-primary-inverted)}
+.tpc-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-inverted)}
 .tpc-btnDanger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 40%,var(--dsw-alias-border-l2))}
 .tpc-btnDanger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
-.tpc-addRow{appearance:none;display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:9px 12px;border:0;border-bottom:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;line-height:18px;text-align:left;cursor:pointer}
+.tpc-addRow{appearance:none;display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:9px 12px;border:0;border-bottom:1px solid var(--dsw-alias-border-l2);background:none;color:var(--tpc-ink-accent);font:inherit;font-size:13px;line-height:18px;text-align:left;cursor:pointer;transition:background-color .12s ease}
 .tpc-addRow:hover:not(:disabled){background:var(--dsw-alias-state-business-tertiary)}
+.tpc-addRow:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent)}
 .tpc-addRow:disabled{opacity:.4;cursor:default}
 .tpc-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .tpc-row{display:flex;align-items:center;gap:9px;padding:0 12px;box-sizing:border-box;cursor:pointer;font-size:13px;line-height:18px;color:var(--dsw-alias-label-primary)}
-.tpc-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 9%,transparent)}
+.tpc-row{transition:background-color .12s ease}
+.tpc-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent)}
+.tpc-row:active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent)}
 .tpc-row[data-selected='true']{background:var(--dsw-alias-state-business-tertiary)}
-.tpc-row[data-selected='true'] .tpc-rowName{color:var(--dsw-alias-state-business-primary)}
+.tpc-row[data-selected='true'] .tpc-rowName{color:var(--tpc-ink-accent)}
+.tpc-ovdot{flex:none;box-sizing:border-box;width:5px;height:5px;border-radius:50%;background:var(--tpc-ink-accent)}
 .tpc-rowName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-.tpc-group{display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;font-size:11px;line-height:34px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l2)}
-.tpc-group em{margin-left:auto;font-style:normal;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
-.tpc-badge{flex:none;border-radius:999px;padding:0 7px;font-size:10.5px;line-height:17px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);white-space:nowrap}
-.tpc-badge[data-origin='new']{color:var(--dsw-alias-state-business-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 35%,var(--dsw-alias-border-l2))}
+.tpc-group{display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;font-size:11px;line-height:34px;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2)}
+.tpc-group em{margin-left:auto;font-style:normal;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
+.tpc-badge{flex:none;border-radius:999px;padding:0 7px;font-size:10.5px;line-height:17px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.tpc-badge[data-origin='new']{color:var(--tpc-ink-accent);border-color:color-mix(in srgb,var(--tpc-ink-accent) 35%,var(--dsw-alias-border-l2))}
 .tpc-badge[data-origin='custom']{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 35%,var(--dsw-alias-border-l2))}
 .tpc-badge[data-origin='fn']{border-style:dashed}
-.tpc-detailCol{display:flex;flex-direction:column;min-height:0}
+.tpc-detailCol{position:relative;display:flex;flex-direction:column;min-height:0}
 .tpc-detailHead{flex:none;display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-who{flex:1 1 auto;min-width:0}
 .tpc-name{margin:0;font-size:15px;font-weight:600;line-height:22px;color:var(--dsw-alias-label-primary)}
-.tpc-detailHead .tpc-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;line-height:25px;letter-spacing:-.01em}
-.tpc-path{min-width:0;margin:1px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.tpc-detailHead .tpc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;line-height:25px;letter-spacing:-.01em}
+.tpc-path{min-width:0;margin:1px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .tpc-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .tpc-headActions{flex:none;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
-.tpc-confirmBar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 8%,transparent)}
+.tpc-headActions .tpc-btn{min-width:76px}
+.tpc-confirmBar{position:absolute;left:12px;right:12px;bottom:12px;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-sizing:border-box;padding:10px 12px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 30%,var(--dsw-alias-border-l2));border-radius:10px;background:var(--dsw-alias-bg-layer-1);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tpc-detailScroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:14px 16px}
 .tpc-field{display:flex;flex-direction:column;gap:6px}
-.tpc-fieldLabel{font-size:12px;color:var(--dsw-alias-label-tertiary)}
-.tpc-seg{display:flex;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;overflow:hidden}
-.tpc-segBtn{flex:1 1 0;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;padding:7px 8px;cursor:pointer;white-space:nowrap}
+.tpc-fieldLabel{font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-seg{display:flex;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;overflow:hidden}
+.tpc-segBtn{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;padding:0 8px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
 .tpc-segBtn+ .tpc-segBtn{border-left:1px solid var(--dsw-alias-border-l2)}
-.tpc-segBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-state-business-primary)}
+.tpc-segBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--tpc-ink-accent)}
 .tpc-segBtn:disabled{opacity:.4;cursor:default}
-.tpc-input{box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;padding:0 10px}
-.tpc-input:focus-visible{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.tpc-input{box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;padding:0 10px}
+.tpc-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
 .tpc-kv{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px 12px;margin:0;font-size:12px;line-height:18px}
-.tpc-kv dt{color:var(--dsw-alias-label-tertiary)}
+.tpc-kv dt{color:var(--dsw-alias-label-secondary)}
 .tpc-kv dd{margin:0;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;word-break:break-word}
-.tpc-impact{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.tpc-impactTitle{font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary)}
-.tpc-impactRow{display:flex;align-items:center;gap:8px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
-.tpc-impactRow i{flex:none;width:40px;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
-.tpc-impactRow b{font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dsw-alias-state-business-primary)}
-.tpc-impactRow em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
-.tpc-console{margin:0;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-base);padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere;min-height:74px;max-height:180px;overflow-y:auto}
+.tpc-impact{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-layer-1));padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.tpc-impactTitle{font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactRow{display:flex;align-items:center;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactRow i{flex:none;width:40px;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactRow b{font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--tpc-ink-accent)}
+.tpc-impactRow em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-console{margin:0;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-top-color:color-mix(in srgb,var(--dsw-alias-label-primary) 14%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-alias-bg-layer-1));padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere;min-height:74px;max-height:180px;overflow-y:auto}
 .tpc-detailScroll .tpc-console{flex:none;height:74px;max-height:none}
 .tpc-formField{display:flex;flex-direction:column;gap:5px}
 .tpc-formLabel{font-size:12px;color:var(--dsw-alias-label-tertiary)}
@@ -134,10 +162,11 @@ const CSS = `.tpc-root{display:flex;flex-direction:column;gap:0;min-height:0}
 .tpc-root[data-variant='dialog'] .tps-card > .tpc-toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:6;box-sizing:border-box;max-width:min(560px,calc(100% - 64px));margin:0;padding:8px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-1);font-size:12.5px;line-height:18px;text-align:center;pointer-events:none}
 .tpc-toast[data-tone='ok']{color:var(--dsw-alias-state-success-primary)}
 .tpc-toast[data-tone='error']{color:var(--dsw-alias-state-error-primary)}
-.tpc-empty{padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-tertiary)}
-.tpc-skeleton{padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-tertiary)}
-@media (max-width:1000px){.tpc-surface{grid-template-columns:160px minmax(0,42%) minmax(0,1fr)}}
-@media (prefers-reduced-motion: reduce){.tpc-row,.tpc-btn{transition:none}}`
+.tpc-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-skeleton{padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+@media (max-width:1000px){.tpc-surface{grid-template-columns:160px clamp(200px,32vw,300px) minmax(0,1fr)}}
+@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow{transition:none}
+.tpc-btn:active:not(:disabled){transform:none}}`
 
 let cssInjected = false
 function injectCss(): void {
@@ -203,9 +232,11 @@ function shortPathOf(entry: CommandEntryValue): string {
  * Render the command panel.
  * @param props.t - locale lookup.
  * @param props.writable - whether this deployment can save (no profile editor → read-only).
+ * @param props.onClose - unmount the dialog; only the dialog variant closes itself, and
+ *   only through {@link requestClose}, so every exit path shares the unsaved-draft guard.
  */
-export function CommandPanel(props: { t: Translate; writable: boolean; variant?: 'inline' | 'dialog' }): ReactNode {
-  const { t, writable, variant = 'inline' } = props
+export function CommandPanel(props: { t: Translate; writable: boolean; variant?: 'inline' | 'dialog'; onClose?: () => void }): ReactNode {
+  const { t, writable, variant = 'inline', onClose } = props
   injectCss()
 
   const [catalog, setCatalog] = useState<CommandListValue | null>(null)
@@ -225,6 +256,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   const [addPath, setAddPath] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState(false)
+  const [closeConfirm, setCloseConfirm] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(420)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -314,6 +346,21 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
     setSelected(filtered[0].name)
   }, [filtered, selected])
 
+  // Filtering replaces the row set under a virtual window that keeps its own
+  // scroll offset: without this the offset outlives the rows and the selected
+  // command sits hundreds of pixels below the fold (82/82 frames off-screen).
+  useEffect(() => {
+    const node = listRef.current
+    if (node !== null && node.scrollTop !== 0) node.scrollTop = 0
+    setScrollTop(0)
+  }, [filter, q])
+
+  const emptyText = q.trim().length > 0
+    ? fill(t('cmdEmptyQuery'), { q: q.trim() })
+    : filter === 'custom' ? t('cmdEmptyCustom')
+      : filter === 'conflict' ? t('cmdEmptyConflict')
+        : t('cmdEmptyFilter')
+
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = []
     for (const group of GROUP_ORDER) {
@@ -330,6 +377,28 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   const window_ = rows.slice(start, end)
 
   const selectedEntry = entries.find(entry => entry.name === selected) ?? null
+
+  // Keep the selected row physically visible: keyboard selection, a fresh scan
+  // and a filter change all move the highlight without touching scrollTop.
+  useEffect(() => {
+    const node = listRef.current
+    if (node === null || selected === null) return
+    const index = rows.findIndex(row => row.kind === 'item' && row.entry.name === selected)
+    if (index < 0) return
+    const top = index * ROW_H
+    const bottom = top + ROW_H
+    if (top < node.scrollTop) {
+      node.scrollTop = top
+      setScrollTop(top)
+      return
+    }
+    const visibleBottom = node.scrollTop + node.clientHeight
+    if (bottom > visibleBottom) {
+      const next = Math.max(0, bottom - node.clientHeight)
+      node.scrollTop = next
+      setScrollTop(next)
+    }
+  }, [selected, rows])
 
   const lastSelected = useRef<string | null>(null)
   useEffect(() => {
@@ -372,7 +441,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
       // commands for a click that changes nothing is the bug this guards.
       if (value.changed === false) return true
       await scan(true)
-      setToast({ tone: 'ok', text: t('cmdSaved') })
+      setToast({ tone: 'ok', text: nextMode === 'builtin' ? t('cmdResetDone') : t('cmdSaved') })
       return true
     } catch (error) {
       setToast({ tone: 'error', text: fill(t('cmdSaveFailed'), { reason: error instanceof Error ? error.message : String(error) }) })
@@ -400,6 +469,68 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
       setProbing(false)
     }
   }, [selected, t])
+
+  const onListKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (rows.length === 0) return
+    const items = rows.flatMap(row => (row.kind === 'item' ? [row.entry.name] : []))
+    if (items.length === 0) return
+    const at = selected === null ? -1 : items.indexOf(selected)
+    let next: string | null = null
+    if (event.key === 'ArrowDown') next = items[Math.min(items.length - 1, at + 1)]
+    else if (event.key === 'ArrowUp') next = items[Math.max(0, at - 1)]
+    else if (event.key === 'Home') next = items[0]
+    else if (event.key === 'End') next = items[items.length - 1]
+    else if (event.key === 'Enter' && selected !== null) {
+      event.preventDefault()
+      void runProbe()
+      return
+    }
+    if (next === null) return
+    event.preventDefault()
+    setAddOpen(false)
+    setAddError(null)
+    setSelected(next)
+  }, [rows, selected, runProbe])
+
+  // Mirrors the state the 保存 button reads: the segment no longer matches what
+  // the host has stored, so leaving now would silently drop the choice.
+  const dirty = selectedEntry !== null
+    && (mode !== modeOf(selectedEntry) || (mode === 'custom' && customPath.trim() !== (selectedEntry.customPath ?? '')))
+  const draftDirty = addOpen && (addName.trim().length > 0 || addPath.trim().length > 0)
+  const unsaved = dirty || draftDirty
+
+  // Esc, the 关闭 button and a backdrop click all land here: with an edit in
+  // flight the dialog asks first, because the segment and the path field are
+  // not persisted until 保存 and there is no draft recovery behind them.
+  const requestClose = useCallback((): void => {
+    if (unsaved) {
+      setCloseConfirm(true)
+      return
+    }
+    onClose?.()
+  }, [unsaved, onClose])
+
+  useEffect(() => {
+    if (!unsaved && closeConfirm) setCloseConfirm(false)
+  }, [unsaved, closeConfirm])
+
+  useEffect(() => {
+    if (variant !== 'dialog') return
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      // Capture + stopPropagation: the settings dialog underneath listens for
+      // Escape too and would tear down the whole page along with this panel.
+      event.stopPropagation()
+      event.preventDefault()
+      if (closeConfirm) {
+        setCloseConfirm(false)
+        return
+      }
+      requestClose()
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [variant, closeConfirm, requestClose])
 
   const openAdd = useCallback((): void => {
     setAddName('')
@@ -469,10 +600,8 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
       : mode === 'system' ? (selectedEntry.systemPath ?? t('cmdModeSystem'))
         : t('cmdModeBuiltin')
   const currentMode: 'builtin' | 'system' | 'custom' = selectedEntry === null ? 'builtin' : modeOf(selectedEntry)
-  const dirty = selectedEntry !== null
-    && (mode !== currentMode || (mode === 'custom' && customPath.trim() !== (selectedEntry.customPath ?? '')))
 
-  return (
+  const shell = (
     <section className="tps-group tpc-root" data-variant={variant}>
       {variant === 'inline' ? <h4 className="tps-groupTitle">{t('cmdTitle')}</h4> : null}
       <div className="tps-card" style={variant === 'inline' ? { paddingTop: 12, paddingBottom: 12, gap: 8 } : undefined}>
@@ -522,13 +651,30 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
               className="tpc-list"
               ref={listRef}
               onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
+              onKeyDown={onListKeyDown}
+              tabIndex={0}
               role="listbox"
+              aria-activedescendant={selected === null ? undefined : 'tpc-opt-' + selected}
               aria-label={t('cmdTitle')}
             >
-              {catalog === null && loadError === null
-                ? <div className="tpc-skeleton">{t('cmdLoading')}</div>
+              {catalog === null && loadError !== null
+                ? (
+                  <div className="tpc-empty">
+                    <span>{fill(t('cmdFailed'), { reason: loadError })}</span>
+                    <button type="button" className="tpc-btn" disabled={scanning} onClick={() => { void scan(true) }}>{t('cmdScanShort')}</button>
+                  </div>
+                )
+                : catalog === null
+                  ? <div className="tpc-skeleton">{t('cmdLoading')}</div>
                 : rows.length === 0
-                  ? <div className="tpc-empty">{t('cmdEmpty')}</div>
+                  ? (
+                    <div className="tpc-empty">
+                      <span>{emptyText}</span>
+                      {q.trim().length > 0
+                        ? <button type="button" className="tpc-btn" onClick={() => setQ('')}>{t('cmdEmptyClear')}</button>
+                        : null}
+                    </div>
+                  )
                   : (
                     <div style={{ height: rows.length * ROW_H, position: 'relative' }}>
                       {window_.map((row, index) => {
@@ -544,6 +690,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                         return (
                           <div
                             key={entry.name}
+                            id={'tpc-opt-' + entry.name}
                             className="tpc-row"
                             role="option"
                             aria-selected={!addOpen && entry.name === selected}
@@ -551,7 +698,8 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                             style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H }}
                             onClick={() => { setAddOpen(false); setAddError(null); setSelected(entry.name) }}
                           >
-                            <span className="tpc-rowName">{entry.name}</span>
+                            <span className="tpc-rowName" title={entry.name}>{entry.name}</span>
+                            {overridden(entry) ? <span className="tpc-ovdot" aria-label={t('cmdOverridden')} role="img" /> : null}
                             <span className="tpc-badge" data-origin={entry.origin}>{originLabel(t, entry.origin)}</span>
                           </div>
                         )
@@ -622,16 +770,17 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                 </>
               )
               : selectedEntry === null
-                ? <div className="tpc-empty">{t('cmdEmpty')}</div>
+                ? <div className="tpc-empty"><span>{t('cmdPickOne')}</span></div>
                 : (
                   <>
                     <div className="tpc-detailHead">
                       <div className="tpc-who">
                         <h5 className="tpc-name">{selectedEntry.name}</h5>
-                        <p className="tpc-path">{shortPathOf(selectedEntry)}</p>
+                        <p className="tpc-path" title={implPathOf(selectedEntry)}>{shortPathOf(selectedEntry)}</p>
                         <div className="tpc-badges">
                           <span className="tpc-badge" data-origin={selectedEntry.origin}>{originLabel(t, selectedEntry.origin)}</span>
-                          <span className="tpc-badge">{t('cmdCurrent')} {activeLabel(t, selectedEntry)}</span>
+                          <span className="tpc-badge">{t('cmdCurrent')} · {activeLabel(t, selectedEntry)}</span>
+                          {dirty ? <span className="tpc-badge" data-origin="custom">{t('cmdUnsaved')}</span> : null}
                         </div>
                       </div>
                       <div className="tpc-headActions">
@@ -719,5 +868,29 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
         </div>
       </div>
     </section>
+  )
+
+  if (variant !== 'dialog') return shell
+  return (
+    <div
+      className="tpc-overlay"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose() }}
+    >
+      <div className="tpc-dialog" role="dialog" aria-modal="true" aria-label={t('cmdPanelTitle')}>
+        <div className="tpc-dialogHead">
+          <h3 className="tpc-dialogTitle">{t('cmdPanelTitle')}</h3>
+          {closeConfirm
+            ? (
+              <>
+                <span className="tpc-confirmText">{t('cmdCloseHint')}</span>
+                <button type="button" className="tpc-btn" onClick={() => setCloseConfirm(false)}>{t('cmdCloseKeep')}</button>
+                <button type="button" className="tpc-btn tpc-btnDanger" onClick={() => { setCloseConfirm(false); onClose?.() }}>{t('cmdCloseDiscard')}</button>
+              </>
+            )
+            : <button type="button" className="tpc-btn" onClick={requestClose}>{t('cmdClose')}</button>}
+        </div>
+        {shell}
+      </div>
+    </div>
   )
 }

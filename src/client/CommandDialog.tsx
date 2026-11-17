@@ -1,10 +1,13 @@
 /**
- * The command panel as a large modal.
+ * Mount the command panel as a modal.
  *
- * The settings pane is ~760px wide; a two-column list + detail with a 1337-row
- * virtual list needs more room than that. The panel therefore opens as its own
- * dialog (portal to `body`, above the settings drawer) sized to the viewport,
- * and the Bash tab keeps a one-row entry that launches it.
+ * The settings pane is ~760px wide; a two-column list + detail over a 1337-row
+ * virtual list needs more room than that, so the panel opens as its own dialog
+ * (portal to `body`, above the settings drawer). This module owns only the
+ * portal and the keyboard contract: while it is mounted, Tab cannot leave the
+ * panel, and the element that opened it gets focus back on close. Everything
+ * the user can see or dismiss lives in {@link CommandPanel}, which keeps the
+ * three exit paths (Esc, backdrop, `关闭`) on one shared guard.
  * @module @xiaoso/dsh-tool-plus/client
  */
 
@@ -13,47 +16,73 @@ import { createPortal } from 'react-dom'
 import { CommandPanel } from './CommandPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 
+/** Everything Tab is allowed to reach inside the dialog. */
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+
 /**
  * Render the command dialog.
  * @param props.t - locale lookup.
  * @param props.writable - whether this deployment can save choices.
- * @param props.onClose - close the dialog (Esc, backdrop, close button).
+ * @param props.onClose - unmount the dialog.
  */
 export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; writable: boolean; onClose: () => void }): ReactNode {
   const { t, writable, onClose } = props
-  const closeRef = useRef<HTMLButtonElement | null>(null)
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  /** The control that opened the panel; focus returns here on close. */
+  const opener = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      // Capture phase + stopPropagation: the settings dialog underneath listens
-      // for Escape on its own and would close the whole page along with us.
-      event.stopPropagation()
-      event.preventDefault()
-      onClose()
-    }
-    document.addEventListener('keydown', onKey, true)
-    const timer = window.setTimeout(() => closeRef.current?.focus(), 30)
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const timer = window.setTimeout(() => {
+      const first = hostRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+      first?.focus()
+    }, 30)
     return () => {
       window.clearTimeout(timer)
-      document.removeEventListener('keydown', onKey, true)
+      const back = opener.current
+      // Only steal focus back if the panel still owns it: the settings drawer
+      // may have legitimately moved focus elsewhere in the meantime.
+      const owned = document.activeElement === null
+        || document.activeElement === document.body
+        || hostRef.current?.contains(document.activeElement) === true
+      if (owned && back !== null && back.isConnected) back.focus()
     }
-  }, [onClose])
+  }, [])
+
+  /**
+   * Keep Tab inside the panel, in the capture phase on purpose.
+   *
+   * The settings dialog underneath runs its own Tab cycle at the document's
+   * bubble phase and yanks focus back the moment it sees Tab, so the event is
+   * stopped here before it can reach it. Both the wrap and the stop live in the
+   * same capture handler: stopping the event in a separate capture listener
+   * would also suppress this element's own bubble handler.
+   */
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'Tab') return
+    event.stopPropagation()
+    const nodes = [...(hostRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])]
+      .filter(node => node.offsetParent !== null || node === document.activeElement)
+    if (nodes.length === 0) return
+    const first = nodes[0]
+    const last = nodes[nodes.length - 1]
+    const current = document.activeElement as HTMLElement | null
+    if (event.shiftKey && (current === first || current === null || !nodes.includes(current))) {
+      event.preventDefault()
+      last.focus()
+      return
+    }
+    if (!event.shiftKey && (current === last || current === null || !nodes.includes(current))) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
 
   if (typeof document === 'undefined') return null
 
   return createPortal(
-    <div
-      className="tpc-overlay"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
-    >
-      <div className="tpc-dialog" role="dialog" aria-modal="true" aria-label={t('cmdPanelTitle')}>
-        <div className="tpc-dialogHead">
-          <h3 className="tpc-dialogTitle">{t('cmdPanelTitle')}</h3>
-          <button ref={closeRef} type="button" className="tpc-btn" onClick={onClose}>{t('cmdClose')}</button>
-        </div>
-        <CommandPanel t={t} writable={writable} variant="dialog" />
-      </div>
+    <div ref={hostRef} onKeyDownCapture={onKeyDown}>
+      <CommandPanel t={t} writable={writable} variant="dialog" onClose={onClose} />
     </div>,
     document.body,
   )
