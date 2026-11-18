@@ -10,13 +10,16 @@
 import * as fs from 'node:fs'
 import {
   COMMAND_APPLY_ENDPOINT,
+  COMMAND_BROWSE_ENDPOINT,
   COMMAND_LIST_ENDPOINT,
   COMMAND_PROBE_ENDPOINT,
   type CommandApplyPayload,
   type CommandApplyValue,
+  type CommandBrowsePayload,
   type CommandListValue,
   type CommandProbeValue,
 } from '../tools/shared/browser-rpc-channel.ts'
+import { browseDirectory } from './command-browse.ts'
 import { invalidateCommandCatalog, probeCommand, scanCommands } from '../tools/bash/command-catalog.ts'
 import { readCommandSettings, writeCommandSettings, type CommandSettings } from '../tools/bash/command-config.ts'
 import { cleanupSnapshots } from '../tools/bash/shell-snapshot.ts'
@@ -107,6 +110,10 @@ export async function handleCommandEndpoint(endpoint: string, payload: unknown):
       const lines = await probeCommand(name)
       const value: CommandProbeValue = { lines }
       return { ok: true, value }
+    }
+    if (endpoint === COMMAND_BROWSE_ENDPOINT) {
+      const request = (payload ?? {}) as CommandBrowsePayload
+      return { ok: true, value: browseDirectory(request) }
     }
     if (endpoint === COMMAND_APPLY_ENDPOINT) {
       const parsed = applyPayload(payload)

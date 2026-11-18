@@ -26,6 +26,7 @@ import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
 import { ClippedText } from './tooltip.tsx'
 import { installFocusModality, useInert } from './rows.tsx'
+import { PathPicker } from './PathPicker.tsx'
 
 /** Locale lookup the section passes down. */
 type Translate = (key: BashPlusLocaleKey) => string
@@ -98,7 +99,10 @@ const CSS = `.tpc-overlay,.tpc-root{--tpc-fs-lg:15px;--tpc-fs-md:13px;--tpc-fs-s
 .tpc-overlay[data-closing='true'] .tpc-dialog{transform:translateY(4px);transition-duration:.15s}
 /* 详情换对象时的一次轻推：只碰 opacity 与 4px 位移，不动硬件布局。 */
 @keyframes tpc-detail-in{from{opacity:0;transform:translateY(4px)}}
-.tpc-detailBody{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;animation:tpc-detail-in .16s cubic-bezier(.22,1,.36,1)}
+/* 只有「进新增表单」这种模式切换才淡入；换命令是列表里的连续选择，每次都从
+   透明重放一遍就成了闪烁（实测每次切换有 2 帧完全不透明为 0）。 */
+.tpc-detailBody{display:flex;flex:1 1 auto;flex-direction:column;min-height:0}
+.tpc-detailBody[data-in='true']{animation:tpc-detail-in .16s cubic-bezier(.22,1,.36,1)}
 /* 高度未知的折叠：grid-template-rows 0fr→1fr 是这里唯一改布局的手段，
    内层 overflow:hidden 让内容跟着收；关闭时该子树同时 inert。 */
 .tpc-collapse{display:grid;grid-template-rows:0fr;transition:grid-template-rows .16s ease}
@@ -114,7 +118,7 @@ const CSS = `.tpc-overlay,.tpc-root{--tpc-fs-lg:15px;--tpc-fs-md:13px;--tpc-fs-s
 .tpc-rows{animation:tpc-rows-in .14s ease}
 /* 移除确认条、试跑输出、空态：都是"出现"，用同一段 140ms 轻推。 */
 .tpc-confirmBar{animation:tpc-detail-in .14s ease}
-.tpc-console{animation:tpc-detail-in .16s ease}
+.tpc-console{animation:none}
 .tpc-list .tpc-empty,.tpc-detailCol > .tpc-empty{animation:tpc-detail-in .14s ease}
 .tpc-dialogHead{display:flex;align-items:center;gap:12px;flex:none;box-sizing:border-box;min-height:56px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-dialogTitle{margin:0;font-size:var(--tpc-fs-lg);font-weight:600;line-height:23px;color:var(--dsw-alias-label-primary)}
@@ -212,6 +216,10 @@ html[data-tp-pointer] .tpc-input:focus-visible{outline:none}
 .tpc-formLabel{font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-tertiary)}
 .tpc-formHint{font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-tertiary)}
 .tpc-formField .tpc-input{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* 路径框和「选择…」同一行：按钮单独站外面，别塞进输入框里挡文字。 */
+.tpc-pathRow{display:flex;align-items:center;gap:8px}
+.tpc-pathRow .tpc-input{flex:1;min-width:0;width:auto}
+.tpc-pathRow .tpc-btn{flex:none}
 .tpc-addNotes{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);list-style:none;display:flex;flex-direction:column;gap:5px;font-size:var(--tpc-fs-sm);line-height:19px;color:var(--dsw-alias-label-secondary)}
 .tpc-note{margin:0;font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-tertiary)}
 .tpc-toast{margin:0;font-size:var(--tpc-fs-sm);line-height:17px;animation:tpc-toast-in .16s ease}
@@ -221,7 +229,7 @@ html[data-tp-pointer] .tpc-input:focus-visible{outline:none}
 .tpc-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
 .tpc-skeleton{padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
 @media (max-width:1000px){.tpc-surface{grid-template-columns:160px clamp(200px,32vw,300px) minmax(0,1fr)}}
-@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog,.tpc-collapse,.tpc-detailBody,.tpc-toast,.tpc-rows,.tpc-confirmBar,.tpc-console,.tpc-empty,.tpc-overlay[data-closing='true'],.tpc-dialog[data-closing='true']{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow,.tpc-overlay,.tpc-dialog,.tpc-collapse{transition:none}
+@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog,.tpc-collapse,.tpc-detailBody[data-in='true'],.tpc-toast,.tpc-rows,.tpc-confirmBar,.tpc-console,.tpc-empty,.tpc-overlay[data-closing='true'],.tpc-dialog[data-closing='true']{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow,.tpc-overlay,.tpc-dialog,.tpc-collapse{transition:none}
 .tpc-btn:active:not(:disabled){transform:none}}`
 
 let cssInjected = false
@@ -312,6 +320,8 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   const [addName, setAddName] = useState('')
   const [addPath, setAddPath] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
+  /** 文件浏览弹窗开给哪个路径字段；null 表示没开。 */
+  const [pickerFor, setPickerFor] = useState<'detail' | 'add' | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState(false)
   const [closeConfirm, setCloseConfirm] = useState(false)
   /** 关闭按钮与确认条的安全项：替换节点时焦点要有地方去，不能掉到 body 上。 */
@@ -587,10 +597,21 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
     confirmPrev.current = closeConfirm
   }, [closeConfirm])
 
+  // 浏览弹窗叠在这层之上：Esc 先归它。用 ref 而不是依赖数组，免得每次开合
+  // 都重挂监听（重挂会让它的监听排到弹窗之后，顺序反而更乱）。
+  const pickerOpen = useRef(false)
+  pickerOpen.current = pickerFor !== null
+
   useEffect(() => {
     if (variant !== 'dialog') return
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== 'Escape') return
+      // 只吞掉，不处理：让上面的浏览弹窗自己收到这一次 Esc。
+      if (pickerOpen.current) {
+        event.stopPropagation()
+        event.preventDefault()
+        return
+      }
       // Capture + stopPropagation: the settings dialog underneath listens for
       // Escape too and would tear down the whole page along with this panel.
       event.stopPropagation()
@@ -683,8 +704,13 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
     return () => { cancelAnimationFrame(frame) }
   }, [opening])
 
+  // 浏览弹窗叠在面板之上时，面板整块 inert：Tab 与读屏都进不去（弹窗是 portal，
+  // 不在这个子树里，不会被一起冻住）。
+  const shellRef = useRef<HTMLElement | null>(null)
+  useInert(shellRef, pickerFor !== null)
+
   const shell = (
-    <section className="tps-group tpc-root" data-variant={variant}>
+    <section ref={shellRef} className="tps-group tpc-root" data-variant={variant}>
       {variant === 'inline' ? <h4 className="tps-groupTitle">{t('cmdTitle')}</h4> : null}
       <div className="tps-card" style={variant === 'inline' ? { paddingTop: 12, paddingBottom: 12, gap: 8 } : undefined}>
         {variant === 'inline' ? <p className="tpc-note">{t('cmdIntro')}</p> : null}
@@ -797,8 +823,8 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
           <div className="tpc-detailCol">
             {addOpen
               ? (
-                <div className="tpc-detailBody" key="add">
-                  <div className="tpc-detailScroll">
+                <div className="tpc-detailBody" data-in="true" key="add">
+                  <div className="tpc-detailHead">
                     <div className="tpc-who">
                       <h5 className="tpc-name">{t('cmdAddTitle')}</h5>
                       <p className="tpc-path">{t('cmdAddIntro')}</p>
@@ -822,17 +848,21 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                       <span className="tpc-formHint">{t('cmdAddNameHint')}</span>
                     </label>
 
-                    <label className="tpc-formField">
-                      <span className="tpc-formLabel">{t('cmdAddPath')}</span>
-                      <input
-                        className="tpc-input"
-                        value={addPath}
-                        spellCheck={false}
-                        placeholder="D:/tools/7z.exe"
-                        onChange={event => { setAddPath(event.target.value); setAddError(null) }}
-                      />
+                    <div className="tpc-formField">
+                      <label className="tpc-formLabel" htmlFor="tpc-addPath">{t('cmdAddPath')}</label>
+                      <div className="tpc-pathRow">
+                        <input
+                          id="tpc-addPath"
+                          className="tpc-input"
+                          value={addPath}
+                          spellCheck={false}
+                          placeholder="D:/tools/7z.exe"
+                          onChange={event => { setAddPath(event.target.value); setAddError(null) }}
+                        />
+                        <button type="button" className="tpc-btn" onClick={() => setPickerFor('add')}>{t('cmdPathBrowse')}</button>
+                      </div>
                       <span className="tpc-formHint">{t('cmdPathHint')}</span>
-                    </label>
+                    </div>
 
                     {addError !== null ? <p className="tpc-toast" data-tone="error">{addError}</p> : null}
 
@@ -918,7 +948,17 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                       <Collapse open={mode === 'custom'}>
                         <div className="tpc-field">
                           <span className="tpc-fieldLabel">{t('cmdPathLabel')}</span>
-                          <input className="tpc-input" value={customPath} spellCheck={false} placeholder="D:/tools/zip.exe" onChange={event => setCustomPath(event.target.value)} />
+                          <div className="tpc-pathRow">
+                            <input
+                              className="tpc-input"
+                              aria-label={t('cmdPathLabel')}
+                              value={customPath}
+                              spellCheck={false}
+                              placeholder="D:/tools/zip.exe"
+                              onChange={event => setCustomPath(event.target.value)}
+                            />
+                            <button type="button" className="tpc-btn" onClick={() => setPickerFor('detail')}>{t('cmdPathBrowse')}</button>
+                          </div>
                           <span className="tpc-formHint">{t('cmdPathHint')}</span>
                         </div>
                       </Collapse>
@@ -954,6 +994,24 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
           </div>
         </div>
       </div>
+      {pickerFor === null
+        ? null
+        : (
+          <PathPicker
+            t={t}
+            startAt={pickerFor === 'add' ? addPath : customPath}
+            onPick={(picked) => {
+              if (pickerFor === 'add') {
+                setAddPath(picked)
+                setAddError(null)
+              } else {
+                setCustomPath(picked)
+              }
+              setPickerFor(null)
+            }}
+            onRequestClose={() => setPickerFor(null)}
+          />
+        )}
     </section>
   )
 

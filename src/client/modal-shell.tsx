@@ -12,8 +12,9 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useEffect, useInsertionEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useInsertionEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { isTopLayer, popLayer, pushLayer } from './layer-stack.ts'
 
 /** Everything Tab may reach inside a layer. */
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
@@ -29,23 +30,42 @@ function focusablesIn(layer: HTMLElement | null): HTMLElement[] {
  * `label-primary` 调透明度：那枚 token 暗色下是近白，整页会被洗成中灰。
  * 进场只动 transform / opacity，reduce 下全关。
  */
+/*
+ * 进出场一律走 transition，不用 keyframes。
+ *
+ * 为什么：进场用 animation、退场用 transition 时，退场那一帧要先把 animation 摘掉
+ * 再改 opacity，浏览器拿不到「改动前的值」，过渡根本不会播（实测第一帧就 0.00）。
+ * 两边都用 transition，起点由 data-opening 写在首帧，退场从当前值接着走。
+ */
 const CSS = `
-.tpm-overlay{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--dsw-alias-bg-mask-3);animation:tpm-fade .16s ease both}
-.tpm-dialog{animation:tpm-rise .2s cubic-bezier(.22,1,.36,1) both}
+.tpm-overlay{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--dsw-alias-bg-mask-3);opacity:1;transition:opacity .16s ease}
+.tpm-dialog{transition:transform .2s cubic-bezier(.22,1,.36,1)}
 .tpm-anchor{position:fixed;z-index:1200}
-.tpm-pop{animation:tpm-pop .16s cubic-bezier(.22,1,.36,1) both}
-@keyframes tpm-fade{from{opacity:0}}
-@keyframes tpm-rise{from{opacity:0;transform:translateY(8px)}}
-@keyframes tpm-pop{from{opacity:0;transform:translateY(-3px)}}
-@media (prefers-reduced-motion: reduce){.tpm-overlay,.tpm-dialog,.tpm-pop{animation:none}}
+.tpm-pop{opacity:1;transition:opacity .16s ease,transform .16s cubic-bezier(.22,1,.36,1)}
+.tpm-overlay[data-opening='true']{opacity:0}
+.tpm-overlay[data-opening='true'] .tpm-dialog{transform:translateY(8px)}
+.tpm-anchor[data-opening='true'] .tpm-pop{opacity:0;transform:translateY(-3px)}
+/* 退场比进场短：关掉一个东西的快感来自「立刻」，不来自「演完」。 */
+.tpm-overlay[data-closing='true']{opacity:0}
+.tpm-overlay[data-closing='true'] .tpm-dialog{transform:translateY(4px)}
+.tpm-anchor[data-closing='true'] .tpm-pop{opacity:0}
+@media (prefers-reduced-motion: reduce){.tpm-overlay,.tpm-dialog,.tpm-pop{transition:none}}
 `
 
+/**
+ * 注入样式。重复调用用最新一份覆盖旧标签：热更新时旧的样式表不能被「见过就跳过」
+ * 留在页面里，否则改了半天看到的是上一版。
+ */
 let cssInjected = false
 function injectCss(): void {
-  if (cssInjected || typeof document === 'undefined') return
+  if (typeof document === 'undefined') return
   cssInjected = true
   const id = 'tool-plus-modal-shell'
-  if (document.querySelector('style[data-plugin-css="' + id + '"]') !== null) return
+  const existing = document.querySelector('style[data-plugin-css="' + id + '"]')
+  if (existing !== null) {
+    if (existing.textContent !== CSS) existing.textContent = CSS
+    return
+  }
   const tag = document.createElement('style')
   tag.dataset.plugin = '@xiaoso/dsh-tool-plus'
   tag.dataset.pluginCss = id
@@ -68,6 +88,11 @@ export type ModalShellProps = {
   className?: string
   /** 额外样式（popover 用来限制卡片宽度）。 */
   style?: CSSProperties
+  /**
+   * 叠层顺序。默认 1200，够压住设置抽屉；盖在别的浮层之上时要显式抬高
+   * （命令面板是 1300，它里头开的文件浏览给 1400）。
+   */
+  zIndex?: number
   /** Esc、点遮罩（dialog）、点外面（popover）都走这里。 */
   onRequestClose: () => void
   /**
@@ -96,21 +121,60 @@ export type ModalShellProps = {
  * - 卸载时把焦点还给打开它的控件（焦点若已被人挪走则不动）。
  */
 export function ModalShell(props: ModalShellProps): ReactNode {
-  const { role, ariaLabel, className, style, onRequestClose, dismissible = true, initialFocus, children } = props
+  const { role, ariaLabel, className, style, zIndex, onRequestClose, dismissible = true, initialFocus, children } = props
   const layerRef = useRef<HTMLDivElement | null>(null)
   /** 打开浮层的控件；关闭时焦点回到这里。 */
   const opener = useRef<HTMLElement | null>(null)
   /** 每轮渲染取最新回调，键盘监听只注册一次，避免开着时反复摘挂。 */
   const closeCallback = useRef(onRequestClose)
   closeCallback.current = onRequestClose
+  /**
+   * 关闭：先放 140ms 退场，再让调用方卸载。减弱动效下直接关。
+   * 退场只动 opacity / transform，和进场同一套属性。
+   */
+  const beginClose = useCallback((): void => {
+    if (closingRef.current) return
+    if (typeof window === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      closeCallback.current()
+      return
+    }
+    closingRef.current = true
+    setClosing(true)
+    exitTimer.current = window.setTimeout(() => { closeCallback.current() }, 140)
+  }, [])
+
+  useEffect(() => () => {
+    if (exitTimer.current !== null) window.clearTimeout(exitTimer.current)
+  }, [])
   const dismissibleRef = useRef(dismissible)
   dismissibleRef.current = dismissible
   const focusTarget = useRef(initialFocus)
   focusTarget.current = initialFocus
+  /** 本层在浮层栈里的身份：键盘归属靠它判断，不能每次渲染新建。 */
+  const layer = useRef<object>({}).current
+  /** 退场中：同一时刻只放行一次关闭，连按 Esc 不会关两层。 */
+  const [closing, setClosing] = useState(false)
+  const closingRef = useRef(false)
+  const exitTimer = useRef<number | null>(null)
+  /** 进场：首帧必须真的画在初始态，下一帧再放开，否则浏览器会把两帧合成一帧。 */
+  const reducedMotion = useRef(typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [opening, setOpening] = useState(!reducedMotion.current)
 
   // useInsertionEffect：样式必须在首帧绘制前就位，否则浮层会先以未定位的
   // 普通 div 画一帧再跳到居中。
   useInsertionEffect(() => { injectCss() }, [])
+
+  // 入栈必须在布局阶段：子层若在 effect 阶段才入栈，第一帧的 Tab 仍会被外层抢走。
+  useLayoutEffect(() => {
+    pushLayer(layer)
+    return () => popLayer(layer)
+  }, [layer])
+
+  useLayoutEffect(() => {
+    if (!opening) return
+    const frame = requestAnimationFrame(() => setOpening(false))
+    return () => cancelAnimationFrame(frame)
+  }, [opening])
 
   useLayoutEffect(() => {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -119,19 +183,28 @@ export function ModalShell(props: ModalShellProps): ReactNode {
     target?.focus()
     return () => {
       const back = opener.current
+      if (back === null || !back.isConnected) return
       // 只有焦点还在浮层里、或者已经掉到 body 上时才抢回来：别的时候
       // （例如抽屉自己把焦点挪去了别处）说明有别的意图，不能覆盖。
-      const active = document.activeElement
-      const owned = active === null
-        || active === document.body
-        || layerRef.current?.contains(active) === true
-      if (owned && back !== null && back.isConnected) back.focus()
+      const restore = (): void => {
+        const active = document.activeElement
+        const owned = active === null
+          || active === document.body
+          || layerRef.current?.contains(active) === true
+        if (owned && back.isConnected) back.focus()
+      }
+      restore()
+      // 调用方（命令面板）在同一提交里才解除底层内容的 inert，立刻 focus 会被
+      // 浏览器拒掉、焦点留在 body；下一帧再补一次。
+      requestAnimationFrame(restore)
     }
   }, [])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
+      // 上面还有一层（例如命令面板里再开的浏览弹窗）：这一下 Esc 归它。
+      if (!isTopLayer(layer)) return
       // 输入法组合中的 Esc 属于输入法（撤销候选）：既不关浮层，也不让它冒到
       // 设置抽屉去关整页。只 stopPropagation 不 preventDefault，输入法自己的
       // 默认处理（撤掉候选）照常发生。
@@ -143,7 +216,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
       event.stopPropagation()
       event.preventDefault()
       if (!dismissibleRef.current) return
-      closeCallback.current()
+      beginClose()
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
@@ -156,7 +229,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
       const target = event.target
       if (target instanceof Node && layerRef.current?.contains(target) === true) return
       if (!dismissibleRef.current) return
-      closeCallback.current()
+      beginClose()
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
@@ -171,6 +244,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
    */
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'Tab') return
+    if (!isTopLayer(layer)) return
     event.stopPropagation()
     const nodes = focusablesIn(layerRef.current)
     if (nodes.length === 0) return
@@ -198,6 +272,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
   useEffect(() => {
     const onTab = (event: KeyboardEvent): void => {
       if (event.key !== 'Tab') return
+      if (!isTopLayer(layer)) return
       const host = layerRef.current
       if (host === null) return
       const target = event.target
@@ -220,6 +295,8 @@ export function ModalShell(props: ModalShellProps): ReactNode {
     return createPortal(
       <div
         className="tpm-anchor"
+        data-opening={opening ? 'true' : undefined}
+        data-closing={closing ? 'true' : undefined}
         style={{
           top: position.top,
           right: position.right,
@@ -227,6 +304,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
           // 两者挤在同一个元素上时，animation 的 transform 会覆盖定位位移
           // （预设说明卡向上翻失效就是这么来的）。
           transform: position.above ? 'translateY(-100%)' : undefined,
+          ...(zIndex === undefined ? {} : { zIndex }),
           ...style,
         }}
         onKeyDownCapture={onKeyDown}
@@ -244,6 +322,9 @@ export function ModalShell(props: ModalShellProps): ReactNode {
   return createPortal(
     <div
       className="tpm-overlay"
+      data-opening={opening ? 'true' : undefined}
+      data-closing={closing ? 'true' : undefined}
+      style={zIndex === undefined ? undefined : { zIndex }}
       onMouseDown={(event) => {
         if (event.target !== event.currentTarget) return
         // Keep focus where it was: the default mousedown blurs the editor and
@@ -251,7 +332,7 @@ export function ModalShell(props: ModalShellProps): ReactNode {
         // the pointer path would land in different places.
         event.preventDefault()
         if (!dismissibleRef.current) return
-        closeCallback.current()
+        beginClose()
       }}
     >
       <div

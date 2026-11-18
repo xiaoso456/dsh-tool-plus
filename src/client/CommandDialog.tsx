@@ -11,9 +11,10 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { CommandPanel } from './CommandPanel.tsx'
+import { isTopLayer, popLayer, pushLayer } from './layer-stack.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
 
 /** Everything Tab is allowed to reach inside the dialog. */
@@ -26,6 +27,13 @@ const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:n
  * @param props.onClose - unmount the dialog.
  */
 export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; writable: boolean; onClose: () => void }): ReactNode {
+  /** 本层在浮层栈里的身份：命令面板里还能再开浏览弹窗，键盘归属按栈顶算。 */
+  const layer = useRef<object>({}).current
+  useLayoutEffect(() => {
+    pushLayer(layer)
+    return () => popLayer(layer)
+  }, [layer])
+
   const { t, writable, onClose } = props
   const hostRef = useRef<HTMLDivElement | null>(null)
   /** The control that opened the panel; focus returns here on close. */
@@ -99,6 +107,9 @@ export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; wr
    */
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'Tab') return
+    // 上面还有一层（浏览弹窗）：它的焦点不在这棵子树里，这里既不能圈、也不能
+    // 夺；否则外层的「不在我的可聚焦列表里就拽回第一个」会把焦点抢走。
+    if (!isTopLayer(layer)) return
     event.stopPropagation()
     const nodes = [...(hostRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])]
       .filter(node => node.offsetParent !== null || node === document.activeElement)

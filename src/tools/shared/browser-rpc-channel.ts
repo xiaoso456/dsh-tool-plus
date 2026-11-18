@@ -339,6 +339,42 @@ export const COMMAND_PROBE_ENDPOINT = 'command/probe'
 /** Endpoint that writes one per-command override. */
 export const COMMAND_APPLY_ENDPOINT = 'command/apply'
 
+/** Endpoint that lists one directory on the host, for the path picker. */
+export const COMMAND_BROWSE_ENDPOINT = 'command/browse'
+
+/**
+ * command/browse request.
+ *
+ * `dir` absent or empty means the host picks (the user's home directory).
+ * `showAll` widens the file filter from executables to every file; folders are
+ * always listed either way.
+ */
+export interface CommandBrowsePayload {
+  dir?: string
+  showAll?: boolean
+}
+
+/** One row of the picker: only what the list draws. */
+export interface CommandBrowseEntry {
+  name: string
+  /** Absolute path, forward slashes (same shape the panel's placeholders use). */
+  path: string
+  kind: 'dir' | 'file'
+  /** Bytes for files; null for folders and for entries we could not stat. */
+  size: number | null
+}
+
+/** command/browse result: one level, never a recursive walk. */
+export interface CommandBrowseValue {
+  /** The directory these rows belong to. */
+  dir: string
+  /** Directory above `dir`; null at a volume root. */
+  parent: string | null
+  entries: CommandBrowseEntry[]
+  /** True when the directory held more entries than the host sends at once. */
+  truncated: boolean
+}
+
 /** Where one row comes from, as the panel labels it. */
 export type CommandOriginValue = 'new' | 'omp' | 'bash' | 'sys' | 'fn' | 'custom'
 
