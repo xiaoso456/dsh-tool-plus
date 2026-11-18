@@ -47,7 +47,23 @@ export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; wr
       return
     }
     setClosing(true)
-    closeTimer.current = window.setTimeout(() => onClose(), 150)
+    // 退场交给 opacity 过渡本身：transitionend 一到就卸载。固定 sleep 的时长得
+    // 猜，长了拖沓，短了会截断动画。
+    const overlay = hostRef.current?.querySelector<HTMLElement>('.tpc-overlay') ?? null
+    const finish = (): void => {
+      if (closeTimer.current !== null) {
+        window.clearTimeout(closeTimer.current)
+        closeTimer.current = null
+      }
+      overlay?.removeEventListener('transitionend', onEnd)
+      onClose()
+    }
+    const onEnd = (event: TransitionEvent): void => {
+      if (event.target !== overlay || event.propertyName !== 'opacity') return
+      finish()
+    }
+    overlay?.addEventListener('transitionend', onEnd)
+    closeTimer.current = window.setTimeout(finish, 260)
   }, [closing, onClose])
 
   useEffect(() => {

@@ -11,7 +11,7 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import {
   COMMAND_APPLY_ENDPOINT,
   COMMAND_LIST_ENDPOINT,
@@ -25,7 +25,7 @@ import {
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
 import { ClippedText } from './tooltip.tsx'
-import { installFocusModality } from './rows.tsx'
+import { installFocusModality, useInert } from './rows.tsx'
 
 /** Locale lookup the section passes down. */
 type Translate = (key: BashPlusLocaleKey) => string
@@ -59,18 +59,63 @@ const GROUP_ORDER: readonly { origin: CommandEntryValue['origin']; label: BashPl
 /** Rail selection: two cross-cutting filters plus each origin. */
 type Filter = 'builtin' | 'conflict' | 'all' | CommandEntryValue['origin']
 
+/**
+ * 高度未知的折叠容器：外层跑 grid-template-rows，内层 overflow:hidden 让内容跟着
+ * 收；收起时整棵子树 `inert`，Tab 与读屏都进不去。
+ */
+function Collapse(props: { open: boolean; children: ReactNode }): ReactNode {
+  const { open, children } = props
+  const ref = useRef<HTMLDivElement | null>(null)
+  useInert(ref, !open)
+  return (
+    <div ref={ref} className="tpc-collapse" data-open={open ? 'true' : 'false'} aria-hidden={open ? undefined : true}>
+      <div className="tpc-collapseInner">{children}</div>
+    </div>
+  )
+}
+
+/** 用户是否要求跳过非必要动效。 */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /** One rendered line of the list: a group heading or a command row. */
 type Row = { kind: 'group'; key: string; label: string; count: number } | { kind: 'item'; entry: CommandEntryValue }
 
-const CSS = `.tpc-root{--tpc-fs-lg:15px;--tpc-fs-md:13px;--tpc-fs-sm:12px;--tpc-fs-xs:11px;--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));display:flex;flex-direction:column;gap:0;min-height:0}
-.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:var(--dsw-alias-bg-mask-3);animation:tpc-fade .16s ease both}
-.tpc-dialog{position:relative;box-sizing:border-box;display:flex;flex-direction:column;gap:0;width:min(1120px,96vw);height:min(760px,88vh);padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden;animation:tpc-rise .24s cubic-bezier(.22,1,.36,1) both}
-@keyframes tpc-fade{from{opacity:0}}
-@keyframes tpc-fade-out{to{opacity:0}}
-@keyframes tpc-sink{to{opacity:0;transform:translateY(6px)}}
-.tpc-overlay[data-closing='true']{animation:tpc-fade-out .15s ease both;pointer-events:none}
-.tpc-dialog[data-closing='true']{animation:tpc-sink .15s cubic-bezier(.4,0,.9,1) both}
-@keyframes tpc-rise{from{opacity:0;transform:translateY(8px)}}
+// 字号变量要同时挂在浮层和内容根上：`.tpc-dialog` 与 `.tpc-root` 是兄弟节点，
+// 只写在 `.tpc-root` 上时标题栏取不到值，会回落到继承的 16px。
+const CSS = `.tpc-overlay,.tpc-root{--tpc-fs-lg:15px;--tpc-fs-md:13px;--tpc-fs-sm:12px;--tpc-fs-xs:11px}
+.tpc-root{--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));display:flex;flex-direction:column;gap:0;min-height:0}
+/* 进出场用 transition 而不是 keyframes：动画中途被打断时，transition 从当前
+   计算值继续，而只有 to 的关键帧会跳回基础值（0.72 的不透明度会一帧跳到 1）。
+   透明度只由遮罩负责，对话框只动 transform，避免两层各乘一次。 */
+.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:var(--dsw-alias-bg-mask-3);opacity:1;transition:opacity .16s ease}
+.tpc-dialog{position:relative;box-sizing:border-box;display:flex;flex-direction:column;gap:0;width:min(1120px,96vw);height:min(760px,88vh);padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden;transition:transform .24s cubic-bezier(.22,1,.36,1)}
+.tpc-overlay[data-opening='true'],.tpc-overlay[data-closing='true']{opacity:0;pointer-events:none}
+.tpc-overlay[data-opening='true'] .tpc-dialog{transform:translateY(8px)}
+.tpc-overlay[data-closing='true'] .tpc-dialog{transform:translateY(4px);transition-duration:.15s}
+/* 详情换对象时的一次轻推：只碰 opacity 与 4px 位移，不动硬件布局。 */
+@keyframes tpc-detail-in{from{opacity:0;transform:translateY(4px)}}
+.tpc-detailBody{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;animation:tpc-detail-in .16s cubic-bezier(.22,1,.36,1)}
+/* 高度未知的折叠：grid-template-rows 0fr→1fr 是这里唯一改布局的手段，
+   内层 overflow:hidden 让内容跟着收；关闭时该子树同时 inert。 */
+.tpc-collapse{display:grid;grid-template-rows:0fr;transition:grid-template-rows .16s ease}
+.tpc-collapse[data-open='true']{grid-template-rows:1fr}
+/* 折叠态还占着 flex 的一个 gap，用负 margin 抵掉，收起来时不多出 12px 空隙。 */
+.tpc-collapse[data-open='false']{margin-bottom:-12px}
+.tpc-collapseInner{min-height:0;overflow:hidden}
+/* 空态在详情列里居中，不要贴在列顶留一大片空。 */
+.tpc-detailCol > .tpc-empty{flex:1;justify-content:center}
+@keyframes tpc-toast-in{from{opacity:0;transform:translateY(4px)}}
+/* 换筛选时列表整块换内容：淡入比瞬换自然，也不动任何行的位置。 */
+@keyframes tpc-rows-in{from{opacity:.55}}
+.tpc-rows{animation:tpc-rows-in .14s ease}
+/* 移除确认条、试跑输出、空态：都是"出现"，用同一段 140ms 轻推。 */
+.tpc-confirmBar{animation:tpc-detail-in .14s ease}
+.tpc-console{animation:tpc-detail-in .16s ease}
+.tpc-list .tpc-empty,.tpc-detailCol > .tpc-empty{animation:tpc-detail-in .14s ease}
 .tpc-dialogHead{display:flex;align-items:center;gap:12px;flex:none;box-sizing:border-box;min-height:56px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-dialogTitle{margin:0;font-size:var(--tpc-fs-lg);font-weight:600;line-height:23px;color:var(--dsw-alias-label-primary)}
 .tpc-dialogHead .tpc-btn{margin-left:auto}
@@ -115,7 +160,8 @@ html[data-tp-pointer] .tpc-search:focus-visible{outline:none}
 .tpc-addRow:disabled{opacity:.4;cursor:default}
 .tpc-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .tpc-row{display:flex;align-items:center;gap:9px;padding:0 12px;box-sizing:border-box;cursor:pointer;font-size:var(--tpc-fs-md);line-height:18px;color:var(--dsw-alias-label-primary)}
-.tpc-row{transition:background-color .12s ease}
+/* 行高亮跟手一点：滚动时指针压着行，120ms 的渐变会明显慢半拍。 */
+.tpc-row{transition:background-color .08s ease}
 .tpc-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent)}
 .tpc-row:active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent)}
 .tpc-row[data-selected='true']{background:var(--dsw-alias-state-business-tertiary)}
@@ -141,10 +187,12 @@ html[data-tp-pointer] .tpc-search:focus-visible{outline:none}
 .tpc-detailScroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:14px 16px}
 .tpc-field{display:flex;flex-direction:column;gap:6px}
 .tpc-fieldLabel{font-size:var(--tpc-fs-xs);color:var(--dsw-alias-label-secondary)}
-.tpc-seg{display:flex;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;overflow:hidden}
+/* 三个互斥选项用一组药丸，宽度贴合文字：拉满整行会看成表格行，不像控件。 */
+.tpc-seg{display:flex;flex-wrap:wrap;align-self:flex-start;gap:8px}
 .tpc-segBtn{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--tpc-fs-sm);padding:0 8px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
-.tpc-segBtn+ .tpc-segBtn{border-left:1px solid var(--dsw-alias-border-l2)}
-.tpc-segBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--tpc-ink-accent)}
+.tpc-segBtn{appearance:none;display:inline-flex;align-items:center;border:0;border-radius:999px;padding:6px 14px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--tpc-fs-sm);line-height:18px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
+.tpc-segBtn:hover:not(:disabled):not([aria-pressed='true']){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.tpc-segBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary);font-weight:500}
 .tpc-segBtn:disabled{opacity:.4;cursor:default}
 .tpc-input{box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--tpc-fs-sm);padding:0 10px}
 .tpc-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
@@ -166,14 +214,14 @@ html[data-tp-pointer] .tpc-input:focus-visible{outline:none}
 .tpc-formField .tpc-input{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .tpc-addNotes{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);list-style:none;display:flex;flex-direction:column;gap:5px;font-size:var(--tpc-fs-sm);line-height:19px;color:var(--dsw-alias-label-secondary)}
 .tpc-note{margin:0;font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-tertiary)}
-.tpc-toast{margin:0;font-size:var(--tpc-fs-sm);line-height:17px}
+.tpc-toast{margin:0;font-size:var(--tpc-fs-sm);line-height:17px;animation:tpc-toast-in .16s ease}
 .tpc-root[data-variant='dialog'] .tps-card > .tpc-toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:6;box-sizing:border-box;max-width:min(560px,calc(100% - 64px));margin:0;padding:8px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-1);font-size:var(--tpc-fs-sm);line-height:18px;text-align:center;pointer-events:none}
 .tpc-toast[data-tone='ok']{color:var(--dsw-alias-state-success-primary)}
 .tpc-toast[data-tone='error']{color:var(--dsw-alias-state-error-primary)}
 .tpc-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
 .tpc-skeleton{padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
 @media (max-width:1000px){.tpc-surface{grid-template-columns:160px clamp(200px,32vw,300px) minmax(0,1fr)}}
-@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog,.tpc-overlay[data-closing='true'],.tpc-dialog[data-closing='true']{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow{transition:none}
+@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog,.tpc-collapse,.tpc-detailBody,.tpc-toast,.tpc-rows,.tpc-confirmBar,.tpc-console,.tpc-empty,.tpc-overlay[data-closing='true'],.tpc-dialog[data-closing='true']{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow,.tpc-overlay,.tpc-dialog,.tpc-collapse{transition:none}
 .tpc-btn:active:not(:disabled){transform:none}}`
 
 let cssInjected = false
@@ -361,7 +409,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   // Filtering replaces the row set under a virtual window that keeps its own
   // scroll offset: without this the offset outlives the rows and the selected
   // command sits hundreds of pixels below the fold (82/82 frames off-screen).
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = listRef.current
     if (node !== null && node.scrollTop !== 0) node.scrollTop = 0
     setScrollTop(0)
@@ -392,7 +440,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
 
   // Keep the selected row physically visible: keyboard selection, a fresh scan
   // and a filter change all move the highlight without touching scrollTop.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = listRef.current
     if (node === null || selected === null) return
     const index = rows.findIndex(row => row.kind === 'item' && row.entry.name === selected)
@@ -413,7 +461,9 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   }, [selected, rows])
 
   const lastSelected = useRef<string | null>(null)
-  useEffect(() => {
+  // 绘制前回填：放在 useEffect 里时会先画一帧「新命令 + 旧模式」，详情区看得见地
+  // 跳一下（实测 1 帧、88px）。
+  useLayoutEffect(() => {
     if (selectedEntry === null) return
     // A rescan after saving replaces the entries array under the same name: the
     // per-command draft must follow that fresh state, otherwise "恢复默认"
@@ -624,6 +674,15 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
         : t('cmdModeBuiltin')
   const currentMode: 'builtin' | 'system' | 'custom' = selectedEntry === null ? 'builtin' : modeOf(selectedEntry)
 
+  // 进场走 transition：第一帧必须真的画在初始态，第二帧再放开，否则浏览器会把
+  // 「初始态 → 终态」合并成一帧，动画根本不播。减弱动效下直接跳过。
+  const [opening, setOpening] = useState(variant === 'dialog' && !prefersReducedMotion())
+  useLayoutEffect(() => {
+    if (!opening) return
+    const frame = requestAnimationFrame(() => { setOpening(false) })
+    return () => { cancelAnimationFrame(frame) }
+  }, [opening])
+
   const shell = (
     <section className="tps-group tpc-root" data-variant={variant}>
       {variant === 'inline' ? <h4 className="tps-groupTitle">{t('cmdTitle')}</h4> : null}
@@ -700,7 +759,9 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                     </div>
                   )
                   : (
-                    <div style={{ height: rows.length * ROW_H, position: 'relative' }}>
+                    // key 跟着筛选走：换筛选时这层重挂，播一次淡入；搜索输入不
+                    // 动 key，逐字过滤不会一直闪。
+                    <div key={filter} className="tpc-rows" style={{ height: rows.length * ROW_H, position: 'relative' }}>
                       {window_.map((row, index) => {
                         const top = (start + index) * ROW_H
                         if (row.kind === 'group') {
@@ -736,8 +797,8 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
           <div className="tpc-detailCol">
             {addOpen
               ? (
-                <>
-                  <div className="tpc-detailHead">
+                <div className="tpc-detailBody" key="add">
+                  <div className="tpc-detailScroll">
                     <div className="tpc-who">
                       <h5 className="tpc-name">{t('cmdAddTitle')}</h5>
                       <p className="tpc-path">{t('cmdAddIntro')}</p>
@@ -791,12 +852,14 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                       <li>{t('cmdAddNoteArgs')}</li>
                     </ul>
                   </div>
-                </>
+                </div>
               )
               : selectedEntry === null
                 ? <div className="tpc-empty"><span>{t('cmdPickOne')}</span></div>
                 : (
-                  <>
+                  // key 挂在命令名上：换一行时整块重挂，结构上不可能再露上一行的
+                  // 模式/路径（之前那 1 帧就是这么来的），顺带播一次进场。
+                  <div className="tpc-detailBody" key={selectedEntry.name}>
                     <div className="tpc-detailHead">
                       <div className="tpc-who">
                         <h5 className="tpc-name">{selectedEntry.name}</h5>
@@ -850,15 +913,15 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                         {selectedEntry.origin === 'custom' ? <p className="tpc-note">{t('cmdCustomNoBuiltin')}</p> : null}
                       </div>
 
-                      {mode === 'custom'
-                        ? (
-                          <div className="tpc-field">
-                            <span className="tpc-fieldLabel">{t('cmdPathLabel')}</span>
-                            <input className="tpc-input" value={customPath} spellCheck={false} placeholder="D:/tools/zip.exe" onChange={event => setCustomPath(event.target.value)} />
-                            <span className="tpc-formHint">{t('cmdPathHint')}</span>
-                          </div>
-                        )
-                        : null}
+                      {/* 路径字段常驻、靠 grid-template-rows 收放：条件渲染会让下面
+                          整块内容一帧跳 88px。收起时子树同时 inert，键盘走不进去。 */}
+                      <Collapse open={mode === 'custom'}>
+                        <div className="tpc-field">
+                          <span className="tpc-fieldLabel">{t('cmdPathLabel')}</span>
+                          <input className="tpc-input" value={customPath} spellCheck={false} placeholder="D:/tools/zip.exe" onChange={event => setCustomPath(event.target.value)} />
+                          <span className="tpc-formHint">{t('cmdPathHint')}</span>
+                        </div>
+                      </Collapse>
                       {mode === 'system' && selectedEntry.systemPath === undefined
                         ? <p className="tpc-note">{t('cmdNoSystemTwin')}</p>
                         : null}
@@ -884,9 +947,9 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                         <dt>{t('cmdActive')}</dt>
                         <dd>{activeLabel(t, selectedEntry)}</dd>
                       </dl>
-                      <pre className="tpc-console">{probeLines === null ? t('cmdProbeEmpty') : probeLines.join('\n')}</pre>
+                      <pre key={probeLines === null ? 'idle' : probeLines.join('\n')} className="tpc-console">{probeLines === null ? t('cmdProbeEmpty') : probeLines.join('\n')}</pre>
                     </div>
-                  </>
+                  </div>
                 )}
           </div>
         </div>
@@ -898,6 +961,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   return (
     <div
       className="tpc-overlay"
+      data-opening={opening ? 'true' : undefined}
       data-closing={closing ? 'true' : undefined}
       onMouseDown={(event) => {
         if (event.target !== event.currentTarget) return

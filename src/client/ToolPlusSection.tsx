@@ -37,7 +37,7 @@ import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlus
 import { TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, type NativeStatusValue, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { useToolForm, type ToolSettingsValue } from './forms.ts'
-import { injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
+import { useInert, injectSettingsRowsCss, NumberRow, SelectRow, ToggleRow, ActionRow, type ActionControl, type NumberControl, type SelectControl, type ToggleControl } from './rows.tsx'
 import { rmSafeStatusText } from './rm-safe-status-text.ts'
 import { nativeStatusShort, nativeStatusText } from './native-status-text.ts'
 import { PresetPanel } from './PresetPanel.tsx'
@@ -114,12 +114,14 @@ const CSS = `
 .tps-pageNote{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-business-tertiary)}
 .tps-unsavedDot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-business-primary);animation:tps-pulse 1.8s ease-in-out infinite}
-.tps-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 2px}
-.tps-subtab{appearance:none;border:1px solid var(--dsw-alias-label-tertiary);border-radius:999px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;padding:3px 12px;cursor:pointer;transition:color .16s ease,border-color .16s ease,background .16s ease,transform .1s ease}
-.tps-subtab:hover:not([aria-selected="true"]){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-secondary)}
-.tps-subtab:active:not(:disabled){transform:scale(.97)}
-.tps-subtab[aria-selected="true"]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-business-tertiary)}
-.tps-subtab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
+/* 二级页签：和主页签同一套下划线语言，靠字号小一号、位置低一层表明层级。
+   胶囊版的问题是三条 1px 边框在暗色下发灰、选中只换底色没有位置感。 */
+.tps-subtabs{position:relative;display:flex;flex:none;gap:22px;flex-wrap:wrap;margin:-4px var(--tps-gutter) 0 0}
+.tps-subtab{appearance:none;border:0;background:none;padding:0 0 7px;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color .16s ease}
+.tps-subtab:hover:not([aria-selected="true"]){color:var(--dsw-alias-label-primary)}
+.tps-subtab[aria-selected="true"]{color:var(--dsw-alias-label-primary);font-weight:500}
+.tps-subtab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:3px;border-radius:3px}
+.tps-subtabIndicator{position:absolute;bottom:0;left:0;height:2px;border-radius:2px;background:var(--dsw-alias-state-business-primary);pointer-events:none;transform-origin:left center}
 .tps-skeleton{display:flex;flex:1 1 auto;flex-direction:column;gap:14px;min-height:0}
 .tps-skeletonLabel{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tps-skeletonCard{flex:none;height:96px;border-radius:12px;background:var(--dsw-alias-bg-skeleton);animation:tps-breathe 1.4s ease-in-out infinite}
@@ -202,6 +204,77 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
+ * 一条 2px 下划线跟着选中的页签滑动。
+ *
+ * 只动 transform（translateX + scaleX），全程在合成层；位置没变时连样式都不碰
+ * （ResizeObserver 会对已对齐的几何反复通知，碰一下就会打断在途的 FLIP）。减弱
+ * 动效下直接落位。
+ *
+ * @param activeKey - 选中页签的 key，对应容器里的 `data-tps-tab`。
+ * @param durationMs - 滑动时长。
+ */
+function useSlidingUnderline(activeKey: string | undefined, durationMs: number): {
+  containerRef: RefObject<HTMLDivElement | null>
+  indicatorRef: RefObject<HTMLSpanElement | null>
+} {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const indicatorRef = useRef<HTMLSpanElement | null>(null)
+  const committed = useRef<{ left: number; width: number } | null>(null)
+
+  const commit = useCallback((animate: boolean) => {
+    const container = containerRef.current
+    const indicator = indicatorRef.current
+    if (container === null || indicator === null || activeKey === undefined) return
+    const target = container.querySelector<HTMLElement>(`[data-tps-tab="${activeKey}"]`)
+    if (target === null) return
+    const left = target.offsetLeft
+    const width = target.offsetWidth
+    const previous = committed.current
+    committed.current = { left, width }
+    if (previous !== null && previous.left === left && previous.width === width) return
+    const place = (): void => {
+      indicator.style.willChange = ''
+      indicator.style.transition = 'none'
+      indicator.style.width = `${width}px`
+      indicator.style.transform = `translateX(${left}px)`
+    }
+    if (!animate || prefersReducedMotion() || previous === null || previous.width === 0) {
+      place()
+      return
+    }
+    indicator.style.willChange = 'transform'
+    indicator.style.transition = 'none'
+    indicator.style.width = `${width}px`
+    indicator.style.transform = `translateX(${previous.left}px) scaleX(${previous.width / width})`
+    // 先让反算出来的那一帧落地，再放开过渡。
+    void indicator.offsetWidth
+    indicator.style.transition = `transform ${durationMs}ms cubic-bezier(.22,1,.36,1)`
+    indicator.style.transform = `translateX(${left}px) scaleX(1)`
+    indicator.addEventListener('transitionend', function settle() {
+      indicator.removeEventListener('transitionend', settle)
+      indicator.style.willChange = ''
+    })
+  }, [activeKey, durationMs])
+
+  useLayoutEffect(() => { commit(true) }, [commit])
+
+  // 只在挂载时观察一次：容器里的页签是静态列表，重建观察者会在 FLIP 中途收到
+  // 初始通知，把下划线钉在起点。
+  const commitRef = useRef(commit)
+  commitRef.current = commit
+  useEffect(() => {
+    const container = containerRef.current
+    if (container === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => commitRef.current(false))
+    observer.observe(container)
+    for (const node of Array.from(container.querySelectorAll('[data-tps-tab]'))) observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [])
+
+  return { containerRef, indicatorRef }
+}
+
+/**
  * Nearest ancestor that scrolls vertically — the host settings pane hosting
  * this section. The pane is app chrome with no stable class, so it is found by
  * walking up from the section root.
@@ -230,19 +303,6 @@ function isFieldVisible(field: ToolPlusField, form: ReturnType<typeof useToolFor
   if (visibility.requiresSelect !== undefined && controlValue(form, visibility.requiresSelect.field) !== visibility.requiresSelect.value) return false
   if (visibility.hideWhenSelect !== undefined && controlValue(form, visibility.hideWhenSelect.field) === visibility.hideWhenSelect.value) return false
   return true
-}
-
-/**
- * Apply `inert` as a DOM property.
- *
- * React only learnt the `inert` prop in 19; on 18 a boolean `inert` prop is
- * dropped with a warning, which left collapsed rows tabbable and editable. The
- * property write behaves the same on both versions.
- */
-function useInert(ref: RefObject<HTMLElement | null>, inert: boolean): void {
-  useLayoutEffect(() => {
-    if (ref.current !== null) ref.current.inert = inert
-  }, [ref, inert])
 }
 
 /**
@@ -291,11 +351,9 @@ function ToolTabPanel(props: {
   actionResults: Record<string, { ok: boolean; text: string } | null>
   runAction: (field: ToolPlusField) => void
   bashSubtab: BashSubtab
-  onBashSubtab: (next: BashSubtab) => void
   onOpenCommands: () => void
 }): ReactNode {
-  const { tab, tabsId, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction, bashSubtab, onBashSubtab, onOpenCommands } = props
-  const subtabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const { tab, tabsId, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction, bashSubtab, onOpenCommands } = props
   // Controls stay put but stop accepting input while a save is in flight: an
   // edit made mid-save would otherwise race the write it is not part of.
   const disabled = !writable || form.shell.saving
@@ -478,45 +536,6 @@ function ToolTabPanel(props: {
     <>
       {tab.id === 'bash'
         ? (
-          <div className="tps-subtabs" role="tablist" aria-label={t('tabBash')}>
-            {BASH_SUBTABS.map((sub, index) => {
-              const selected = bashSubtab === sub.id
-              return (
-                <button
-                  key={sub.id}
-                  ref={(element) => { subtabRefs.current[index] = element }}
-                  id={`${tabsId}-subtab-${sub.id}`}
-                  type="button"
-                  role="tab"
-                  className="tps-subtab"
-                  aria-selected={selected}
-                  aria-controls={selected ? `${tabsId}-subpanel` : undefined}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => onBashSubtab(sub.id)}
-                  onKeyDown={(event) => {
-                    let nextIndex: number
-                    switch (event.key) {
-                      case 'ArrowRight': nextIndex = (index + 1) % BASH_SUBTABS.length; break
-                      case 'ArrowLeft': nextIndex = (index - 1 + BASH_SUBTABS.length) % BASH_SUBTABS.length; break
-                      case 'Home': nextIndex = 0; break
-                      case 'End': nextIndex = BASH_SUBTABS.length - 1; break
-                      default: return
-                    }
-                    event.preventDefault()
-                    const next = BASH_SUBTABS[nextIndex] as { id: BashSubtab; labelKey: BashPlusLocaleKey }
-                    onBashSubtab(next.id)
-                    subtabRefs.current[nextIndex]?.focus()
-                  }}
-                >
-                  {t(sub.labelKey)}
-                </button>
-              )
-            })}
-          </div>
-        )
-        : null}
-      {tab.id === 'bash'
-        ? (
           <div
             className="tps-subpanel"
             id={`${tabsId}-subpanel`}
@@ -528,6 +547,62 @@ function ToolTabPanel(props: {
         )
         : content}
     </>
+  )
+}
+
+/**
+ * Bash 子页签（行为 / 输出 / 命令）。
+ *
+ * 它是**页面家具**，不是面板内容：挂在下划线主页签正下方，跟着页面固定，滚动的
+ * 只有下面的 `.tps-panel`。以前它渲染在面板里，滚一下就跟着走了。
+ */
+function BashSubtabs(props: {
+  tabsId: string
+  t: (key: BashPlusLocaleKey) => string
+  value: BashSubtab
+  onChange: (next: BashSubtab) => void
+}): ReactNode {
+  const { tabsId, t, value, onChange } = props
+  const refs = useRef<Array<HTMLButtonElement | null>>([])
+  const { containerRef, indicatorRef } = useSlidingUnderline(value, 180)
+  return (
+    <div ref={containerRef} className="tps-subtabs" role="tablist" aria-label={t('tabBash')}>
+      <span ref={indicatorRef} className="tps-subtabIndicator" aria-hidden="true" />
+      {BASH_SUBTABS.map((sub, index) => {
+        const selected = value === sub.id
+        return (
+          <button
+            key={sub.id}
+            ref={(element) => { refs.current[index] = element }}
+            id={`${tabsId}-subtab-${sub.id}`}
+            type="button"
+            role="tab"
+            className="tps-subtab"
+            data-tps-tab={sub.id}
+            aria-selected={selected}
+            aria-controls={selected ? `${tabsId}-subpanel` : undefined}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(sub.id)}
+            onKeyDown={(event) => {
+              let nextIndex: number
+              switch (event.key) {
+                case 'ArrowRight': nextIndex = (index + 1) % BASH_SUBTABS.length; break
+                case 'ArrowLeft': nextIndex = (index - 1 + BASH_SUBTABS.length) % BASH_SUBTABS.length; break
+                case 'Home': nextIndex = 0; break
+                case 'End': nextIndex = BASH_SUBTABS.length - 1; break
+                default: return
+              }
+              event.preventDefault()
+              const next = BASH_SUBTABS[nextIndex] as { id: BashSubtab; labelKey: BashPlusLocaleKey }
+              onChange(next.id)
+              refs.current[nextIndex]?.focus()
+            }}
+          >
+            {t(sub.labelKey)}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -652,7 +727,6 @@ function ToolPanel(props: {
   actionResults: Record<string, { ok: boolean; text: string } | null>
   runAction: (field: ToolPlusField) => void
   bashSubtab: BashSubtab
-  onBashSubtab: (next: BashSubtab) => void
   onOpenCommands: () => void
   scrollMemory: { current: Record<string, number> }
 }): ReactNode {
@@ -779,68 +853,8 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
 
   const active = TOOL_TABS.find(row => row.id === activeId)?.id ?? TOOL_TABS[0]?.id
 
-  // Sliding active-tab underline: a single 2px indicator element FLIP-animated
-  // with transform only (translateX + scaleX), so tab switches stay on the
-  // compositor. Position is measured from the active tab's offset geometry; a
-  // ResizeObserver re-commits it instantly when labels resize (locale switch,
-  // font load) without animation.
-  const tabsRef = useRef<HTMLDivElement | null>(null)
-  const indicatorRef = useRef<HTMLSpanElement | null>(null)
-  const committedRect = useRef<{ left: number; width: number } | null>(null)
-
-  const commitIndicator = useCallback((animate: boolean) => {
-    const tabs = tabsRef.current
-    const indicator = indicatorRef.current
-    if (tabs === null || indicator === null || active === undefined) return
-    const tab = tabs.querySelector<HTMLElement>(`[data-tps-tab="${active}"]`)
-    if (tab === null) return
-    const left = tab.offsetLeft
-    const width = tab.offsetWidth
-    const previous = committedRect.current
-    committedRect.current = { left, width }
-    // Position unchanged → touch nothing. A FLIP may be mid-flight; blindly
-    // rewriting `transition: none` here (e.g. from a ResizeObserver ping that
-    // fires for already-committed geometry) would kill it on frame zero.
-    if (previous !== null && previous.left === left && previous.width === width) return
-    if (!animate || prefersReducedMotion() || previous === null) {
-      indicator.style.willChange = ''
-      indicator.style.transition = 'none'
-      indicator.style.width = `${width}px`
-      indicator.style.transform = `translateX(${left}px)`
-      return
-    }
-    // `will-change` is a hint for the duration of the animation only: held for
-    // the lifetime of the page it keeps a compositor layer alive for nothing.
-    indicator.style.willChange = 'transform'
-    indicator.style.transition = 'none'
-    indicator.style.width = `${width}px`
-    indicator.style.transform = `translateX(${previous.left}px) scaleX(${previous.width / width})`
-    // Force style flush so the inverted frame paints before we release it.
-    void indicator.offsetWidth
-    indicator.style.transition = 'transform .24s cubic-bezier(.22,1,.36,1)'
-    indicator.style.transform = `translateX(${left}px) scaleX(1)`
-    indicator.addEventListener('transitionend', function settle() {
-      indicator.removeEventListener('transitionend', settle)
-      indicator.style.willChange = ''
-    })
-  }, [active])
-
-  useLayoutEffect(() => { commitIndicator(true) }, [commitIndicator])
-
-  // Observe once at mount: the tab buttons are a static list, so re-creating
-  // the observer on every commitIndicator identity change would re-fire
-  // initial notifications mid-FLIP and snap the underline. The ref indirection
-  // keeps the callback on the latest commit closure (latest `active`).
-  const commitRef = useRef(commitIndicator)
-  commitRef.current = commitIndicator
-  useEffect(() => {
-    const tabs = tabsRef.current
-    if (tabs === null || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => commitRef.current(false))
-    observer.observe(tabs)
-    for (const tab of Array.from(tabs.querySelectorAll('[data-tps-tab]'))) observer.observe(tab)
-    return () => { observer.disconnect() }
-  }, [])
+  // 下划线跟着选中的工具页签滑动（实现见 useSlidingUnderline）。
+  const { containerRef: tabsRef, indicatorRef } = useSlidingUnderline(active, 240)
 
   // Pinned page: the heading/intro/tablist block and the save bar stay put and
   // the tab panel owns the scrollbar, so the scrollbar spans exactly the band
@@ -982,6 +996,10 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
           )
         })}
       </div>
+      {/* 子页签固定在页签条下面，只让面板内容滚动。 */}
+      {active === 'bash'
+        ? <BashSubtabs tabsId={tabsId.current} t={t} value={bashSubtab} onChange={setBashSubtab} />
+        : null}
       {/* The active panel plus, for the length of one fade, the panel it
           replaced. Both are keyed by tab, so the outgoing one is the same
           element it was a moment ago (state, scroll offset and RPC effects
@@ -1003,7 +1021,6 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               actionResults={actionResults}
               runAction={runAction}
               bashSubtab={bashSubtab}
-              onBashSubtab={setBashSubtab}
               onOpenCommands={() => setCommandDialogOpen(true)}
               scrollMemory={panelScroll}
             />
@@ -1025,7 +1042,6 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               actionResults={actionResults}
               runAction={runAction}
               bashSubtab={bashSubtab}
-              onBashSubtab={setBashSubtab}
               onOpenCommands={() => setCommandDialogOpen(true)}
               scrollMemory={panelScroll}
             />

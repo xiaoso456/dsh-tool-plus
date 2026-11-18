@@ -6,7 +6,7 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useId, type ReactNode } from 'react'
+import { useId, useLayoutEffect, type ReactNode, type RefObject } from 'react'
 import type { BashPlusLocaleKey } from './locales.ts'
 import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 
@@ -165,6 +165,18 @@ let rowsCssInjected = false
  * 鼠标点进去也会画键盘用的焦点环（蓝圈套灰边那种双层框）。这里只记意图，样式
  * 仍在 CSS 里决定，键位用户拿到的焦点环不变。
  */
+/**
+ * 把 `inert` 当 DOM 属性写进去。
+ *
+ * React 19 才认识 `inert` 属性；18 上给布尔值会被静默丢弃，于是折叠起来的行、
+ * 收起的面板仍然能用 Tab 走进去。写属性对两个版本都一样。
+ */
+export function useInert(ref: RefObject<HTMLElement | null>, inert: boolean): void {
+  useLayoutEffect(() => {
+    if (ref.current !== null) ref.current.inert = inert
+  }, [ref, inert])
+}
+
 export function installFocusModality(): void {
   if (typeof document === 'undefined' || focusModalityInstalled) return
   focusModalityInstalled = true
