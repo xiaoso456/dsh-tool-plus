@@ -29,6 +29,7 @@ import { TOOL_PLUS_GROUP_LABELS } from '../config/fields.ts'
 import { TOOL_PLUS_RPC_CHANNEL } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import { injectSettingsRowsCss } from './rows.tsx'
+import { ModalShell, type ModalPosition } from './modal-shell.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
 import {
   PRESET_ACTION_ENDPOINT,
@@ -72,8 +73,12 @@ const CSS = `
 .tpp-actions{position:relative;display:inline-flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap}
 /* 说明卡：位置我们自己定（宿主悬浮卡只会开在锚点右侧，这里右边就是面板边缘），
    外观照宿主 tooltip：底色 --dsw-alias-tooltip-bg + 固定浅色文字（两套主题的 tooltip
-   底都是深色，用会翻转的别名前景会在浅色主题下糊成 2:1 对比度）。 */
-.tpp-tip{position:fixed;z-index:1100;max-width:44ch;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-tooltip-bg);color:var(--dsw-static-neutral-bluish-50);font-size:12px;line-height:18px;pointer-events:none;animation:tpp-in .16s cubic-bezier(.22,1,.36,1) both}
+   底都是深色，用会翻转的别名前景会在浅色主题下糊成 2:1 对比度）。
+   定位在 .tpp-tip 外层、动画在 .tpp-tipBody 内层：向上翻用的是外层 transform，
+   动画也写 transform 就会把它覆盖掉（之前 translateY(-100%) 失效正是这个原因）。
+   说明卡允许指针进入（pointer-events:auto），否则用户没法停留读长文案、也选不中字。 */
+.tpp-tip{position:fixed;z-index:1100;max-width:44ch}
+.tpp-tipBody{display:block;padding:6px 10px;border-radius:8px;background:var(--dsw-alias-tooltip-bg);color:var(--dsw-static-neutral-bluish-50);font-size:12px;line-height:18px;pointer-events:auto;user-select:text;animation:tpp-in .16s cubic-bezier(.22,1,.36,1) both}
 .tpp-actionButton{display:inline-flex;align-items:center;gap:6px}
 .tpp-helpIcon{flex:none;opacity:.72}
 /* 推荐标签：绿色状态色的淡底胶囊（color-mix 跟随两套主题）。 */
@@ -89,7 +94,9 @@ const CSS = `
 .tpp-dot[data-tone="warn"]{background:var(--dsw-alias-state-warn-primary)}
 .tpp-dot[data-tone="error"]{background:var(--dsw-alias-state-error-primary)}
 .tpp-diffButton{margin-left:auto}
-.tpp-confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);animation:tpp-in .2s cubic-bezier(.22,1,.36,1) both}
+/* 二次确认卡由 modal-shell 锚定成 fixed 浮层（不再插在正文流里把下面顶下去），
+   进场动画也归壳；这里只管卡片外观。 */
+.tpp-confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1);max-height:calc(100vh - 24px);overflow:auto}
 .tpp-confirmText{margin:0;max-width:65ch;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tpp-confirmActions{display:inline-flex;align-items:center;gap:8px}
 .tpp-state{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
@@ -102,7 +109,7 @@ const CSS = `
 .tpp-diffPath{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:17px;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
 .tpp-diffDialog.tpp-diffDialog{width:min(880px,92vw);max-width:min(880px,92vw)}
 @keyframes tpp-in{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion: reduce){.tpp-confirm{animation:none}}
+@media (prefers-reduced-motion: reduce){.tpp-tipBody{animation:none}}
 `
 
 /** 注入预设分组样式一次（沿用仓库既有的 `data-plugin-css` 手法）。 */
@@ -150,9 +157,16 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   const [openPicker, setOpenPicker] = useState<OpenPicker>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [results, setResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
-  /** 待二次确认的动作（动作 + 目标预设）；`align` / `revert` 会动到已有内容。 */
-  const [confirming, setConfirming] = useState<{ id: string; action: PresetAction } | null>(null)
-  /** 确认框 / 动作结果所在的节点：它们出现在卡片底部，常在视口之外，出现时要滚进来。 */
+  /**
+   * 待二次确认的动作（动作 + 目标预设 + 卡片落点）。`align` / `rebase` /
+   * `revert` 会动到已有内容，都得先问一句。
+   */
+  const [confirming, setConfirming] = useState<{ id: string; action: PresetAction; position: ModalPosition } | null>(null)
+  /** 触发确认的按钮：滚动时按它的实时矩形重算位置，滚出视口就收起。 */
+  const confirmAnchor = useRef<HTMLElement | null>(null)
+  /** 确认卡里的安全项（取消）；卡片出现时焦点落这里。 */
+  const confirmCancelRef = useRef<HTMLButtonElement | null>(null)
+  /** 动作结果所在的节点：它出现在卡片底部，常在视口之外，出现时要滚进来。 */
   const attentionRef = useRef<HTMLElement | null>(null)
   /**
    * 悬浮说明：portal 到 body 的 fixed 浮层 + 按按钮实时矩形算出的坐标。
@@ -161,6 +175,15 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
    * 被任何祖先裁切；层高 1100 也在抽屉遮罩（1000）之上。
    */
   const [hinted, setHinted] = useState<{ action: PresetAction; top: number; right: number; above: boolean } | null>(null)
+  /** 说明卡的 380ms 停留计时与"刚看过"时间戳（见 scheduleHint）。 */
+  const hintTimer = useRef<number | null>(null)
+  const hintShownAt = useRef(0)
+
+  const clearHintTimer = (): void => {
+    if (hintTimer.current === null) return
+    window.clearTimeout(hintTimer.current)
+    hintTimer.current = null
+  }
 
   /** 把说明卡放到按钮下方（视口底部放不下时翻到上方），右缘与按钮右缘对齐。 */
   const showHint = (action: PresetAction, target: HTMLElement): void => {
@@ -173,10 +196,117 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
       above,
     })
   }
+
+  /** 锚定浮层的坐标：默认落在控件下方 6px、右缘对齐；底部放不下就向上翻。 */
+  const anchorPosition = (target: HTMLElement, height: number): ModalPosition => {
+    const rect = target.getBoundingClientRect()
+    const above = rect.bottom + height > window.innerHeight && rect.top > height + 8
+    return {
+      top: above ? rect.top - 6 : rect.bottom + 6,
+      right: Math.max(8, window.innerWidth - rect.right),
+      above,
+    }
+  }
+
+  /**
+   * 悬停要停留约 380ms 才出说明：鼠标扫过一排按钮时不至于一路弹卡。
+   * 键盘聚焦立刻出（键盘用户没有"悬停"这一步）；1.5s 内刚看过一张就直接出，
+   * 免得逐个按钮看时每张都要再等一次。
+   */
+  const scheduleHint = (action: PresetAction, target: HTMLElement, immediate: boolean): void => {
+    if (confirming !== null) return
+    clearHintTimer()
+    if (immediate || Date.now() - hintShownAt.current < 1500) {
+      hintShownAt.current = Date.now()
+      showHint(action, target)
+      return
+    }
+    hintTimer.current = window.setTimeout(() => {
+      hintTimer.current = null
+      hintShownAt.current = Date.now()
+      showHint(action, target)
+    }, 380)
+  }
+
+  /** 离开后留 ~220ms：指针从按钮移到说明卡上时不能立刻收掉，否则读不全也选不中字。 */
+  const hideHintSoon = (): void => {
+    clearHintTimer()
+    hintTimer.current = window.setTimeout(() => {
+      hintTimer.current = null
+      setHinted(null)
+    }, 220)
+  }
   /** 动过一次动作就加一：比较结果据此重拉（内容变了）。 */
   const [revision, setRevision] = useState(0)
 
   useEffect(() => { injectSettingsRowsCss(); injectPresetPanelCss() }, [])
+
+  useEffect(() => () => clearHintTimer(), [])
+
+  const confirmOpen = confirming !== null
+  const hintOpen = hinted !== null
+
+  // 说明卡、确认卡都按锚点定位，页面一滚就脱钩：说明卡直接收起（它只是悬停
+  // 提示），确认卡按锚点的实时矩形重算位置（用户可能正要点它）。
+  useEffect(() => {
+    if (!hintOpen) return
+    const dismiss = (): void => setHinted(null)
+    window.addEventListener('scroll', dismiss, true)
+    window.addEventListener('resize', dismiss)
+    return () => {
+      window.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('resize', dismiss)
+    }
+  }, [hintOpen])
+
+  // 说明卡也是一层：它开着时按 Esc 只收说明卡，不该把整个设置抽屉一起关掉。
+  useEffect(() => {
+    if (!hintOpen || confirmOpen) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      // 输入法组合中的 Esc 属于输入法（撤销候选）：不关说明卡，也不让它冒到
+      // 设置抽屉；只 stopPropagation，不 preventDefault。
+      if (event.isComposing || event.keyCode === 229) {
+        event.stopPropagation()
+        return
+      }
+      event.stopPropagation()
+      event.preventDefault()
+      setHinted(null)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [hintOpen, confirmOpen])
+
+  // 确认卡钉在被点的按钮旁：滚动时按新矩形重算，滚出视口就收起。
+  useEffect(() => {
+    if (!confirmOpen) return
+    const reposition = (): void => {
+      const target = confirmAnchor.current
+      if (target === null || !target.isConnected) {
+        setConfirming(null)
+        return
+      }
+      const rect = target.getBoundingClientRect()
+      if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        setConfirming(null)
+        return
+      }
+      const position = anchorPosition(target, 150)
+      setConfirming(current => (current === null ? null : { ...current, position }))
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [confirmOpen])
+
+  // 选中的预设变了（数据刷新、下拉切换）时，上一份的确认卡不能挂在页面上。
+  useEffect(() => {
+    if (confirming !== null && confirming.id !== presetId) setConfirming(null)
+  }, [confirming, presetId])
 
   /** 拉一次预设状态 + 可选模板；任何失败都降级为「不可用」，不进控制台刷屏。 */
   const refresh = useCallback(async (): Promise<void> => {
@@ -208,12 +338,12 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
     setTemplateId(current => resolveSelectedTemplateId(templates, templatePinned ? current : undefined, presetId))
   }, [templates, presetId, templatePinned])
 
-  /** 确认框与结果在卡片底部，用户可能根本看不到；一出现就平滑滚进视野，免得以为点了没反应。 */
+  /** 动作结果在卡片底部，用户可能根本看不到；一出现就平滑滚进视野，免得以为点了没反应。 */
   const resultText = presetId === undefined ? undefined : results[presetId]?.text
   useEffect(() => {
-    if (confirming === null && resultText === undefined) return
+    if (resultText === undefined) return
     attentionRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [confirming, resultText])
+  }, [resultText])
 
   /** 比较当前这对（预设 × 模板）。只读，失败即无比较结果（两个点回到"检查中"）。 */
   useEffect(() => {
@@ -313,7 +443,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
             className="tp-selectTrigger"
             aria-haspopup="menu"
             aria-expanded={openPicker === key}
-            onClick={() => setOpenPicker(open => (open === key ? null : key))}
+            onClick={() => { setConfirming(null); setHinted(null); clearHintTimer(); setOpenPicker(open => (open === key ? null : key)) }}
           >
             <span>{current}</span>
             <IconChevronDownOutlineRegular className="tp-selectChevron" />
@@ -323,7 +453,8 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
     </div>
   )
 
-  /** 选中那份的详情：名称/来源 → 动作 → 说明 → 待改 → 二次确认 → 结果。 */
+  /** 选中那份的详情：名称/来源 → 动作 → 说明 → 待改 → 结果。
+      二次确认是锚在动作按钮旁的浮层（见根节点），不在这段正文流里。 */
   const detail = (preset: PresetStatus): ReactNode => {
     const notes = presetNotes(t, preset, writable)
     const actions = presetActions(preset, writable)
@@ -342,7 +473,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
             ? (
               /* 动作与左侧说明同一行、靠右对齐（原来的排布）；说明卡是 body 上的 fixed
                  浮层（见 showHint），不受这里任何祖先的裁切影响。 */
-              <div className="tpp-actions" onMouseLeave={() => setHinted(null)}>
+              <div className="tpp-actions" onMouseLeave={hideHintSoon}>
                 {actions.map(action => (
                   <button
                     key={action}
@@ -350,14 +481,26 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                     className={'tp-actionButton tpp-actionButton' + (action === 'align' ? ' tpp-danger' : '')}
                     disabled={running}
                     {...{ 'aria-description': presetActionHint(t, action, preset, templateLabel) }}
-                    onMouseEnter={event => showHint(action, event.currentTarget)}
-                    onFocus={event => showHint(action, event.currentTarget)}
-                    onBlur={() => setHinted(null)}
-                    onClick={() => {
+                    onMouseEnter={event => scheduleHint(action, event.currentTarget, false)}
+                    onFocus={event => scheduleHint(action, event.currentTarget, true)}
+                    onBlur={hideHintSoon}
+                    onClick={(event) => {
                       // 会动到已有内容的两个动作先原地二次确认：对齐会覆盖你改过的
                       // 插件列表，恢复随包会删掉你的覆盖。最小更新是纯加法，直接执行。
-                      if (presetActionNeedsConfirm(action)) setConfirming({ id: preset.id, action })
-                      else runAction(preset, action)
+                      if (!presetActionNeedsConfirm(action)) {
+                        runAction(preset, action)
+                        return
+                      }
+                      // 确认卡是锚在这个按钮旁的浮层，不是插进正文流里的块：
+                      // 否则它一出现就把下面 80px 内容顶下去。
+                      confirmAnchor.current = event.currentTarget
+                      clearHintTimer()
+                      setHinted(null)
+                      setConfirming({
+                        id: preset.id,
+                        action,
+                        position: anchorPosition(event.currentTarget, 150),
+                      })
                     }}
                   >
                     <span>{running ? t('presetActionWorking') : presetActionText(t, action)}</span>
@@ -383,29 +526,6 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
           )
           : null}
         {result === null && pending !== null ? <p className="tpp-state">{pending}</p> : null}
-        {confirming !== null && confirming.id === preset.id
-          ? (
-            <div className="tpp-confirm" role="group" aria-label={t('presetConfirmTitle')} ref={(node: HTMLElement | null) => { attentionRef.current = node }}>
-              <p className="tpp-confirmText">{presetConfirmText(t, preset, confirming.action, selectedTemplateLabel)}</p>
-              <div className="tpp-confirmActions">
-                <button
-                  type="button"
-                  className="tp-actionButton tpp-danger"
-                  onClick={() => runAction(preset, confirming.action)}
-                >
-                  {t('presetConfirmYes')}
-                </button>
-                <button
-                  type="button"
-                  className="tp-actionButton"
-                  onClick={() => setConfirming(null)}
-                >
-                  {t('presetConfirmNo')}
-                </button>
-              </div>
-            </div>
-          )
-          : null}
       </div>
     )
   }
@@ -413,21 +533,60 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
   return (
     <section className="tps-group">
       <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS.preset ?? 'groupPresets')}</h4>
-      {/* 说明卡浮层：挂在 body 上、按按钮矩形算坐标，不被面板滚动容器裁切。 */}
+      {/* 说明卡浮层：挂在 body 上、按按钮矩形算坐标，不被面板滚动容器裁切。
+          指针可以移进来（选字/读完长文案），离开后留 220ms 再收。 */}
       {hinted !== null && selected !== undefined
         ? createPortal(
           <span
             className="tpp-tip"
-            role="tooltip"
             style={{
               top: hinted.top,
               right: hinted.right,
               transform: hinted.above ? 'translateY(-100%)' : undefined,
             }}
+            onMouseEnter={clearHintTimer}
+            onMouseLeave={hideHintSoon}
           >
-            {presetActionHint(t, hinted.action, selected, selectedTemplateLabel)}
+            <span className="tpp-tipBody" role="tooltip">
+              {presetActionHint(t, hinted.action, selected, selectedTemplateLabel)}
+            </span>
           </span>,
           document.body,
+        )
+        : null}
+      {/* 二次确认卡：锚在动作按钮旁的浮层，不参与正文流，出现时不挤动下面的内容。
+          卡片出现即聚焦安全项（取消），Esc 与点外面都只撤这一张卡。 */}
+      {confirmOpen && confirming !== null && selected !== undefined && confirming.id === selected.id
+        ? (
+          <ModalShell
+            variant="popover"
+            role="alertdialog"
+            ariaLabel={t('presetConfirmTitle')}
+            className="tpp-confirm"
+            position={confirming.position}
+            style={{ width: 'min(520px, calc(100vw - ' + (confirming.position.right + 12) + 'px))' }}
+            onRequestClose={() => setConfirming(null)}
+            initialFocus={() => confirmCancelRef.current}
+          >
+            <p className="tpp-confirmText">{presetConfirmText(t, selected, confirming.action, selectedTemplateLabel)}</p>
+            <div className="tpp-confirmActions">
+              <button
+                ref={confirmCancelRef}
+                type="button"
+                className="tp-actionButton"
+                onClick={() => setConfirming(null)}
+              >
+                {t('presetConfirmNo')}
+              </button>
+              <button
+                type="button"
+                className="tp-actionButton tpp-danger"
+                onClick={() => runAction(selected, confirming.action)}
+              >
+                {t('presetConfirmYes')}
+              </button>
+            </div>
+          </ModalShell>
         )
         : null}
       <div className="tps-card">
@@ -479,7 +638,7 @@ export function PresetPanel(props: { t: (key: BashPlusLocaleKey) => string }): R
                     <button
                       type="button"
                       className="tp-reset tpp-diffButton"
-                      onClick={() => setDiffOpen(true)}
+                      onClick={() => { setConfirming(null); setHinted(null); setDiffOpen(true) }}
                     >
                       {t('presetDiffOpen')}
                     </button>

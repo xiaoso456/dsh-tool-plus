@@ -6,11 +6,14 @@
  * container, holding two groups: 对话卡片 (the plugin-wide browser-card
  * switch) and 预设 (the agent-preset roster: status, difference summary and
  * the manual upgrade/reset actions); switching a tab shows that tool's configurable
- * fields, while tools without global settings show a placeholder. Only the
- * active tool's panel is rendered; the shared staged form over the
- * `tool-plus` namespace lives at the page level, so drafts survive switching
- * without keeping hidden panels mounted — the same flat schema the Bash card
- * edits, from the same single-source field table.
+ * fields, while tools without global settings show a placeholder. The
+ * shared staged form over the `tool-plus` namespace lives at the page level,
+ * so drafts survive switching without keeping hidden panels mounted — the
+ * same flat schema the Bash card edits, from the same single-source field
+ * table. The panel a switch replaces stays mounted for one 150ms fade, so the
+ * two panels crossfade instead of the old one vanishing into a blank frame;
+ * its unsaved draft is also parked in sessionStorage, so hopping to another
+ * settings section and back restores it while the document baseline stands.
  *
  * `action`-kind fields (e.g. 探测浏览器) are not part of the staged form:
  * they run a host RPC endpoint over the official Connection channel
@@ -26,10 +29,10 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, IconWarningOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TOOL_PLUS_FIELDS, TOOL_PLUS_GROUP_LABELS, TOOL_PLUS_TABS, type ToolPlusField, type ToolPlusTab } from '../config/fields.ts'
 import { TOOL_PLUS_RPC_CHANNEL, NATIVE_STATUS_ENDPOINT, RM_SAFE_STATUS_ENDPOINT, type NativeStatusValue, type RmSafeStatusValue } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
@@ -69,53 +72,79 @@ export type ToolPlusSectionProps =
  * JS-driven underline).
  */
 const CSS = `
-.tps-section{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding-top:2px}
+.tps-section{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding-top:2px;--tps-gutter:10px}
 .tps-heading{margin:0;font-size:18px;font-weight:600;line-height:26px;color:var(--dsw-alias-label-primary);animation:tps-rise .38s cubic-bezier(.22,1,.36,1) both}
-.tps-intro{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary);max-width:64ch;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .05s both}
-.tps-tabs{position:relative;display:flex;align-items:flex-end;gap:22px;border-bottom:1px solid var(--dsw-alias-border-l2);margin-top:2px;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .1s both}
-.tps-tab{position:relative;appearance:none;border:none;background:none;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary);padding:7px 1px 9px;cursor:pointer;white-space:nowrap;transition:color .16s ease}
+.tps-intro{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);max-width:64ch;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .05s both}
+.tps-tabs{position:relative;display:flex;align-items:flex-end;gap:22px;border-bottom:1px solid var(--dsw-alias-border-l2);margin:2px var(--tps-gutter) 0 0;animation:tps-rise .38s cubic-bezier(.22,1,.36,1) .1s both}
+.tps-tab{position:relative;appearance:none;border:none;background:none;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);padding:7px 1px 9px;cursor:pointer;white-space:nowrap;transition:color .16s ease,transform .1s ease}
 .tps-tab:hover:not([data-active="true"]){color:var(--dsw-alias-label-primary)}
 .tps-tab[data-active="true"]{color:var(--dsw-alias-label-primary)}
+.tps-tab:active:not(:disabled){transform:scale(.97)}
 .tps-tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px;border-radius:2px}
-.tps-tabIndicator{position:absolute;bottom:-1px;left:0;height:2px;border-radius:2px 2px 0 0;background:var(--dsw-alias-state-business-primary);pointer-events:none;transform-origin:left center;will-change:transform}
-.tps-panel{display:flex;flex:1 1 auto;flex-direction:column;gap:14px;min-width:0;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;animation:tps-panel-in .24s cubic-bezier(.22,1,.36,1) both}
+.tps-tabIndicator{position:absolute;bottom:-1px;left:0;height:2px;border-radius:2px 2px 0 0;background:var(--dsw-alias-state-business-primary);pointer-events:none;transform-origin:left center}
+.tps-panels{position:relative;display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0}
+.tps-panel{display:flex;flex:1 1 auto;flex-direction:column;gap:14px;min-width:0;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}
+.tps-panel[data-exit="false"]{position:relative;z-index:1;animation:tps-panel-in .14s cubic-bezier(.22,1,.36,1) both}
+.tps-panel[data-exit="true"]{position:absolute;inset:0;z-index:0;pointer-events:none;animation:tps-panel-out .14s ease both}
 .tps-panel::-webkit-scrollbar{width:10px}
 .tps-panel::-webkit-scrollbar-track{background:transparent}
 .tps-panel::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:999px;background-color:color-mix(in srgb, var(--dsw-alias-label-tertiary) 45%, transparent);background-clip:content-box}
 .tps-panel::-webkit-scrollbar-thumb:hover{background-color:color-mix(in srgb, var(--dsw-alias-label-tertiary) 75%, transparent)}
+.tps-rowSlot{display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .2s cubic-bezier(.22,1,.36,1),opacity .16s ease}
+/* Collapsed rows keep their 1px separator transparent: a zero-height box still
+   paints its border, and three stacked collapsed slots showed up as a 3px line. */
+.tps-rowSlot[data-open="false"]{grid-template-rows:0fr;opacity:0}
+.tps-rowSlot[data-open="false"] .tps-rowSlotInner{border-bottom-color:transparent}
+/* The 4px horizontal padding keeps the focused control's outline inside the
+   clipping box; the matching negative margin keeps every column exactly where
+   it was, so only the hairline runs 4px wider on each side. */
+.tps-rowSlotInner{min-width:0;min-height:0;overflow:hidden;padding:0 4px;margin:0 -4px;border-bottom:1px solid transparent;border-bottom-color:var(--dsw-alias-border-l1);transition:border-bottom-color .2s ease}
+.tps-rowSlot[data-last="true"] .tps-rowSlotInner{border-bottom:none}
+.tps-subpanel{display:flex;flex-direction:column;gap:14px;min-width:0}
 .tps-group{display:flex;flex-direction:column}
 .tps-groupTitle{font-size:13px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary);margin:0 0 6px;padding:0 2px}
 .tps-card{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3);padding:0 16px}
 .tps-empty{border:1px dashed var(--dsw-alias-border-l3);border-radius:12px;padding:24px 16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px}
 .tps-emptyTitle{margin:0;font-size:14px;font-weight:600;line-height:22px;color:var(--dsw-alias-label-primary)}
-.tps-emptyHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tps-readOnly{margin:0;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tps-footer{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 0;border-top:1px solid var(--dsw-alias-border-l2)}
-.tps-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-state-error-primary)}
-.tps-applies{flex:1;min-width:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
+.tps-emptyHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tps-readOnly{margin:0;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tps-footer{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 0;margin-right:var(--tps-gutter);border-top:1px solid var(--dsw-alias-border-l2)}
+.tps-failed{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.5;color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 70%, var(--dsw-alias-label-primary))}
+.tps-applies{flex:1;min-width:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
+.tps-pageNote{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tps-unsaved{display:inline-flex;align-items:center;gap:6px;flex:none;border-radius:999px;padding:2px 10px;font-size:11px;line-height:17px;font-weight:500;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-business-tertiary)}
 .tps-unsavedDot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-business-primary);animation:tps-pulse 1.8s ease-in-out infinite}
 .tps-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 2px}
-.tps-subtab{appearance:none;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;padding:3px 12px;cursor:pointer;transition:color .16s ease,border-color .16s ease,background .16s ease}
-.tps-subtab:hover:not([aria-selected="true"]){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
-.tps-subtab[aria-selected="true"]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
+.tps-subtab{appearance:none;border:1px solid var(--dsw-alias-label-tertiary);border-radius:999px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;padding:3px 12px;cursor:pointer;transition:color .16s ease,border-color .16s ease,background .16s ease,transform .1s ease}
+.tps-subtab:hover:not([aria-selected="true"]){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-secondary)}
+.tps-subtab:active:not(:disabled){transform:scale(.97)}
+.tps-subtab[aria-selected="true"]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-business-tertiary)}
 .tps-subtab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
-@media (prefers-reduced-motion: reduce){.tps-subtab{transition:none}}
+.tps-skeleton{display:flex;flex:1 1 auto;flex-direction:column;gap:14px;min-height:0}
+.tps-skeletonLabel{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tps-skeletonCard{flex:none;height:96px;border-radius:12px;background:var(--dsw-alias-bg-skeleton);animation:tps-breathe 1.4s ease-in-out infinite}
+.tps-skeletonCard[data-tall="true"]{height:168px}
 .tps-discard,.tps-save{appearance:none;border:1px solid transparent;border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;line-height:1.5;cursor:pointer;transition:transform .1s ease,background .16s ease,border-color .16s ease,color .16s ease}
 .tps-discard:active:not(:disabled),.tps-save:active:not(:disabled){transform:scale(.97)}
 .tps-discard{border-color:var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-secondary)}
 .tps-discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
-.tps-save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}
+/* Reserved for the widest label ("Save" vs "Saving…"), so the button pair
+   does not shift left while a save is running. */
+.tps-save{min-width:84px;background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}
 .tps-save:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
 .tps-discard:disabled,.tps-save:disabled{opacity:.4;cursor:default}
 .tps-discard:focus-visible,.tps-save:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 @keyframes tps-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes tps-panel-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tps-panel-in{from{opacity:.6;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes tps-panel-out{from{opacity:1}to{opacity:0}}
 @keyframes tps-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+@keyframes tps-breathe{0%,100%{opacity:.55}50%{opacity:1}}
 @media (prefers-reduced-motion: reduce){
-  .tps-heading,.tps-intro,.tps-tabs,.tps-panel,.tps-unsavedDot{animation:none}
-  .tps-tab,.tps-discard,.tps-save{transition:none}
-  .tps-tabIndicator{will-change:auto}
+  /* The exit-state rules below are more specific than a bare class, so they
+     have to be named here too or reduce-motion keeps animating the panel. */
+  .tps-heading,.tps-intro,.tps-tabs,.tps-unsavedDot,.tps-skeletonCard,
+  .tps-panel,.tps-panel[data-exit="false"],.tps-panel[data-exit="true"]{animation:none}
+  .tps-tab,.tps-subtab,.tps-discard,.tps-save,.tps-rowSlot{transition:none}
 }
 `
 
@@ -159,6 +188,19 @@ const BASH_INIT_FIELDS = new Set(['bashInitEnabled'])
 /** Floor for the pinned page height, so an unusually short pane never collapses the panel. */
 const MIN_PAGE_HEIGHT = 240
 
+/** Outgoing panel's crossfade window; kept in step with `.tps-panel[data-exit="true"]`. */
+const PANEL_FADE_MS = 150
+
+/** sessionStorage slot for the page's unsaved draft (one page, one draft). */
+const DRAFT_KEY = 'dsh-tool-plus:settings-draft'
+
+/** Whether the user asked the system to skip non-essential motion. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 /**
  * Nearest ancestor that scrolls vertically — the host settings pane hosting
  * this section. The pane is app chrome with no stable class, so it is found by
@@ -191,15 +233,55 @@ function isFieldVisible(field: ToolPlusField, form: ReturnType<typeof useToolFor
 }
 
 /**
+ * Apply `inert` as a DOM property.
+ *
+ * React only learnt the `inert` prop in 19; on 18 a boolean `inert` prop is
+ * dropped with a warning, which left collapsed rows tabbable and editable. The
+ * property write behaves the same on both versions.
+ */
+function useInert(ref: RefObject<HTMLElement | null>, inert: boolean): void {
+  useLayoutEffect(() => {
+    if (ref.current !== null) ref.current.inert = inert
+  }, [ref, inert])
+}
+
+/**
+ * One field row, in the slot that owns its separator and its height.
+ *
+ * Conditional fields stay mounted and collapse to zero height instead of
+ * vanishing, so showing or hiding a field (a strategy switch, a master toggle)
+ * eases the card to its new height instead of cutting 36px out of the layout.
+ * A collapsed slot is `inert`: its controls are neither focusable nor read out.
+ */
+function RowSlot(props: { open: boolean; last: boolean; children: ReactNode }): ReactNode {
+  const { open, last, children } = props
+  const slotRef = useRef<HTMLDivElement | null>(null)
+  useInert(slotRef, !open)
+  return (
+    <div
+      ref={slotRef}
+      className="tps-rowSlot"
+      data-open={open ? 'true' : 'false'}
+      data-last={last ? 'true' : undefined}
+    >
+      <div className="tps-rowSlotInner">{children}</div>
+    </div>
+  )
+}
+
+/**
  * Render one tool tab's panel content: fields in table order (master
  * switches first, per their declaration order), grouped under their group
  * heading, or the no-config placeholder for tools without global settings.
- * Fields whose visibility condition is unmet are omitted. `action` fields
+ * A field whose visibility condition is unmet stays mounted but collapsed, so
+ * showing or hiding it eases the card to its new height. `action` fields
  * render their own button row (host RPC via the caller's `run`). The 全局 tab
  * appends its preset group (roster/status/actions) after the field groups.
  */
 function ToolTabPanel(props: {
   tab: ToolPlusTab
+  /** Page-chrome id prefix, so tab and panel ids stay paired across remounts. */
+  tabsId: string
   t: (key: BashPlusLocaleKey) => string
   form: ReturnType<typeof useToolForm>
   writable: boolean
@@ -212,7 +294,11 @@ function ToolTabPanel(props: {
   onBashSubtab: (next: BashSubtab) => void
   onOpenCommands: () => void
 }): ReactNode {
-  const { tab, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction, bashSubtab, onBashSubtab, onOpenCommands } = props
+  const { tab, tabsId, t, form, writable, openSelect, onOpenChange, actionState, actionResults, runAction, bashSubtab, onBashSubtab, onOpenCommands } = props
+  const subtabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  // Controls stay put but stop accepting input while a save is in flight: an
+  // edit made mid-save would otherwise race the write it is not part of.
+  const disabled = !writable || form.shell.saving
   const commandsView = tab.id === 'bash' && bashSubtab === 'commands'
   const outputView = tab.id === 'bash' && bashSubtab === 'output'
   if (tab.fields.length === 0) {
@@ -225,9 +311,10 @@ function ToolTabPanel(props: {
   }
   const owned = new Set(tab.fields)
   const subtabGroups = tab.id !== 'bash' ? undefined : outputView ? new Set(['output', 'truncation']) : new Set(['behavior', 'timing', 'warmShell'])
-  const visible = TOOL_PLUS_FIELDS.filter(
+  // Every field this sub-page owns — hidden conditional ones included, because
+  // they render collapsed rather than disappear.
+  const candidates = TOOL_PLUS_FIELDS.filter(
     field => owned.has(field.name)
-      && isFieldVisible(field, form)
       && !(tab.id === 'bash' && BASH_INIT_FIELDS.has(field.name))
       && (subtabGroups === undefined || subtabGroups.has(field.group))
       && !commandsView,
@@ -235,11 +322,11 @@ function ToolTabPanel(props: {
   const toggleControl = (name: string): ToggleControl | undefined =>
     form.groups.flatMap(group => group.toggles).find(control => control.field === name)
 
-  // Group visible fields by their group id, preserving table order inside
-  // each group — master toggles (e.g. readSummarizeEnabled) render above the
-  // options they gate even though controls are stored by kind.
+  // Group fields by their group id, preserving table order inside each group —
+  // master toggles (e.g. readSummarizeEnabled) render above the options they
+  // gate even though controls are stored by kind.
   const groups: { group: string; fields: ToolPlusField[] }[] = []
-  for (const field of visible) {
+  for (const field of candidates) {
     const group = groups.find(g => g.group === field.group)
     if (group !== undefined) group.fields.push(field)
     else groups.push({ group: field.group, fields: [field] })
@@ -261,114 +348,121 @@ function ToolTabPanel(props: {
     return undefined
   }
 
-  return (
+  // The last row that is actually showing in each group owns the absence of a
+  // trailing separator; collapsed slots are zero-height and draw nothing.
+  const lastOpenOf = (fields: readonly ToolPlusField[]): string | undefined => {
+    let last: string | undefined
+    for (const field of fields) {
+      if (field.kind === 'action' || isFieldVisible(field, form)) last = field.name
+    }
+    return last
+  }
+
+  const content = (
     <>
-      {tab.id === 'bash' ? (
-        <div className="tps-subtabs" role="tablist" aria-label={t('tabBash')}>
-          {BASH_SUBTABS.map(sub => (
-            <button
-              key={sub.id}
-              type="button"
-              role="tab"
-              className="tps-subtab"
-              aria-selected={bashSubtab === sub.id}
-              onClick={() => onBashSubtab(sub.id)}
-            >
-              {t(sub.labelKey)}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {commandsView ? (
-        <section className="tps-group">
-          <h4 className="tps-groupTitle">{t('cmdTitle')}</h4>
-          <div className="tps-card">
-            <div className="tp-actionField">
-              <div className="tp-actionHead">
-                <div className="tp-actionInfo">
-                  <div className="tp-actionTitle">{t('cmdPanelTitle')}</div>
-                  <div className="tp-actionDesc">{t('cmdIntro')}</div>
+        <>
+          {/* 命令页不写这套设置表单：先说明保存条为什么在这里无事可做，
+              以及命令的改动写到哪里去。说明放页面里而不是保存条里，避免
+              两种文案换行高度不同让底栏跳。 */}
+          <p className="tps-pageNote">{t('commandsPageNote')}</p>
+          <section className="tps-group">
+            <h4 className="tps-groupTitle">{t('cmdTitle')}</h4>
+            <div className="tps-card">
+              <div className="tp-actionField">
+                <div className="tp-actionHead">
+                  <div className="tp-actionInfo">
+                    <div className="tp-actionTitle">{t('cmdPanelTitle')}</div>
+                    <div className="tp-actionDesc">{t('cmdIntro')}</div>
+                  </div>
+                  <button type="button" className="tp-actionButton" disabled={!writable} onClick={onOpenCommands}>{t('cmdOpenPanel')}</button>
                 </div>
-                <button type="button" className="tp-actionButton" disabled={!writable} onClick={onOpenCommands}>{t('cmdOpenPanel')}</button>
               </div>
             </div>
-          </div>
-        </section>
-      ) : groups.map(group => (
-        <section key={group.group} className="tps-group">
-          <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS[group.group] ?? 'title')}</h4>
-          <div className="tps-card">
-          {group.fields.map(field => {
-            // Action fields are not part of the staged form: render the
-            // button row directly (host RPC via the section-level runAction).
-            if (field.kind === 'action') {
-              const actionControl: ActionControl = {
-                field: field.name,
-                labelKey: field.labelKey,
-                hintKey: field.hintKey,
-                actionKey: field.actionKey ?? '',
-              }
-              return (
-                <ActionRow
-                  key={field.name}
-                  t={t}
-                  control={actionControl}
-                  disabled={!writable}
-                  running={actionState[field.name] === 'running'}
-                  result={actionResults[field.name] ?? null}
-                  onRun={(_actionKey) => runAction(field)}
-                />
-              )
-            }
-            const entry = controlOf(field)
-            if (entry === undefined) return null
-            if (entry.kind === 'number') {
-              return (
-                <NumberRow
-                  key={field.name}
-                  t={t}
-                  control={entry.control as NumberControl}
-                  disabled={!writable}
-                  onEdit={form.actions.edit}
-                  onReset={form.actions.resetField}
-                />
-              )
-            }
-            if (entry.kind === 'select') {
-              return (
-                <SelectRow
-                  key={field.name}
-                  t={t}
-                  control={entry.control as SelectControl}
-                  disabled={!writable}
-                  open={openSelect === field.name}
-                  onOpenChange={onOpenChange}
-                  onEdit={form.editSelect}
-                  onReset={form.actions.resetField}
-                />
-              )
-            }
-            return (
-              <ToggleRow
-                key={field.name}
-                t={t}
-                control={entry.control as ToggleControl}
-                disabled={!writable}
-                onToggle={form.onToggle}
-                onReset={form.actions.resetField}
-              />
-            )
-          })}
-          </div>
-        </section>
-      ))}
+          </section>
+        </>
+      ) : groups.map((group) => {
+        const lastOpen = lastOpenOf(group.fields)
+        return (
+          <section key={group.group} className="tps-group">
+            <h4 className="tps-groupTitle">{t(TOOL_PLUS_GROUP_LABELS[group.group] ?? 'title')}</h4>
+            <div className="tps-card">
+              {group.fields.map(field => {
+                // Action fields are not part of the staged form: render the
+                // button row directly (host RPC via the section-level runAction).
+                if (field.kind === 'action') {
+                  const actionControl: ActionControl = {
+                    field: field.name,
+                    labelKey: field.labelKey,
+                    hintKey: field.hintKey,
+                    actionKey: field.actionKey ?? '',
+                  }
+                  return (
+                    <ActionRow
+                      key={field.name}
+                      t={t}
+                      control={actionControl}
+                      disabled={disabled}
+                      running={actionState[field.name] === 'running'}
+                      result={actionResults[field.name] ?? null}
+                      onRun={(_actionKey) => runAction(field)}
+                    />
+                  )
+                }
+                const entry = controlOf(field)
+                if (entry === undefined) return null
+                const open = isFieldVisible(field, form)
+                let row: ReactNode
+                if (entry.kind === 'number') {
+                  row = (
+                    <NumberRow
+                      t={t}
+                      control={entry.control as NumberControl}
+                      disabled={disabled}
+                      onEdit={form.actions.edit}
+                      onReset={form.actions.resetField}
+                    />
+                  )
+                } else if (entry.kind === 'select') {
+                  row = (
+                    <SelectRow
+                      t={t}
+                      control={entry.control as SelectControl}
+                      disabled={disabled}
+                      open={openSelect === field.name}
+                      onOpenChange={onOpenChange}
+                      onEdit={form.editSelect}
+                      onReset={form.actions.resetField}
+                    />
+                  )
+                } else {
+                  row = (
+                    <ToggleRow
+                      t={t}
+                      control={entry.control as ToggleControl}
+                      disabled={disabled}
+                      onToggle={form.onToggle}
+                      onReset={form.actions.resetField}
+                    />
+                  )
+                }
+                return (
+                  <RowSlot key={field.name} open={open} last={lastOpen === field.name}>
+                    {row}
+                  </RowSlot>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })}
       {/* 「全局」tab 的第二个分组：预设清单。它不进表单（没有设置键），自带
           RPC 状态与动作，所以在这里单独挂，而不是在字段表里插一个假字段。 */}
       {tab.id === 'bash' && !commandsView
         ? (
           <BashInitPanel
             t={t}
-            disabled={!writable}
+            disabled={!writable || form.shell.saving}
             enable={toggleControl('bashInitEnabled')}
             onToggle={form.onToggle}
             onResetField={form.actions.resetField}
@@ -377,6 +471,62 @@ function ToolTabPanel(props: {
         : null}
       {tab.id === 'web' ? <NativeStatusPanel t={t} /> : null}
       {tab.id === 'web' ? <PresetPanel t={t} /> : null}
+    </>
+  )
+
+  return (
+    <>
+      {tab.id === 'bash'
+        ? (
+          <div className="tps-subtabs" role="tablist" aria-label={t('tabBash')}>
+            {BASH_SUBTABS.map((sub, index) => {
+              const selected = bashSubtab === sub.id
+              return (
+                <button
+                  key={sub.id}
+                  ref={(element) => { subtabRefs.current[index] = element }}
+                  id={`${tabsId}-subtab-${sub.id}`}
+                  type="button"
+                  role="tab"
+                  className="tps-subtab"
+                  aria-selected={selected}
+                  aria-controls={selected ? `${tabsId}-subpanel` : undefined}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => onBashSubtab(sub.id)}
+                  onKeyDown={(event) => {
+                    let nextIndex: number
+                    switch (event.key) {
+                      case 'ArrowRight': nextIndex = (index + 1) % BASH_SUBTABS.length; break
+                      case 'ArrowLeft': nextIndex = (index - 1 + BASH_SUBTABS.length) % BASH_SUBTABS.length; break
+                      case 'Home': nextIndex = 0; break
+                      case 'End': nextIndex = BASH_SUBTABS.length - 1; break
+                      default: return
+                    }
+                    event.preventDefault()
+                    const next = BASH_SUBTABS[nextIndex] as { id: BashSubtab; labelKey: BashPlusLocaleKey }
+                    onBashSubtab(next.id)
+                    subtabRefs.current[nextIndex]?.focus()
+                  }}
+                >
+                  {t(sub.labelKey)}
+                </button>
+              )
+            })}
+          </div>
+        )
+        : null}
+      {tab.id === 'bash'
+        ? (
+          <div
+            className="tps-subpanel"
+            id={`${tabsId}-subpanel`}
+            role="tabpanel"
+            aria-labelledby={`${tabsId}-subtab-${bashSubtab}`}
+          >
+            {content}
+          </div>
+        )
+        : content}
     </>
   )
 }
@@ -480,43 +630,123 @@ function NativeStatusPanel(props: { t: (key: BashPlusLocaleKey) => string }): Re
   )
 }
 
+/**
+ * One tool tab's scrolling panel.
+ *
+ * The panel is keyed by tab, so demoting it to the outgoing layer for one fade
+ * does not remount it: its RPC effects keep running and its scroll offset
+ * survives. `scrollMemory` restores the offset when the tab comes back after
+ * being unmounted (the page remembers where the user was, not where the
+ * scrollbar happens to be).
+ */
+function ToolPanel(props: {
+  tab: ToolPlusTab
+  tabsId: string
+  exiting: boolean
+  t: (key: BashPlusLocaleKey) => string
+  form: ReturnType<typeof useToolForm>
+  writable: boolean
+  openSelect: string | null
+  onOpenChange: (field: string | null) => void
+  actionState: Record<string, 'idle' | 'running' | 'done'>
+  actionResults: Record<string, { ok: boolean; text: string } | null>
+  runAction: (field: ToolPlusField) => void
+  bashSubtab: BashSubtab
+  onBashSubtab: (next: BashSubtab) => void
+  onOpenCommands: () => void
+  scrollMemory: { current: Record<string, number> }
+}): ReactNode {
+  const { tab, tabsId, exiting, scrollMemory, ...rest } = props
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  useInert(panelRef, exiting)
+  useLayoutEffect(() => {
+    const element = panelRef.current
+    if (element === null) return
+    element.scrollTop = scrollMemory.current[tab.id] ?? 0
+  }, [tab.id, scrollMemory])
+  return (
+    <div
+      ref={panelRef}
+      id={`${tabsId}-panel-${tab.id}`}
+      className="tps-panel"
+      data-exit={exiting ? 'true' : 'false'}
+      role="tabpanel"
+      aria-labelledby={`${tabsId}-tab-${tab.id}`}
+      aria-hidden={exiting || undefined}
+      onScroll={(event) => { scrollMemory.current[tab.id] = event.currentTarget.scrollTop }}
+    >
+      {!rest.writable ? <p className="tps-readOnly" role="status">{rest.t('readOnly')}</p> : null}
+      <ToolTabPanel tab={tab} tabsId={tabsId} {...rest} />
+    </div>
+  )
+}
+
 /** Render the Tool Plus settings section. */
 export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
   const { t, form: configForm } = props
-  const form = useToolForm(configForm, ALL_FIELDS)
+  const form = useToolForm(configForm, ALL_FIELDS, DRAFT_KEY)
   const sectionRef = useRef<HTMLDivElement | null>(null)
   const tabsId = useRef(`tps-${Math.random().toString(36).slice(2, 8)}`)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [activeId, setActiveId] = useState<string | undefined>()
   const [openSelect, setOpenSelect] = useState<string | null>(null)
+  // The tab that is fading out while the new one fades in; null when idle.
+  const [exitingId, setExitingId] = useState<string | null>(null)
+  const exitTimer = useRef<number | null>(null)
+  // Per-tab scroll offsets: panels are unmounted on a tab switch, so the
+  // position has to live outside them to come back where the user left it.
+  const panelScroll = useRef<Record<string, number>>({})
   // Action controls (`kind: 'action'`) run host RPC endpoints; their state is
   // per-field here at the section level so drafts and panel switches survive.
   const [actionState, setActionState] = useState<Record<string, 'idle' | 'running' | 'done'>>({})
   const [actionResults, setActionResults] = useState<Record<string, { ok: boolean; text: string } | null>>({})
-  // rmSafe 状态变更后的注入测试结果，以通用 Toast 弹出。
-  const [rmSafeToast, setRmSafeToast] = useState<{ text: string; ok: boolean } | null>(null)
+  // One transient banner for save results and dropped drafts (the host Toast
+  // handles its own lifetime); `seq` remounts it so the same text can re-show.
+  const [toast, setToast] = useState<{ text: string; ok: boolean; seq: number } | null>(null)
+  const toastSeq = useRef(0)
+  const showToast = useCallback((text: string, ok: boolean) => {
+    toastSeq.current += 1
+    setToast({ text, ok, seq: toastSeq.current })
+  }, [])
+  // 命令面板体量大，放进独立弹窗（设置面板只有 760px 宽）。
+  const [commandDialogOpen, setCommandDialogOpen] = useState(false)
   // Bash 子页：行为 / 输出 / 命令。命令页是独立面板，不参与暂存表单。
   const [bashSubtab, setBashSubtab] = useState<BashSubtab>('behavior')
 
-  // Save, then — only when the rmSafe switch actually changed and is now on —
-  // verify the injection (query = ensure + verify) and announce the result
-  // as a toast. Turning rmSafe off stays silent; unchanged saves stay silent.
+  // Save, then announce it. When the rmSafe switch actually changed and is now
+  // on, the banner reports the injection check instead (query = ensure +
+  // verify); turning it off, a failed save, or an unchanged save stays quiet.
   const handleSave = useCallback(async () => {
     const before = Boolean(configForm.getSnapshot().value?.rmSafe ?? true)
-    await form.actions.save()
+    const saved = await form.actions.save()
+    if (!saved) return
     const after = Boolean(configForm.getSnapshot().value?.rmSafe ?? true)
-    if (before === after || !after) return
-    try {
-      const rpc = createWebConnectionRpc()
-      const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, {})
-      if (!result.ok) return
-      const value = result.value as RmSafeStatusValue
-      if (value.status === 'disabled') return
-      setRmSafeToast({ text: rmSafeStatusText(t, value), ok: value.status === 'injected' })
-    } catch {
-      // RPC unavailable (non-web deployment): stay silent.
+    if (before !== after && after) {
+      try {
+        const rpc = createWebConnectionRpc()
+        const result = await rpc.call(TOOL_PLUS_RPC_CHANNEL, RM_SAFE_STATUS_ENDPOINT, {})
+        if (result.ok) {
+          const value = result.value as RmSafeStatusValue
+          if (value.status !== 'disabled') {
+            showToast(rmSafeStatusText(t, value), value.status === 'injected')
+            return
+          }
+        }
+      } catch {
+        // RPC unavailable (non-web deployment): fall through to the save notice.
+      }
     }
-  }, [configForm, form, t])
+    showToast(t('saved'), true)
+  }, [configForm, form, t, showToast])
+
+  // A draft parked against an older document cannot be replayed safely; say so
+  // once instead of restoring text that would overwrite newer values.
+  const announcedDrop = useRef(false)
+  useEffect(() => {
+    if (!form.draftDropped || announcedDrop.current) return
+    announcedDrop.current = true
+    showToast(t('draftDropped'), false)
+  }, [form.draftDropped, t, showToast])
 
   const runAction = useCallback((field: ToolPlusField) => {
     const actionKey = field.actionKey
@@ -572,15 +802,16 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
     // rewriting `transition: none` here (e.g. from a ResizeObserver ping that
     // fires for already-committed geometry) would kill it on frame zero.
     if (previous !== null && previous.left === left && previous.width === width) return
-    const reduce = typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (!animate || reduce || previous === null) {
+    if (!animate || prefersReducedMotion() || previous === null) {
+      indicator.style.willChange = ''
       indicator.style.transition = 'none'
       indicator.style.width = `${width}px`
       indicator.style.transform = `translateX(${left}px)`
       return
     }
+    // `will-change` is a hint for the duration of the animation only: held for
+    // the lifetime of the page it keeps a compositor layer alive for nothing.
+    indicator.style.willChange = 'transform'
     indicator.style.transition = 'none'
     indicator.style.width = `${width}px`
     indicator.style.transform = `translateX(${previous.left}px) scaleX(${previous.width / width})`
@@ -588,6 +819,10 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
     void indicator.offsetWidth
     indicator.style.transition = 'transform .24s cubic-bezier(.22,1,.36,1)'
     indicator.style.transform = `translateX(${left}px) scaleX(1)`
+    indicator.addEventListener('transitionend', function settle() {
+      indicator.removeEventListener('transitionend', settle)
+      indicator.style.willChange = ''
+    })
   }, [active])
 
   useLayoutEffect(() => { commitIndicator(true) }, [commitIndicator])
@@ -643,14 +878,66 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
     }
   }, [form.shell.available])
 
-  if (!form.shell.available) return null
-  const selectTab = (id: string): void => setActiveId(id)
-  const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
+  // The panel's scrollbar eats into its content box; reserve exactly that much
+  // on the chrome that sits outside the scroller (tab strip, save bar), so
+  // their right edge lines up with the cards. Measured rather than assumed so
+  // overlay scrollbars (which report 0) do not get a phantom gap.
+  useLayoutEffect(() => {
+    const root = sectionRef.current
+    if (root === null) return
+    const panel = root.querySelector<HTMLElement>('.tps-panel')
+    if (panel === null) return
+    root.style.setProperty('--tps-gutter', `${Math.max(0, panel.offsetWidth - panel.clientWidth)}px`)
+  }, [form.shell.available, active])
+
+  useEffect(() => () => {
+    if (exitTimer.current !== null) window.clearTimeout(exitTimer.current)
+  }, [])
+
   const writable = form.shell.writable
-  // 命令页不写这套设置表单：保存条属于字段草稿，留着会误导。
-  const commandsSubtab = active === 'bash' && bashSubtab === 'commands'
-  // 命令面板体量大，放进独立弹窗（设置面板只有 760px 宽）。
-  const [commandDialogOpen, setCommandDialogOpen] = useState(false)
+  const blocked = !form.shell.dirty || form.shell.invalid || form.shell.saving
+
+  // Loading and unavailable get a real state instead of an empty page: a blank
+  // section reads as "nothing to configure", which is not what happened.
+  if (form.status !== 'ready') {
+    return (
+      <div ref={sectionRef} className="tps-section">
+        <h2 className="tps-heading">{t('pageTitle')}</h2>
+        <p className="tps-intro">{t('pageDescription')}</p>
+        {form.status === 'loading'
+          ? (
+            <div className="tps-skeleton" role="status" aria-live="polite">
+              <p className="tps-skeletonLabel">{t('settingsLoading')}</p>
+              <div className="tps-skeletonCard" data-tall="true" />
+              <div className="tps-skeletonCard" />
+            </div>
+          )
+          : <div className="tps-empty"><p className="tps-emptyHint">{t('settingsUnavailable')}</p></div>}
+      </div>
+    )
+  }
+
+  const selectTab = (id: string): void => {
+    if (id === active) return
+    setOpenSelect(null)
+    if (active !== undefined && !prefersReducedMotion()) {
+      // Keep the outgoing panel mounted for one fade so the switch crossfades:
+      // the old content leaves while the new one arrives, with no all-blank
+      // frame in between. The same element is reused (keyed by tab), so the
+      // panel's RPC effects and scroll offset survive the demotion.
+      setExitingId(active)
+      if (exitTimer.current !== null) window.clearTimeout(exitTimer.current)
+      exitTimer.current = window.setTimeout(() => {
+        exitTimer.current = null
+        setExitingId(null)
+      }, PANEL_FADE_MS)
+    }
+    setActiveId(id)
+  }
+  const outgoing = exitingId !== null && exitingId !== active
+    ? TOOL_TABS.find(row => row.id === exitingId)
+    : undefined
+  const activeTab = TOOL_TABS.find(row => row.id === active)
 
   return (
     <div ref={sectionRef} className="tps-section">
@@ -695,22 +982,18 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
           )
         })}
       </div>
-      {/* Only the active tool's panel is rendered — the shared form lives at
-          the page level, so drafts survive switching without keeping hidden
-          panels mounted (which the panel's own CSS would re-expose). */}
-      {TOOL_TABS
-        .filter(row => row.id === active)
-        .map((row) => (
-          <div
-            key={row.id}
-            id={`${tabsId.current}-panel-${row.id}`}
-            className="tps-panel"
-            role="tabpanel"
-            aria-labelledby={`${tabsId.current}-tab-${row.id}`}
-          >
-            {!writable ? <p className="tps-readOnly" role="status">{t('readOnly')}</p> : null}
-            <ToolTabPanel
-              tab={row}
+      {/* The active panel plus, for the length of one fade, the panel it
+          replaced. Both are keyed by tab, so the outgoing one is the same
+          element it was a moment ago (state, scroll offset and RPC effects
+          intact), and drafts — which live at the page level — never move. */}
+      <div className="tps-panels">
+        {outgoing !== undefined
+          ? (
+            <ToolPanel
+              key={outgoing.id}
+              tab={outgoing}
+              tabsId={tabsId.current}
+              exiting
               t={t}
               form={form}
               writable={writable}
@@ -722,13 +1005,43 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
               bashSubtab={bashSubtab}
               onBashSubtab={setBashSubtab}
               onOpenCommands={() => setCommandDialogOpen(true)}
+              scrollMemory={panelScroll}
             />
-          </div>
-        ))}
-      {commandsSubtab ? null : (
+          )
+          : null}
+        {activeTab !== undefined
+          ? (
+            <ToolPanel
+              key={activeTab.id}
+              tab={activeTab}
+              tabsId={tabsId.current}
+              exiting={false}
+              t={t}
+              form={form}
+              writable={writable}
+              openSelect={openSelect}
+              onOpenChange={setOpenSelect}
+              actionState={actionState}
+              actionResults={actionResults}
+              runAction={runAction}
+              bashSubtab={bashSubtab}
+              onBashSubtab={setBashSubtab}
+              onOpenCommands={() => setCommandDialogOpen(true)}
+              scrollMemory={panelScroll}
+            />
+          )
+          : null}
+      </div>
+      {/*
+        The save bar is page furniture, not a per-sub-page control: it stays
+        mounted on every tab and sub-page (so the panel height never jumps) and
+        saves the page-level draft wherever the user is standing. The command
+        sub-page has no settings of its own, so it says so instead of vanishing.
+      */}
       <div className="tps-footer">
-        {form.shell.failed ? <p className="tps-failed" role="status">{t('saveFailed')}</p> : null}
-        {!form.shell.failed ? <span className="tps-applies">{t('appliesTo')}</span> : null}
+        {form.shell.failed
+          ? <p className="tps-failed" role="status">{t('saveFailed')}</p>
+          : <span className="tps-applies">{t('appliesTo')}</span>}
         {!form.shell.failed && form.shell.dirty
           ? <span className="tps-unsaved" role="status"><span className="tps-unsavedDot" aria-hidden="true" />{t('unsaved')}</span>
           : null}
@@ -749,15 +1062,17 @@ export function ToolPlusSection(props: ToolPlusSectionProps): ReactNode {
           {form.shell.saving ? t('saving') : t('save')}
         </button>
       </div>
-      )}
       {commandDialogOpen
         ? <CommandDialog t={t} writable={writable} onClose={() => setCommandDialogOpen(false)} />
         : null}
-      {rmSafeToast !== null && (
+      {toast !== null && (
         <Toast
-          text={rmSafeToast.text}
-          icon={rmSafeToast.ok ? <IconCheckOutlineRegular /> : <IconWarningOutlineRegular />}
-          onDone={() => { setRmSafeToast(null) }}
+          key={toast.seq}
+          text={toast.text}
+          tone={toast.ok ? 'success' : undefined}
+          icon={toast.ok ? undefined : <IconWarningOutlineRegular />}
+          holdMs={4000}
+          onDone={() => { setToast(null) }}
         />
       )}
     </div>

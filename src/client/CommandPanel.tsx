@@ -24,6 +24,8 @@ import {
 } from '../tools/shared/browser-rpc-channel.ts'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
+import { ClippedText } from './tooltip.tsx'
+import { installFocusModality } from './rows.tsx'
 
 /** Locale lookup the section passes down. */
 type Translate = (key: BashPlusLocaleKey) => string
@@ -60,16 +62,19 @@ type Filter = 'builtin' | 'conflict' | 'all' | CommandEntryValue['origin']
 /** One rendered line of the list: a group heading or a command row. */
 type Row = { kind: 'group'; key: string; label: string; count: number } | { kind: 'item'; entry: CommandEntryValue }
 
-const CSS = `.tpc-root{--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));display:flex;flex-direction:column;gap:0;min-height:0}
-.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:rgb(0 0 0 / .45);animation:tpc-fade .16s ease both}
-[data-ds-dark-theme] .tpc-overlay{background:rgb(0 0 0 / .62)}
+const CSS = `.tpc-root{--tpc-fs-lg:15px;--tpc-fs-md:13px;--tpc-fs-sm:12px;--tpc-fs-xs:11px;--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,var(--dsw-alias-label-primary));display:flex;flex-direction:column;gap:0;min-height:0}
+.tpc-overlay{position:fixed;inset:0;z-index:1300;display:flex;align-items:center;justify-content:center;padding:28px;background:var(--dsw-alias-bg-mask-3);animation:tpc-fade .16s ease both}
 .tpc-dialog{position:relative;box-sizing:border-box;display:flex;flex-direction:column;gap:0;width:min(1120px,96vw);height:min(760px,88vh);padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden;animation:tpc-rise .24s cubic-bezier(.22,1,.36,1) both}
 @keyframes tpc-fade{from{opacity:0}}
+@keyframes tpc-fade-out{to{opacity:0}}
+@keyframes tpc-sink{to{opacity:0;transform:translateY(6px)}}
+.tpc-overlay[data-closing='true']{animation:tpc-fade-out .15s ease both;pointer-events:none}
+.tpc-dialog[data-closing='true']{animation:tpc-sink .15s cubic-bezier(.4,0,.9,1) both}
 @keyframes tpc-rise{from{opacity:0;transform:translateY(8px)}}
 .tpc-dialogHead{display:flex;align-items:center;gap:12px;flex:none;box-sizing:border-box;min-height:56px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
-.tpc-dialogTitle{margin:0;font-size:15px;font-weight:600;line-height:23px;color:var(--dsw-alias-label-primary)}
+.tpc-dialogTitle{margin:0;font-size:var(--tpc-fs-lg);font-weight:600;line-height:23px;color:var(--dsw-alias-label-primary)}
 .tpc-dialogHead .tpc-btn{margin-left:auto}
-.tpc-dialogHead .tpc-confirmText{margin-left:auto;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tpc-dialogHead .tpc-confirmText{margin-left:auto;font-size:var(--tpc-fs-sm);line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tpc-dialogHead .tpc-confirmText ~ .tpc-btn{margin-left:0}
 .tpc-btnDanger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,var(--dsw-alias-border-l3))}
 .tpc-btnDanger:hover:not(:disabled){color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
@@ -79,22 +84,24 @@ const CSS = `.tpc-root{--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-
 .tpc-railCol{display:flex;flex-direction:column;gap:4px;min-height:0;padding:10px 8px;border-right:1px solid var(--dsw-alias-border-l2);overflow-y:auto}
 .tpc-railGroup{display:flex;flex-direction:column;gap:2px}
 .tpc-railGroup + .tpc-railGroup{margin-top:6px}
-.tpc-railTitle{padding:4px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
-.tpc-railBtn{appearance:none;display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:18px;text-align:left;cursor:pointer}
+.tpc-railTitle{padding:4px 10px 2px;font-size:var(--tpc-fs-xs);line-height:16px;color:var(--dsw-alias-label-secondary)}
+.tpc-railBtn{appearance:none;display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--tpc-fs-md);line-height:18px;text-align:left;cursor:pointer}
 .tpc-railBtn{transition:background-color .12s ease,color .12s ease}
 .tpc-railBtn:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent);color:var(--dsw-alias-label-primary)}
 .tpc-railBtn:active{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 20%,transparent)}
 .tpc-railBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--tpc-ink-accent)}
-.tpc-railBtn em{margin-left:auto;font-style:normal;font-size:11px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.tpc-railBtn em{min-width:3ch;margin-left:auto;font-style:normal;font-size:var(--tpc-fs-xs);text-align:right;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .tpc-railBtn[aria-pressed='true'] em{color:inherit}
-.tpc-railFoot{margin-top:auto;padding:8px 10px 2px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.tpc-railFoot{margin-top:auto;padding:8px 10px 2px;font-size:var(--tpc-fs-xs);line-height:16px;color:var(--dsw-alias-label-secondary)}
 .tpc-listCol{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l2)}
 .tpc-listHead{flex:none;display:flex;align-items:center;gap:6px;padding:10px 12px}
 .tpc-listHead .tpc-search{flex:1;min-width:0}
 .tpc-listHead .tpc-btn{padding:0 10px}
-.tpc-search{height:32px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 2%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:0 11px}
+.tpc-search{height:32px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 2%,var(--dsw-alias-bg-layer-1));color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--tpc-fs-md);padding:0 11px}
 .tpc-search:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpc-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:1;padding:0 12px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease,transform .1s ease}
+/* 鼠标点进来的文本框不画焦点环（文本框永远算 focus-visible，见 rows.tsx）。 */
+html[data-tp-pointer] .tpc-search:focus-visible{outline:none}
+.tpc-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--tpc-fs-sm);line-height:1;padding:0 12px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease,transform .1s ease}
 .tpc-btn:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
 .tpc-btn:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent);transform:scale(.98)}
 .tpc-btn:disabled{opacity:.4;cursor:default}
@@ -102,76 +109,78 @@ const CSS = `.tpc-root{--tpc-ink-accent:color-mix(in srgb,var(--dsw-alias-state-
 .tpc-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-inverted)}
 .tpc-btnDanger{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 40%,var(--dsw-alias-border-l2))}
 .tpc-btnDanger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
-.tpc-addRow{appearance:none;display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:9px 12px;border:0;border-bottom:1px solid var(--dsw-alias-border-l2);background:none;color:var(--tpc-ink-accent);font:inherit;font-size:13px;line-height:18px;text-align:left;cursor:pointer;transition:background-color .12s ease}
+.tpc-addRow{appearance:none;display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:9px 12px;border:0;border-bottom:1px solid var(--dsw-alias-border-l2);background:none;color:var(--tpc-ink-accent);font:inherit;font-size:var(--tpc-fs-md);line-height:18px;text-align:left;cursor:pointer;transition:background-color .12s ease}
 .tpc-addRow:hover:not(:disabled){background:var(--dsw-alias-state-business-tertiary)}
 .tpc-addRow:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent)}
 .tpc-addRow:disabled{opacity:.4;cursor:default}
 .tpc-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
-.tpc-row{display:flex;align-items:center;gap:9px;padding:0 12px;box-sizing:border-box;cursor:pointer;font-size:13px;line-height:18px;color:var(--dsw-alias-label-primary)}
+.tpc-row{display:flex;align-items:center;gap:9px;padding:0 12px;box-sizing:border-box;cursor:pointer;font-size:var(--tpc-fs-md);line-height:18px;color:var(--dsw-alias-label-primary)}
 .tpc-row{transition:background-color .12s ease}
 .tpc-row:hover{background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 14%,transparent)}
 .tpc-row:active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent)}
 .tpc-row[data-selected='true']{background:var(--dsw-alias-state-business-tertiary)}
 .tpc-row[data-selected='true'] .tpc-rowName{color:var(--tpc-ink-accent)}
 .tpc-ovdot{flex:none;box-sizing:border-box;width:5px;height:5px;border-radius:50%;background:var(--tpc-ink-accent)}
-.tpc-rowName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-.tpc-group{display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;font-size:11px;line-height:34px;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2)}
+.tpc-rowName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--tpc-fs-sm)}
+.tpc-group{display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;font-size:var(--tpc-fs-xs);line-height:34px;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-group em{margin-left:auto;font-style:normal;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
-.tpc-badge{flex:none;border-radius:999px;padding:0 7px;font-size:10.5px;line-height:17px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.tpc-badge{flex:none;border-radius:999px;padding:0 7px;font-size:var(--tpc-fs-xs);line-height:17px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .tpc-badge[data-origin='new']{color:var(--tpc-ink-accent);border-color:color-mix(in srgb,var(--tpc-ink-accent) 35%,var(--dsw-alias-border-l2))}
 .tpc-badge[data-origin='custom']{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 35%,var(--dsw-alias-border-l2))}
 .tpc-badge[data-origin='fn']{border-style:dashed}
 .tpc-detailCol{position:relative;display:flex;flex-direction:column;min-height:0}
 .tpc-detailHead{flex:none;display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
 .tpc-who{flex:1 1 auto;min-width:0}
-.tpc-name{margin:0;font-size:15px;font-weight:600;line-height:22px;color:var(--dsw-alias-label-primary)}
-.tpc-detailHead .tpc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;line-height:25px;letter-spacing:-.01em}
-.tpc-path{min-width:0;margin:1px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.tpc-name{margin:0;font-size:var(--tpc-fs-lg);font-weight:600;line-height:22px;color:var(--dsw-alias-label-primary)}
+.tpc-detailHead .tpc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--tpc-fs-lg);line-height:22px;letter-spacing:-.01em}
+.tpc-path{display:block;min-width:0;margin:1px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--tpc-fs-xs);line-height:16px;color:var(--dsw-alias-label-secondary)}
 .tpc-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .tpc-headActions{flex:none;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
 .tpc-headActions .tpc-btn{min-width:76px}
-.tpc-confirmBar{position:absolute;left:12px;right:12px;bottom:12px;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-sizing:border-box;padding:10px 12px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 30%,var(--dsw-alias-border-l2));border-radius:10px;background:var(--dsw-alias-bg-layer-1);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tpc-confirmBar{position:absolute;left:12px;right:12px;bottom:12px;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-sizing:border-box;padding:10px 12px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 30%,var(--dsw-alias-border-l2));border-radius:10px;background:var(--dsw-alias-bg-layer-1);font-size:var(--tpc-fs-sm);line-height:18px;color:var(--dsw-alias-label-secondary)}
 .tpc-detailScroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:14px 16px}
 .tpc-field{display:flex;flex-direction:column;gap:6px}
-.tpc-fieldLabel{font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-fieldLabel{font-size:var(--tpc-fs-xs);color:var(--dsw-alias-label-secondary)}
 .tpc-seg{display:flex;box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;overflow:hidden}
-.tpc-segBtn{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;padding:0 8px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
+.tpc-segBtn{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--tpc-fs-sm);padding:0 8px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
 .tpc-segBtn+ .tpc-segBtn{border-left:1px solid var(--dsw-alias-border-l2)}
 .tpc-segBtn[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);color:var(--tpc-ink-accent)}
 .tpc-segBtn:disabled{opacity:.4;cursor:default}
-.tpc-input{box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;padding:0 10px}
+.tpc-input{box-sizing:border-box;height:32px;border:1px solid var(--dsw-alias-border-l3);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--tpc-fs-sm);padding:0 10px}
 .tpc-input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpc-kv{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px 12px;margin:0;font-size:12px;line-height:18px}
+html[data-tp-pointer] .tpc-input:focus-visible{outline:none}
+.tpc-kv{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px 12px;margin:0;font-size:var(--tpc-fs-sm);line-height:18px}
 .tpc-kv dt{color:var(--dsw-alias-label-secondary)}
 .tpc-kv dd{margin:0;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;word-break:break-word}
 .tpc-impact{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-layer-1));padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.tpc-impactTitle{font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
-.tpc-impactRow{display:flex;align-items:center;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
-.tpc-impactRow i{flex:none;width:40px;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactTitle{font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactRow{display:flex;align-items:center;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-secondary)}
+.tpc-impactRow i{flex:none;width:40px;font-style:normal;font-size:var(--tpc-fs-xs);color:var(--dsw-alias-label-secondary)}
 .tpc-impactRow b{font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--tpc-ink-accent)}
-.tpc-impactRow em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
-.tpc-console{margin:0;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-top-color:color-mix(in srgb,var(--dsw-alias-label-primary) 14%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-alias-bg-layer-1));padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere;min-height:74px;max-height:180px;overflow-y:auto}
+.tpc-impactRow em{margin-left:auto;font-style:normal;font-size:var(--tpc-fs-xs);color:var(--dsw-alias-label-secondary)}
+.tpc-console{margin:0;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-top-color:color-mix(in srgb,var(--dsw-alias-label-primary) 14%,transparent);border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-alias-bg-layer-1));padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--tpc-fs-sm);line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere;min-height:74px;max-height:180px;overflow-y:auto}
 .tpc-detailScroll .tpc-console{flex:none;height:74px;max-height:none}
 .tpc-formField{display:flex;flex-direction:column;gap:5px}
-.tpc-formLabel{font-size:12px;color:var(--dsw-alias-label-tertiary)}
-.tpc-formHint{font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary)}
+.tpc-formLabel{font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-tertiary)}
+.tpc-formHint{font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-tertiary)}
 .tpc-formField .tpc-input{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.tpc-addNotes{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);list-style:none;display:flex;flex-direction:column;gap:5px;font-size:12px;line-height:19px;color:var(--dsw-alias-label-secondary)}
-.tpc-note{margin:0;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary)}
-.tpc-toast{margin:0;font-size:11.5px;line-height:17px}
-.tpc-root[data-variant='dialog'] .tps-card > .tpc-toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:6;box-sizing:border-box;max-width:min(560px,calc(100% - 64px));margin:0;padding:8px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-1);font-size:12.5px;line-height:18px;text-align:center;pointer-events:none}
+.tpc-addNotes{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1);list-style:none;display:flex;flex-direction:column;gap:5px;font-size:var(--tpc-fs-sm);line-height:19px;color:var(--dsw-alias-label-secondary)}
+.tpc-note{margin:0;font-size:var(--tpc-fs-xs);line-height:17px;color:var(--dsw-alias-label-tertiary)}
+.tpc-toast{margin:0;font-size:var(--tpc-fs-sm);line-height:17px}
+.tpc-root[data-variant='dialog'] .tps-card > .tpc-toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:6;box-sizing:border-box;max-width:min(560px,calc(100% - 64px));margin:0;padding:8px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-1);font-size:var(--tpc-fs-sm);line-height:18px;text-align:center;pointer-events:none}
 .tpc-toast[data-tone='ok']{color:var(--dsw-alias-state-success-primary)}
 .tpc-toast[data-tone='error']{color:var(--dsw-alias-state-error-primary)}
-.tpc-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
-.tpc-skeleton{padding:28px 14px;text-align:center;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.tpc-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
+.tpc-skeleton{padding:28px 14px;text-align:center;font-size:var(--tpc-fs-sm);color:var(--dsw-alias-label-secondary)}
 @media (max-width:1000px){.tpc-surface{grid-template-columns:160px clamp(200px,32vw,300px) minmax(0,1fr)}}
-@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow{transition:none}
+@media (prefers-reduced-motion: reduce){.tpc-overlay,.tpc-dialog,.tpc-overlay[data-closing='true'],.tpc-dialog[data-closing='true']{animation:none}.tpc-row,.tpc-railBtn,.tpc-segBtn,.tpc-btn,.tpc-addRow{transition:none}
 .tpc-btn:active:not(:disabled){transform:none}}`
 
 let cssInjected = false
 function injectCss(): void {
   if (cssInjected || typeof document === 'undefined') return
   cssInjected = true
+  installFocusModality()
   if (document.querySelector('style[data-plugin-css="tool-plus-commands"]') !== null) return
   const tag = document.createElement('style')
   tag.dataset.plugin = '@xiaoso/dsh-tool-plus'
@@ -235,8 +244,8 @@ function shortPathOf(entry: CommandEntryValue): string {
  * @param props.onClose - unmount the dialog; only the dialog variant closes itself, and
  *   only through {@link requestClose}, so every exit path shares the unsaved-draft guard.
  */
-export function CommandPanel(props: { t: Translate; writable: boolean; variant?: 'inline' | 'dialog'; onClose?: () => void }): ReactNode {
-  const { t, writable, variant = 'inline', onClose } = props
+export function CommandPanel(props: { t: Translate; writable: boolean; variant?: 'inline' | 'dialog'; onClose?: () => void; closing?: boolean }): ReactNode {
+  const { t, writable, variant = 'inline', onClose, closing = false } = props
   injectCss()
 
   const [catalog, setCatalog] = useState<CommandListValue | null>(null)
@@ -257,6 +266,9 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   const [addError, setAddError] = useState<string | null>(null)
   const [removeConfirm, setRemoveConfirm] = useState(false)
   const [closeConfirm, setCloseConfirm] = useState(false)
+  /** 关闭按钮与确认条的安全项：替换节点时焦点要有地方去，不能掉到 body 上。 */
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+  const keepEditingRef = useRef<HTMLButtonElement | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewport, setViewport] = useState(420)
   const listRef = useRef<HTMLDivElement | null>(null)
@@ -514,6 +526,17 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
     if (!unsaved && closeConfirm) setCloseConfirm(false)
   }, [unsaved, closeConfirm])
 
+  // The confirm replaces the 关闭 button in place, so the focused node is
+  // unmounted the moment the bar appears. Hand focus to the safe choice, and
+  // give it back to 关闭 when the bar goes away, otherwise the keyboard is
+  // stranded on <body> and Tab escapes into the settings drawer.
+  const confirmPrev = useRef(false)
+  useEffect(() => {
+    if (closeConfirm && !confirmPrev.current) keepEditingRef.current?.focus()
+    else if (!closeConfirm && confirmPrev.current) closeBtnRef.current?.focus()
+    confirmPrev.current = closeConfirm
+  }, [closeConfirm])
+
   useEffect(() => {
     if (variant !== 'dialog') return
     const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -621,7 +644,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                     aria-pressed={filter === item.key}
                     onClick={() => setFilter(item.key)}
                   >
-                    {item.label}<em>{item.count}</em>
+                    {item.label}<em>{catalog === null ? '' : item.count}</em>
                   </button>
                 ))}
               </div>
@@ -636,6 +659,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
             <div className="tpc-listHead">
               <input
                 className="tpc-search"
+                data-autofocus
                 value={q}
                 placeholder={t('cmdSearchShort')}
                 spellCheck={false}
@@ -698,7 +722,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                             style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_H }}
                             onClick={() => { setAddOpen(false); setAddError(null); setSelected(entry.name) }}
                           >
-                            <span className="tpc-rowName" title={entry.name}>{entry.name}</span>
+                            <ClippedText className="tpc-rowName" text={entry.name} />
                             {overridden(entry) ? <span className="tpc-ovdot" aria-label={t('cmdOverridden')} role="img" /> : null}
                             <span className="tpc-badge" data-origin={entry.origin}>{originLabel(t, entry.origin)}</span>
                           </div>
@@ -776,7 +800,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                     <div className="tpc-detailHead">
                       <div className="tpc-who">
                         <h5 className="tpc-name">{selectedEntry.name}</h5>
-                        <p className="tpc-path" title={implPathOf(selectedEntry)}>{shortPathOf(selectedEntry)}</p>
+                        <ClippedText className="tpc-path" always text={implPathOf(selectedEntry)}>{shortPathOf(selectedEntry)}</ClippedText>
                         <div className="tpc-badges">
                           <span className="tpc-badge" data-origin={selectedEntry.origin}>{originLabel(t, selectedEntry.origin)}</span>
                           <span className="tpc-badge">{t('cmdCurrent')} · {activeLabel(t, selectedEntry)}</span>
@@ -874,20 +898,26 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   return (
     <div
       className="tpc-overlay"
-      onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose() }}
+      data-closing={closing ? 'true' : undefined}
+      onMouseDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        // Same reason as modal-shell: a backdrop press must not drop focus to <body>.
+        event.preventDefault()
+        requestClose()
+      }}
     >
-      <div className="tpc-dialog" role="dialog" aria-modal="true" aria-label={t('cmdPanelTitle')}>
+      <div className="tpc-dialog" data-closing={closing ? 'true' : undefined} role="dialog" aria-modal="true" aria-label={t('cmdPanelTitle')}>
         <div className="tpc-dialogHead">
           <h3 className="tpc-dialogTitle">{t('cmdPanelTitle')}</h3>
           {closeConfirm
             ? (
               <>
                 <span className="tpc-confirmText">{t('cmdCloseHint')}</span>
-                <button type="button" className="tpc-btn" onClick={() => setCloseConfirm(false)}>{t('cmdCloseKeep')}</button>
+                <button ref={keepEditingRef} type="button" className="tpc-btn" onClick={() => setCloseConfirm(false)}>{t('cmdCloseKeep')}</button>
                 <button type="button" className="tpc-btn tpc-btnDanger" onClick={() => { setCloseConfirm(false); onClose?.() }}>{t('cmdCloseDiscard')}</button>
               </>
             )
-            : <button type="button" className="tpc-btn" onClick={requestClose}>{t('cmdClose')}</button>}
+            : <button ref={closeBtnRef} type="button" className="tpc-btn" onClick={requestClose}>{t('cmdClose')}</button>}
         </div>
         {shell}
       </div>

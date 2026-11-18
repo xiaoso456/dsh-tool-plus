@@ -11,7 +11,7 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { CommandPanel } from './CommandPanel.tsx'
 import type { BashPlusLocaleKey } from './locales.ts'
@@ -30,15 +30,38 @@ export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; wr
   const hostRef = useRef<HTMLDivElement | null>(null)
   /** The control that opened the panel; focus returns here on close. */
   const opener = useRef<HTMLElement | null>(null)
+  const [closing, setClosing] = useState(false)
+  const closeTimer = useRef<number | null>(null)
+
+  /**
+   * Play the exit before unmounting.
+   *
+   * The panel used to vanish on the first frame (5ms after the click), which
+   * reads as a glitch rather than a close. The dismissal is deferred by the
+   * length of the exit animation; reduced-motion closes immediately.
+   */
+  const requestClose = useCallback((): void => {
+    if (closing) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      onClose()
+      return
+    }
+    setClosing(true)
+    closeTimer.current = window.setTimeout(() => onClose(), 150)
+  }, [closing, onClose])
 
   useEffect(() => {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const timer = window.setTimeout(() => {
-      const first = hostRef.current?.querySelector<HTMLElement>(FOCUSABLE)
-      first?.focus()
+      // The panel's main input, not the header's 关闭 button: a keyboard user
+      // who opens this panel almost always came to type a command name.
+      const target = hostRef.current?.querySelector<HTMLElement>('[data-autofocus]')
+        ?? hostRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+      target?.focus()
     }, 30)
     return () => {
       window.clearTimeout(timer)
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
       const back = opener.current
       // Only steal focus back if the panel still owns it: the settings drawer
       // may have legitimately moved focus elsewhere in the meantime.
@@ -82,7 +105,7 @@ export function CommandDialog(props: { t: (key: BashPlusLocaleKey) => string; wr
 
   return createPortal(
     <div ref={hostRef} onKeyDownCapture={onKeyDown}>
-      <CommandPanel t={t} writable={writable} variant="dialog" onClose={onClose} />
+      <CommandPanel t={t} writable={writable} variant="dialog" onClose={requestClose} closing={closing} />
     </div>,
     document.body,
   )
