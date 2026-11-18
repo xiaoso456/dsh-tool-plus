@@ -606,12 +606,9 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
     if (variant !== 'dialog') return
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== 'Escape') return
-      // 只吞掉，不处理：让上面的浏览弹窗自己收到这一次 Esc。
-      if (pickerOpen.current) {
-        event.stopPropagation()
-        event.preventDefault()
-        return
-      }
+      // 浏览弹窗开着时这里一步都不能动：它自己在 document capture 上接 Esc
+      // （先退出编辑态、再关弹窗），这里再吞一次，弹窗就永远收不到。
+      if (pickerOpen.current) return
       // Capture + stopPropagation: the settings dialog underneath listens for
       // Escape too and would tear down the whole page along with this panel.
       event.stopPropagation()
@@ -708,6 +705,20 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
   // 不在这个子树里，不会被一起冻住）。
   const shellRef = useRef<HTMLElement | null>(null)
   useInert(shellRef, pickerFor !== null)
+
+  // 关掉浏览弹窗后把焦点还给「选择…」。Modal 自己也会归还，但它要检查目标还在
+  // 不在 inert 里，而面板的 inert 要到同一次提交才撤掉，它多半赶不上，于是焦点
+  // 落在 body 上——键盘用户得从面板开头重新 Tab。
+  const lastPicker = useRef<'detail' | 'add' | null>(null)
+  useEffect(() => {
+    const previous = lastPicker.current
+    lastPicker.current = pickerFor
+    if (pickerFor !== null || previous === null) return
+    const frame = requestAnimationFrame(() => {
+      shellRef.current?.querySelector<HTMLElement>('[data-browse="' + previous + '"]')?.focus()
+    })
+    return () => { cancelAnimationFrame(frame) }
+  }, [pickerFor])
 
   const shell = (
     <section ref={shellRef} className="tps-group tpc-root" data-variant={variant}>
@@ -859,7 +870,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                           placeholder="D:/tools/7z.exe"
                           onChange={event => { setAddPath(event.target.value); setAddError(null) }}
                         />
-                        <button type="button" className="tpc-btn" onClick={() => setPickerFor('add')}>{t('cmdPathBrowse')}</button>
+                        <button type="button" className="tpc-btn" data-browse="add" onClick={() => setPickerFor('add')}>{t('cmdPathBrowse')}</button>
                       </div>
                       <span className="tpc-formHint">{t('cmdPathHint')}</span>
                     </div>
@@ -957,7 +968,7 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
                               placeholder="D:/tools/zip.exe"
                               onChange={event => setCustomPath(event.target.value)}
                             />
-                            <button type="button" className="tpc-btn" onClick={() => setPickerFor('detail')}>{t('cmdPathBrowse')}</button>
+                            <button type="button" className="tpc-btn" data-browse="detail" onClick={() => setPickerFor('detail')}>{t('cmdPathBrowse')}</button>
                           </div>
                           <span className="tpc-formHint">{t('cmdPathHint')}</span>
                         </div>
@@ -994,24 +1005,23 @@ export function CommandPanel(props: { t: Translate; writable: boolean; variant?:
           </div>
         </div>
       </div>
-      {pickerFor === null
-        ? null
-        : (
-          <PathPicker
-            t={t}
-            startAt={pickerFor === 'add' ? addPath : customPath}
-            onPick={(picked) => {
-              if (pickerFor === 'add') {
-                setAddPath(picked)
-                setAddError(null)
-              } else {
-                setCustomPath(picked)
-              }
-              setPickerFor(null)
-            }}
-            onRequestClose={() => setPickerFor(null)}
-          />
-        )}
+      {/* 常驻挂载、用 open 开关：Modal 的层级登记与关闭后焦点归还都靠它自己
+          的 layout effect 收尾，跟着 pickerFor 一起卸载会丢掉归还的目标。 */}
+      <PathPicker
+        t={t}
+        open={pickerFor !== null}
+        startAt={pickerFor === 'add' ? addPath : customPath}
+        onPick={(picked) => {
+          if (pickerFor === 'add') {
+            setAddPath(picked)
+            setAddError(null)
+          } else {
+            setCustomPath(picked)
+          }
+          setPickerFor(null)
+        }}
+        onRequestClose={() => setPickerFor(null)}
+      />
     </section>
   )
 

@@ -5,6 +5,12 @@
  * 这一栏要的却是能落盘、能原样转发参数的完整路径，所以列目录只能问宿主：
  * `command/browse` 一次答一层（名字、大小、是不是文件夹）。
  *
+ * 壳子不再自己画：遮罩、层级、Esc、Tab 圈定、关闭后焦点归还全部交给宿主的
+ * `Modal`（`useModalLayer` 那套），标题排布、面包屑加铅笔进编辑态、行高与
+ * 选中态、底部开关加取消/确定，逐项对齐宿主自己的「选择工作区目录」弹窗
+ * （`dsh-client-ui-directory-picker-browse`）——同一套尺寸（680×500）、同一套
+ * 原子（`Button`、`FileTypeIcon`、`fileSizeText`、图标）。
+ *
  * 三条硬约束（改之前先看）：
  * - **高度不随内容变**。弹窗定高，列表区自己滚；加载、空、出错三种状态都画在
  *   列表区里，不撑页。换一层目录时整窗位置也不许动。
@@ -18,7 +24,18 @@
  * @module @xiaoso/dsh-tool-plus/client
  */
 
-import { Fragment, useCallback, useEffect, useInsertionEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useInsertionEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  Button,
+  FileTypeIcon,
+  IconCheckOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconEditOutlineRegular,
+  IconFolderCloseRegular,
+  IconFolderOpenRegular,
+  Modal,
+  fileSizeText,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   COMMAND_BROWSE_ENDPOINT,
   TOOL_PLUS_RPC_CHANNEL,
@@ -26,17 +43,12 @@ import {
   type CommandBrowsePayload,
   type CommandBrowseValue,
 } from '../tools/shared/browser-rpc-channel.ts'
-import { ModalShell } from './modal-shell.tsx'
 import { createWebConnectionRpc } from './web-connection-rpc.ts'
 import type { BashPlusLocaleKey } from './locales.ts'
-import { crumbsOf, dirOfPath, firstMatchIndex, formatSize, parentOfPath } from './path-text.ts'
-import { useInert } from './rows.tsx'
+import { crumbsOf, dirOfPath, firstMatchIndex, parentOfPath } from './path-text.ts'
 
 /** Locale lookup the section passes down. */
 type Translate = (key: BashPlusLocaleKey) => string
-
-/** 弹窗盖在命令面板（1300）之上，点遮罩只关这一层。 */
-const PICKER_Z_INDEX = 1400
 
 /** 读取超过这么久才承认「慢」：本地目录通常几毫秒就回来，提前压暗只会闪一下。 */
 const SLOW_READ_MS = 300
@@ -45,74 +57,73 @@ const SLOW_READ_MS = 300
 const TYPE_AHEAD_MS = 700
 
 /** 行高，与样式里的 .tpx-row 保持一致；PageUp/PageDown 按它算一屏几行。 */
-const ROW_HEIGHT = 32
+const ROW_HEIGHT = 28
 
+/**
+ * 尺寸与间距直接照搬宿主自己的目录弹窗：卡片 680×500（短视口按 100dvh 收）、
+ * 头部 16/14/8/24、内容 16/16/16/24、底栏 16/24、行高 28、间距 2。
+ */
 const CSS = `
-.tpx-dialog{box-sizing:border-box;display:flex;flex-direction:column;width:min(620px,calc(100vw - 48px));height:min(520px,calc(100vh - 96px));border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
-.tpx-head{flex:none;display:flex;align-items:center;gap:12px;box-sizing:border-box;height:48px;padding:0 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
-.tpx-title{margin:0;font-size:14px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}
-.tpx-close{appearance:none;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:26px;height:26px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:16px;line-height:1;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.tpx-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.tpx-close:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpx-bar{flex:none;display:flex;align-items:center;gap:8px;box-sizing:border-box;height:44px;padding:0 16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
-/* 工具条上的两个开关做成有边框的小片：纯文字读起来像标签，看不出能点。 */
-/* 字号与面包屑同档（12px），bar 里三种字的基线才对得齐；圆角跟按钮同档 8。 */
-.tpx-ghost{appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;height:26px;border:1px solid var(--dsw-alias-border-l3);border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:1;padding:0 9px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease}
-.tpx-ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
-.tpx-ghost:disabled{opacity:.4;cursor:default}
-.tpx-ghost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpx-ghost[aria-pressed='true']{background:var(--dsw-alias-state-business-tertiary);border-color:transparent;color:var(--dsw-alias-label-primary);font-weight:500}
-/* 路径一长，开头几级会被裁掉：左缘做一道渐隐，让「还有上一级」看得出来，
-   而不是半截字符硬切在那里。 */
-.tpx-crumbs{display:flex;align-items:center;gap:1px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.tpx-crumbs[data-overflow='true']{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 22px);mask-image:linear-gradient(90deg,transparent 0,#000 22px)}
+/* Modal 的遮罩层是 1000，命令面板是 1300：不抬的话弹窗会被面板整个盖住。
+   只能抬外层（z-index 会在遮罩那层生成新层叠上下文，抬卡片本身无效）。 */
+div:has(> .tpx-dialog){z-index:1400}
+.tpx-dialog.tpx-dialog{width:min(680px,100%);height:min(500px,calc(100dvh - 32px));padding:0;gap:0}
+.tpx-scope{display:contents}
+.tpx-head{display:flex;flex-direction:column;gap:8px;flex:none;padding:16px 14px 8px 24px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.tpx-title{display:flex;align-items:flex-end;min-height:28px;margin:0;font-size:16px;line-height:24px;font-weight:510;color:var(--dsw-alias-label-primary)}
+/* 整条 bar 就是编辑框：边框和内边距挂在它身上，面包屑与输入框坐进去，
+   悬停时亮的是整行，而不是「面包屑右边那一截」。负左距把边框和内边距还回去，
+   文字才和标题同一条竖线。 */
+.tpx-bar{display:flex;align-items:center;gap:4px;box-sizing:border-box;min-height:24px;margin-left:-9px;padding:0 8px;border:1px solid transparent;border-radius:var(--dsw-radius-sm)}
+.tpx-bar:has(.tpx-editZone:enabled:hover),.tpx-bar:has(.tpx-editZone:focus-visible),.tpx-bar:has(.tpx-pathInput){border-color:var(--dsw-alias-border-l2)}
+.tpx-crumbs{display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 .tpx-crumbs::-webkit-scrollbar{display:none}
-.tpx-crumb{appearance:none;flex:none;max-width:170px;border:0;border-radius:6px;padding:1px 5px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:16px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background-color .12s ease,color .12s ease}
-.tpx-crumb:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.tpx-crumb:disabled{color:var(--dsw-alias-label-primary);cursor:default;padding-right:0}
-.tpx-crumb:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpx-sep{flex:none;color:var(--dsw-alias-label-tertiary)}
-/* 固定高度：列表自己滚，三种状态都画在里面，换目录时整窗不动。 */
-.tpx-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
-.tpx-body:focus{outline:none}
-.tpx-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px;outline:none;transition:opacity .12s ease}
-/* 整个列表画一圈焦点环会像个蓝框 bug；键盘位置由选中的那一行自己表达，
-   与 VS Code 的快速选择一致（listbox + aria-activedescendant 的常规画法）。 */
-.tpx-list:focus{outline:none}
-/* 换层的瞬间旧行就不能再点：面包屑已经是新路径，列表还是上一层的，误点会选错文件。
-   压暗仍然等 200ms，本地读取快到看不见。 */
-.tpx-body[data-stale='true'] .tpx-list{pointer-events:none}
-.tpx-body[data-busy='true'] .tpx-list{opacity:.4}
-.tpx-row{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:32px;padding:0 10px;border-radius:6px;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background-color .08s ease}
+.tpx-crumbSeat{display:inline-flex;align-items:center;gap:4px;flex:none;min-width:0}
+.tpx-crumb{border:none;background:transparent;padding:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px;font-weight:500;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+/* 最后一段就是当前目录：和可点的上级区分开，一眼知道自己在哪。 */
+.tpx-crumb[data-current='true']{color:var(--dsw-alias-label-primary)}
+.tpx-crumb:hover{color:var(--dsw-alias-label-primary)}
+.tpx-crumb:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}
+.tpx-crumbChevron{flex:none;color:var(--dsw-alias-label-tertiary)}
+/* bar 右侧剩下的空白是「改路径」的点击区，铅笔是它常年挂着的说明：
+   看不见的热区只能靠用户猜，猜不到就等于没有。 */
+.tpx-editZone{display:flex;align-items:center;justify-content:flex-end;flex:1 0 34px;min-width:34px;height:22px;padding:0;border:none;background:transparent;cursor:text;outline:none}
+.tpx-editGlyph{flex:none;color:var(--dsw-alias-label-tertiary)}
+.tpx-editZone:enabled:hover .tpx-editGlyph,.tpx-editZone:focus-visible .tpx-editGlyph{color:var(--dsw-alias-label-primary)}
+/* 输入框自己不带框：框由外面那条 bar 画。 */
+.tpx-pathInput{box-sizing:border-box;flex:1 1 0;min-width:0;height:22px;padding:0;border:none;outline:none;background:transparent;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary)}
+.tpx-content{display:flex;flex-direction:column;flex:1 1 0;min-height:0;position:relative;padding:16px 16px 16px 24px}
+/* 没有条目时这一栏收起来：空态与错误提示就跟在头部下面，而不是被推到
+   卡片底部、离标题十万八千里。 */
+.tpx-col{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-height:0;overflow-y:auto;padding-right:8px;outline:none}
+.tpx-col[data-empty='true']{flex:0 0 auto}
+/* 换层的瞬间旧行就不能再点：面包屑已经是新路径，列表还是上一层的，误点会选错文件。 */
+.tpx-col[data-stale='true']{pointer-events:none}
+.tpx-row{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:28px;flex:none;padding:4px;border-radius:var(--dsw-radius-sm);background:transparent;text-align:left;cursor:pointer}
 .tpx-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-/* 亮色下选中底与悬停底的 ΔE 只有 2.9（门槛 8），只靠底色分不出来：
-   左缘加一道 2px 竖条当第二种线索，和资源管理器/VS Code 的列表选择一致。 */
-.tpx-row[data-active='true']{background:var(--dsw-alias-state-business-tertiary);box-shadow:inset 2px 0 0 var(--dsw-alias-state-business-primary)}
-.tpx-row[data-active='true'] .tpx-name{font-weight:500}
-.tpx-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 行尾一列：文件放大小、文件夹放箭头，共用一格，右边缘才对得齐。 */
-/* 次要信息用 secondary 而不是 tertiary：tertiary 在亮色下只有 3.7:1，
-   11.5px 的小字读起来发虚。 */
-.tpx-trail{flex:none;display:flex;align-items:center;justify-content:flex-end;width:88px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:18px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
-.tpx-chevron{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-right:-4px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;line-height:1;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.tpx-chevron:hover{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary)}
-.tpx-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;background:var(--dsw-alias-bg-layer-1);text-align:center;font-size:12.5px;line-height:19px;color:var(--dsw-alias-label-secondary)}
-.tpx-state > span:last-child{display:flex;gap:8px}
-/* 截断提示放列表上方：塞在滚动区末尾时，四百行要滚到底才看得见。 */
-.tpx-note{flex:none;display:flex;align-items:center;justify-content:center;box-sizing:border-box;height:26px;margin:0;padding:0 16px;border-bottom:1px solid var(--dsw-alias-border-l2);font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
-.tpx-state b{margin:0;font-weight:500;color:var(--dsw-alias-label-primary)}
-.tpx-state[data-tone='error'] b{color:var(--dsw-alias-state-error-primary)}
-.tpx-msg{max-width:44ch;overflow-wrap:anywhere}
-.tpx-foot{flex:none;display:flex;align-items:center;gap:8px;box-sizing:border-box;height:52px;padding:0 16px;border-top:1px solid var(--dsw-alias-border-l2)}
-.tpx-picked{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:18px;color:var(--dsw-alias-label-secondary)}
-.tpx-picked[data-empty='true']{font-family:inherit;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.tpx-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;min-width:64px;height:30px;border:1px solid var(--dsw-alias-border-l3);border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;line-height:1;padding:0 14px;cursor:pointer;white-space:nowrap;transition:background-color .12s ease,color .12s ease,border-color .12s ease}
-.tpx-btn:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l4)}
-.tpx-btn:disabled{opacity:.4;cursor:default}
-.tpx-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.tpx-btnPrimary{background:var(--dsw-alias-button-primary-fill);border-color:transparent;color:var(--dsw-alias-label-primary-inverted);font-weight:500}
-.tpx-btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);color:var(--dsw-alias-label-primary-inverted)}
-@media (prefers-reduced-motion: reduce){.tpx-close,.tpx-ghost,.tpx-crumb,.tpx-row,.tpx-btn,.tpx-list{transition:none}}
+.tpx-row[data-active='true'],.tpx-row[data-active='true']:hover{background:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-interactive-bg-hover))}
+.tpx-rowIcon{flex:none;color:var(--dsw-alias-label-secondary)}
+.tpx-row[data-active='true'] .tpx-rowIconDir{color:var(--dsw-alias-button-info-fill)}
+.tpx-rowName{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px;font-weight:500;color:var(--dsw-alias-label-primary)}
+.tpx-rowSize{flex:none;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.tpx-rowChevron{flex:none;color:var(--dsw-alias-label-tertiary)}
+/* 状态行排在列表下面：列表自己滚，这几行不会把卡片撑高。 */
+.tpx-status,.tpx-error{display:flex;align-items:center;gap:8px;padding:4px;padding-right:120px;font-size:12px;line-height:18px}
+.tpx-status{color:var(--dsw-alias-label-secondary)}
+.tpx-error{color:var(--dsw-alias-state-error-primary)}
+.tpx-link{border:none;background:transparent;padding:0;font:inherit;color:var(--dsw-alias-state-business-primary);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+/* 读取慢的提示浮在右下角，不占一行：等它出现时列表里还是旧内容，
+   占一行会让行位置在读完的一瞬间跳一下。 */
+.tpx-loading{position:absolute;right:16px;bottom:8px;padding:2px 8px;background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.tpx-foot{display:flex;align-items:center;flex-wrap:wrap;gap:8px;flex:none;padding:16px 24px;border-top:.5px solid var(--dsw-alias-border-l3)}
+/* 开关是文字按钮：按下时在标签后面补一个勾（取 Menu 的选中词汇），
+   文案本身不换，按下去时字不会跳。 */
+.tpx-toggle{display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:0;font-size:13px;line-height:20px;font-weight:500;color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.tpx-toggle:hover{color:var(--dsw-alias-label-primary)}
+.tpx-toggle[aria-pressed='true']{color:var(--dsw-alias-label-primary)}
+.tpx-gap{flex:1 1 0}
+.tpx-action{min-width:72px}
+@media (prefers-reduced-motion: reduce){.tpx-crumb,.tpx-row,.tpx-toggle,.tpx-link{transition:none}}
 `
 
 /**
@@ -145,9 +156,9 @@ function withCount(template: string, count: number): string {
  * 一层目录的读取状态。
  *
  * 只认最后一次请求：连续翻两下时，先发的那次回来得晚也不能盖掉后发的结果。
- * 失败不清空上一次的列表，重试就从这里再来一次。
+ * 失败不清空上一次的列表，重试就从这里再来一次。弹窗关着时不再发请求。
  */
-function useDirectory(dir: string | null, showAll: boolean): {
+function useDirectory(dir: string | null, showAll: boolean, enabled: boolean): {
   value: CommandBrowseValue | null
   error: string | null
   loading: boolean
@@ -155,11 +166,12 @@ function useDirectory(dir: string | null, showAll: boolean): {
 } {
   const [value, setValue] = useState<CommandBrowseValue | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const seq = useRef(0)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    if (!enabled) return
     const mine = ++seq.current
     setLoading(true)
     // 换层立刻清掉上一层的错：否则「上一个目录不存在」会盖在正在读的新目录上。
@@ -186,7 +198,7 @@ function useDirectory(dir: string | null, showAll: boolean): {
         if (mine === seq.current) setLoading(false)
       }
     })()
-  }, [dir, showAll, attempt])
+  }, [dir, showAll, attempt, enabled])
 
   const reload = useCallback(() => setAttempt(current => current + 1), [])
   return { value, error, loading, reload }
@@ -194,6 +206,8 @@ function useDirectory(dir: string | null, showAll: boolean): {
 
 export interface PathPickerProps {
   t: Translate
+  /** 开着才请求目录、才挂载遮罩；关着时整棵子树不渲染。 */
+  open: boolean
   /** 打开时输入框里已有的值；用它决定从哪一层开始。 */
   startAt: string
   /** 选中一个文件：完整路径，宿主侧的口径。 */
@@ -205,23 +219,60 @@ export interface PathPickerProps {
  * Render the browse dialog.
  *
  * 键盘：↑↓ 选行，打字跳转，Enter 进目录或确认文件，Backspace / ← 上一级，
- * Esc 关（由浮层壳统一处理）。
+ * Esc 关（编辑路径时先退出编辑态，由卡片自己拦下这次 Esc）。
  */
 export function PathPicker(props: PathPickerProps): ReactNode {
-  const { t, startAt, onPick, onRequestClose } = props
+  const { t, open, startAt, onPick, onRequestClose } = props
   // 绘制前注入：放在渲染体里会让首帧先按未定位的样式画一遍。
   useInsertionEffect(() => { injectCss() }, [])
 
   /** null = 没指定，由宿主给主目录。 */
-  const [dir, setDir] = useState<string | null>(() => dirOfPath(startAt) ?? null)
+  const [dir, setDir] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [active, setActive] = useState<string | null>(null)
-  const { value, error, loading, reload } = useDirectory(dir, showAll)
+  /** null = 面包屑态；字符串 = 正在手输路径。 */
+  const [pathDraft, setPathDraft] = useState<string | null>(null)
+  const { value, error, loading, reload } = useDirectory(dir, showAll, open)
   const [slow, setSlow] = useState(false)
-  const [overflow, setOverflow] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
-  const crumbsRef = useRef<HTMLDivElement | null>(null)
+  const crumbsRef = useRef<HTMLSpanElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const typeAhead = useRef({ text: '', timer: 0 })
+  const lastStart = useRef<string | null>(null)
+
+  /**
+   * Esc 归这一层：编辑路径时先退出编辑态，再按一次才关弹窗。
+   *
+   * 注册在 document 的 capture 上并 stopPropagation：Modal 自己的 Esc 是
+   * document 的冒泡监听，下面设置抽屉的也是；让事件继续走，两者都会跟着收掉
+   * 整页。命令面板在浏览弹窗开着时已经让路（它只在没弹窗时才接管 Esc）。
+   */
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      event.stopPropagation()
+      event.preventDefault()
+      if (pathDraft !== null) {
+        setPathDraft(null)
+        return
+      }
+      onRequestClose()
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => { document.removeEventListener('keydown', onKey, true) }
+  }, [open, pathDraft, onRequestClose])
+
+  // 每次打开都从输入框里的值重新起步；关着的时候不发请求。
+  useEffect(() => {
+    if (!open) return
+    if (lastStart.current === startAt) return
+    lastStart.current = startAt
+    const seed = dirOfPath(startAt)
+    if (seed !== undefined) setDir(seed)
+    setActive(null)
+    setPathDraft(null)
+  }, [open, startAt])
 
   // 「慢」要等一会儿才承认：本地目录几毫秒就回来，提前压暗只会闪一下。
   useEffect(() => {
@@ -248,7 +299,7 @@ export function PathPicker(props: PathPickerProps): ReactNode {
   const activeEntry = activeIndex < 0 ? null : entries[activeIndex]
   /** 有未完成的读取：旧行不可点，回车也不生效。 */
   const stale = loading
-  /** 读取超过 200ms：才值得压暗并显示「读取中」。 */
+  /** 读取慢到值得说一声：压不压暗都靠它。 */
   const busy = loading && slow
 
   // 路径一长，开头几级先被挤出可视区：始终让当前这一级看得见。
@@ -256,8 +307,7 @@ export function PathPicker(props: PathPickerProps): ReactNode {
     const node = crumbsRef.current
     if (node === null) return
     node.scrollLeft = node.scrollWidth
-    setOverflow(node.scrollWidth > node.clientWidth + 1)
-  }, [currentDir])
+  }, [currentDir, open])
 
   useLayoutEffect(() => {
     if (active === null) return
@@ -265,31 +315,17 @@ export function PathPicker(props: PathPickerProps): ReactNode {
     if (node instanceof HTMLElement) node.scrollIntoView({ block: 'nearest' })
   }, [active])
 
-  const go = useCallback((next: string | null): void => {
-    setDir(next)
-  }, [])
-
   // 第一次读到目录就落在第一行：否则键盘用户看不出焦点在哪，回车也没反应。
   // 只在「这一层还没选过」时补，翻回来时不会把用户的选择顶掉。
   useEffect(() => {
-    if (loading || active !== null || entries.length === 0) return
+    if (!open || loading || active !== null || entries.length === 0) return
     setActive(entries[0].path)
-  }, [active, entries, loading])
+  }, [active, entries, loading, open])
 
-  // 状态层盖住列表时列表就不该再收键盘：否则 Tab 进去的是看不见的行。
-  const blocked = error !== null || (!loading && value !== null && entries.length === 0)
-  const bodyRef = useRef<HTMLDivElement | null>(null)
-  useInert(listRef, blocked)
-  // 列表被 inert 之后浏览器会把焦点丢到 body 上：把键盘交给状态层，
-  // 否则「重试」「看全部文件」这些唯一的出路都按不到。解除时再交回列表。
-  useLayoutEffect(() => {
-    if (blocked) {
-      bodyRef.current?.focus()
-      return
-    }
-    const active = document.activeElement
-    if (active === null || active === document.body || active === bodyRef.current) listRef.current?.focus()
-  }, [blocked])
+  const go = useCallback((next: string | null): void => {
+    setDir(next)
+    setPathDraft(null)
+  }, [])
 
   const enter = useCallback((entry: CommandBrowseEntry): void => {
     if (entry.kind === 'dir') {
@@ -299,225 +335,230 @@ export function PathPicker(props: PathPickerProps): ReactNode {
     onPick(entry.path)
   }, [go, onPick])
 
-  const onListKey = useCallback((event: React.KeyboardEvent<HTMLDivElement>): void => {
+  /** 打字跳转：可打印字符攒进缓冲，700ms 内没再按就清空。 */
+  const onTypeAhead = useCallback((event: KeyboardEvent<HTMLDivElement>): boolean => {
+    const { key } = event
+    if (key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return false
+    const state = typeAhead.current
+    window.clearTimeout(state.timer)
+    state.text += key
+    state.timer = window.setTimeout(() => { state.text = '' }, TYPE_AHEAD_MS)
+    const index = firstMatchIndex(entries.map(entry => entry.name), state.text, activeIndex)
+    if (index < 0) {
+      // 没配上就把缓冲清掉：否则第一下按错，后面几下一个字都跳不动。
+      state.text = ''
+      return false
+    }
+    setActive(entries[index].path)
+    return true
+  }, [entries, activeIndex])
+
+  /**
+   * 列表的键盘。焦点始终留在列表容器上（listbox + aria-activedescendant），
+   * 不逐行搬焦点：Modal 的 Tab 圈定会把每个按钮都算成一个落点，四百行就是
+   * 四百个 Tab 站。
+   */
+  const onListKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.nativeEvent.isComposing) return
     const count = entries.length
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (count === 0) return
+    const current = activeIndex
+    const move = (next: number): void => {
+      if (next < 0 || next >= count) return
       event.preventDefault()
-      const step = event.key === 'ArrowDown' ? 1 : -1
-      const next = activeIndex < 0 ? (step === 1 ? 0 : count - 1) : (activeIndex + step + count) % count
       setActive(entries[next].path)
-      return
     }
-    if (event.key === 'Home' || event.key === 'End') {
-      if (count === 0) return
-      event.preventDefault()
-      setActive(entries[event.key === 'Home' ? 0 : count - 1].path)
-      return
-    }
-    if (event.key === 'Enter') {
-      if (activeEntry === null || stale) return
-      event.preventDefault()
-      enter(activeEntry)
-      return
-    }
-    if (event.key === 'Backspace' || event.key === 'ArrowLeft') {
-      if (parent === null) return
-      event.preventDefault()
-      go(parent)
-      return
-    }
-    if (event.key === 'ArrowRight') {
-      if (activeEntry === null || activeEntry.kind !== 'dir' || stale) return
-      event.preventDefault()
-      enter(activeEntry)
-      return
-    }
-    if (event.key === 'PageDown' || event.key === 'PageUp') {
-      if (count === 0 || listRef.current === null) return
-      event.preventDefault()
-      const visible = Math.max(1, Math.floor(listRef.current.clientHeight / ROW_HEIGHT))
-      const from = activeIndex < 0 ? 0 : activeIndex
-      const next = Math.min(count - 1, Math.max(0, from + (event.key === 'PageDown' ? visible : -visible)))
-      setActive(entries[next].path)
-      return
-    }
-    // 打字跳转：名字前缀，大小写不敏感，连按算一个前缀。输入法组合中的按键不算。
-    // `nativeEvent`：React 的 KeyboardEvent 类型上没有 isComposing。
-    if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.nativeEvent.isComposing) {
-      const buffer = typeAhead.current
-      window.clearTimeout(buffer.timer)
-      buffer.text += event.key
-      buffer.timer = window.setTimeout(() => { buffer.text = '' }, TYPE_AHEAD_MS)
-      const index = firstMatchIndex(entries.map(entry => entry.name), buffer.text, activeIndex)
-      if (index >= 0) {
-        event.preventDefault()
-        setActive(entries[index].path)
-      } else {
-        // 没命中就从头再来：留着旧前缀，后面几秒的按键会一直被拖去搜那个死串。
-        buffer.text = ''
+    switch (event.key) {
+      case 'ArrowDown': if (!stale) move(Math.min(count - 1, current + 1)); break
+      case 'ArrowUp': if (!stale) move(current <= 0 ? 0 : current - 1); break
+      case 'Home': if (!stale) move(0); break
+      case 'End': if (!stale) move(count - 1); break
+      case 'PageDown':
+      case 'PageUp': {
+        if (stale) break
+        const box = listRef.current
+        const page = box === null ? 10 : Math.max(1, Math.floor(box.clientHeight / ROW_HEIGHT) - 1)
+        move(event.key === 'PageDown' ? Math.min(count - 1, current + page) : Math.max(0, current - page))
+        break
       }
+      case 'Enter': {
+        if (stale) break
+        event.preventDefault()
+        const entry = activeEntry ?? entries[0] ?? null
+        if (entry === null) break
+        enter(entry)
+        break
+      }
+      case 'ArrowRight': {
+        if (stale) break
+        if (activeEntry?.kind === 'dir') { event.preventDefault(); enter(activeEntry) }
+        break
+      }
+      case 'ArrowLeft':
+      case 'Backspace': {
+        if (stale || parent === null) break
+        event.preventDefault()
+        go(parent)
+        break
+      }
+      default: onTypeAhead(event)
     }
-  }, [activeEntry, activeIndex, entries, enter, go, parent, stale])
+  }
+
+  /** 从面包屑右边那块热区进编辑态：草稿带上分隔符，接着敲就是子目录名。 */
+  const startEdit = (): void => {
+    const base = dir ?? value?.dir ?? null
+    if (base === null) {
+      setPathDraft('')
+      return
+    }
+    setPathDraft(base.endsWith('/') ? base : base + '/')
+  }
 
   return (
-    <ModalShell
-      variant="dialog"
-      role="dialog"
-      ariaLabel={showAll ? t('cmdBrowseTitleAll') : t('cmdBrowseTitle')}
+    <Modal
+      open={open}
+      onClose={onRequestClose}
+      title={t('cmdBrowseTitle')}
       className="tpx-dialog"
-      zIndex={PICKER_Z_INDEX}
-      onRequestClose={onRequestClose}
-      initialFocus={() => listRef.current}
+      headless
     >
-      <div className="tpx-head">
-        <h4 className="tpx-title">{showAll ? t('cmdBrowseTitleAll') : t('cmdBrowseTitle')}</h4>
-        <button type="button" className="tpx-close" aria-label={t('cmdClose')} onClick={onRequestClose}>×</button>
-      </div>
-
-      <div className="tpx-bar">
-        <button
-          type="button"
-          className="tpx-ghost"
-          disabled={parent === null}
-          onClick={() => { if (parent !== null) go(parent) }}
-        >
-          ‹ {t('cmdBrowseUp')}
-        </button>
-        <div
-          className="tpx-crumbs"
-          ref={crumbsRef}
-          role="navigation"
-          aria-label={t('cmdBrowsePath')}
-          data-overflow={overflow ? 'true' : 'false'}
-          onWheel={(event) => {
-            // 触控板横滑之外，普通滚轮也让它能翻：竖着滚改成横着滚。
-            const node = crumbsRef.current
-            if (node === null || node.scrollWidth <= node.clientWidth) return
-            node.scrollLeft += event.deltaY
-          }}
-        >
-          {crumbs.map((crumb, index) => {
-            const current = index === crumbs.length - 1
-            return (
-              <Fragment key={crumb.path}>
-                {index > 0 ? <span className="tpx-sep" aria-hidden="true">/</span> : null}
-                <button
-                  type="button"
-                  className="tpx-crumb"
-                  disabled={current}
-                  title={crumb.path}
-                  onClick={() => go(crumb.path)}
-                >
-                  {crumb.label}
-                </button>
-              </Fragment>
-            )
-          })}
-          {currentDir === null && loading ? <span className="tpx-sep">{t('cmdBrowseLoading')}</span> : null}
+      {/* display:contents：头部、内容、底栏仍然是 Modal 卡片的直接 flex 子项。 */}
+      <div className="tpx-scope">
+        <div className="tpx-head">
+          <h2 className="tpx-title">{t('cmdBrowseTitle')}</h2>
+          <div className="tpx-bar">
+            {pathDraft === null
+              ? (
+                <>
+                  <span className="tpx-crumbs" role="navigation" ref={crumbsRef}>
+                    {crumbs.map((crumb, index) => (
+                      <span key={crumb.path} className="tpx-crumbSeat">
+                        {index > 0 && <IconChevronRightOutlineRegular size={12} className="tpx-crumbChevron" />}
+                        <button
+                          type="button"
+                          className="tpx-crumb"
+                          data-current={index === crumbs.length - 1 ? 'true' : undefined}
+                          aria-current={index === crumbs.length - 1 ? 'page' : undefined}
+                          disabled={stale}
+                          onClick={() => { go(crumb.path) }}
+                        >
+                          {crumb.label}
+                        </button>
+                      </span>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="tpx-editZone"
+                    aria-label={t('cmdBrowsePath')}
+                    title={t('cmdBrowsePath')}
+                    disabled={stale}
+                    onClick={startEdit}
+                  >
+                    <IconEditOutlineRegular size={14} className="tpx-editGlyph" />
+                  </button>
+                </>
+              )
+              : (
+                <input
+                  className="tpx-pathInput"
+                  ref={inputRef}
+                  autoFocus
+                  value={pathDraft}
+                  aria-label={t('cmdBrowsePath')}
+                  onChange={(event) => { setPathDraft(event.target.value) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+                    event.preventDefault()
+                    // 空白只用来判断「没写东西」；真目录名可能带空格，原样送给宿主。
+                    if (pathDraft.trim() === '') return
+                    go(pathDraft)
+                  }}
+                />
+              )}
+          </div>
         </div>
-        <button
-          type="button"
-          className="tpx-ghost"
-          aria-pressed={showAll}
-          onClick={() => setShowAll(current => !current)}
-        >
-          {t('cmdBrowseAll')}
-        </button>
-      </div>
 
-      {value !== null && value.truncated && entries.length > 0
-        ? <p className="tpx-note">{withCount(t('cmdBrowseTruncated'), entries.length)}</p>
-        : null}
-
-      <div
-        className="tpx-body"
-        ref={bodyRef}
-        tabIndex={-1}
-        data-busy={busy ? 'true' : 'false'}
-        data-stale={stale ? 'true' : 'false'}
-      >
-        <div
-          className="tpx-list"
-          ref={listRef}
-          role="listbox"
-          tabIndex={0}
-          aria-label={t('cmdBrowseTitle')}
-          aria-busy={stale ? 'true' : undefined}
-          aria-activedescendant={activeIndex < 0 ? undefined : 'tpx-opt-' + activeIndex}
-          onKeyDown={onListKey}
-        >
-          {entries.map((entry, index) => (
-            <div
-              key={entry.path}
-              id={'tpx-opt-' + index}
-              className="tpx-row"
-              role="option"
-              aria-selected={activeIndex === index}
-              data-active={activeIndex === index ? 'true' : undefined}
-              onClick={() => setActive(entry.path)}
-              onDoubleClick={() => { if (!stale) enter(entry) }}
-            >
-              <span className="tpx-name">{entry.name}</span>
-              <span className="tpx-trail">
+        <div className="tpx-content">
+          <div
+            className="tpx-col"
+            ref={listRef}
+            role="listbox"
+            tabIndex={0}
+            data-modal-autofocus
+            aria-label={t('cmdBrowseTitle')}
+            aria-busy={stale ? 'true' : undefined}
+            aria-activedescendant={activeIndex < 0 ? undefined : 'tpx-opt-' + activeIndex}
+            data-stale={stale ? 'true' : 'false'}
+            data-empty={!loading && entries.length === 0 ? 'true' : 'false'}
+            onKeyDown={onListKey}
+          >
+            {entries.map((entry, index) => (
+              <div
+                key={entry.path}
+                id={'tpx-opt-' + index}
+                className="tpx-row"
+                role="option"
+                aria-selected={activeIndex === index}
+                data-active={activeIndex === index ? 'true' : undefined}
+                onClick={() => setActive(entry.path)}
+                onDoubleClick={() => { if (!stale) enter(entry) }}
+              >
                 {entry.kind === 'dir'
                   ? (
-                    // 箭头本身就是「进入」：只靠双击太隐蔽，单击整行又只是选中。
-                    <button
-                      type="button"
-                      className="tpx-chevron"
-                      aria-label={t('cmdBrowseEnter')}
-                      tabIndex={-1}
-                      onClick={(event) => { event.stopPropagation(); if (!stale) enter(entry) }}
-                    >
-                      ›
-                    </button>
+                    activeIndex === index
+                      ? <IconFolderOpenRegular size={16} className="tpx-rowIcon tpx-rowIconDir" />
+                      : <IconFolderCloseRegular size={16} className="tpx-rowIcon tpx-rowIconDir" />
                   )
-                  : formatSize(entry.size)}
-              </span>
+                  : <FileTypeIcon path={entry.name} size={16} className="tpx-rowIcon" />}
+                <span className="tpx-rowName">{entry.name}</span>
+                {entry.kind === 'dir'
+                  ? <IconChevronRightOutlineRegular size={12} className="tpx-rowChevron" />
+                  : <span className="tpx-rowSize">{entry.size === null ? '' : fileSizeText(entry.size)}</span>}
+              </div>
+            ))}
+          </div>
+
+          {busy && <div className="tpx-loading" role="status" aria-live="polite">{t('cmdBrowseLoading')}</div>}
+          {value?.truncated === true && (
+            <div className="tpx-status" role="status">{withCount(t('cmdBrowseTruncated'), entries.length)}</div>
+          )}
+          {error !== null && (
+            <div className="tpx-error" role="alert">
+              <span>{t('cmdBrowseFailed')}</span>
+              <button type="button" className="tpx-link" onClick={reload}>{t('cmdBrowseRetry')}</button>
             </div>
-          ))}
+          )}
+          {error === null && !loading && value !== null && entries.length === 0 && (
+            <div className="tpx-status" role="status">
+              {showAll ? t('cmdBrowseEmptyAll') : t('cmdBrowseEmpty')}
+            </div>
+          )}
         </div>
 
-        {error !== null
-          ? (
-            <div className="tpx-state" data-tone="error" role="alert">
-              <b>{t('cmdBrowseFailed')}</b>
-              <span className="tpx-msg">{error}</span>
-              <span>
-                <button type="button" className="tpx-btn" onClick={reload}>{t('cmdBrowseRetry')}</button>
-                <button type="button" className="tpx-btn" onClick={() => go(null)}>{t('cmdBrowseHome')}</button>
-              </span>
-            </div>
-          )
-          : error === null && !loading && value !== null && entries.length === 0
-            ? (
-              <div className="tpx-state">
-                <b>{showAll ? t('cmdBrowseEmptyAll') : t('cmdBrowseEmpty')}</b>
-                {showAll
-                  ? null
-                  : <button type="button" className="tpx-btn" onClick={() => setShowAll(true)}>{t('cmdBrowseShowAll')}</button>}
-              </div>
-            )
-            : busy
-              ? <div className="tpx-state" role="status" aria-live="polite"><span>{t('cmdBrowseLoading')}</span></div>
-              : null}
+        <div className="tpx-foot">
+          <button
+            type="button"
+            className="tpx-toggle"
+            aria-pressed={showAll}
+            disabled={stale}
+            onClick={() => { setShowAll(current => !current) }}
+          >
+            {t('cmdBrowseAll')}
+            {showAll && <IconCheckOutlineRegular size={14} />}
+          </button>
+          <span className="tpx-gap" />
+          <Button variant="outline" className="tpx-action" onClick={onRequestClose}>{t('cmdAddCancel')}</Button>
+          <Button
+            variant="primary"
+            className="tpx-action"
+            disabled={activeEntry === null || stale || error !== null}
+            onClick={() => { if (activeEntry !== null) enter(activeEntry) }}
+          >
+            {activeEntry !== null && activeEntry.kind === 'dir' ? t('cmdBrowseEnter') : t('cmdBrowsePick')}
+          </Button>
+        </div>
       </div>
-
-      <div className="tpx-foot">
-        <span className="tpx-picked" data-empty={activeEntry === null ? 'true' : 'false'}>
-          {busy ? t('cmdBrowseLoading') : activeEntry === null ? t('cmdBrowseHint') : activeEntry.path}
-        </span>
-        <button type="button" className="tpx-btn" onClick={onRequestClose}>{t('cmdAddCancel')}</button>
-        <button
-          type="button"
-          className="tpx-btn tpx-btnPrimary"
-          disabled={activeEntry === null || stale || error !== null}
-          onClick={() => { if (activeEntry !== null) enter(activeEntry) }}
-        >
-          {activeEntry !== null && activeEntry.kind === 'dir' ? t('cmdBrowseEnter') : t('cmdBrowsePick')}
-        </button>
-      </div>
-    </ModalShell>
+    </Modal>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crumbsOf, dirOfPath, firstMatchIndex, formatSize, parentOfPath } from '../../src/client/path-text.ts'
+import { crumbsOf, dirOfPath, firstMatchIndex, parentOfPath } from '../../src/client/path-text.ts'
 
 describe('dirOfPath', () => {
   it('takes the folder of a full file path', () => {
@@ -83,24 +83,5 @@ describe('firstMatchIndex', () => {
     expect(firstMatchIndex(names, 'q', -1)).toBe(-1)
     expect(firstMatchIndex(names, '', -1)).toBe(-1)
     expect(firstMatchIndex([], 'z', -1)).toBe(-1)
-  })
-})
-
-describe('formatSize', () => {
-  it('says nothing for a folder', () => {
-    expect(formatSize(null)).toBe('')
-  })
-
-  it('picks a readable unit', () => {
-    expect(formatSize(0)).toBe('0 B')
-    expect(formatSize(1023)).toBe('1023 B')
-    expect(formatSize(2048)).toBe('2 KB')
-    expect(formatSize(5 * 1024 * 1024)).toBe('5.0 MB')
-  })
-
-  it('never prints 1024 of a smaller unit', () => {
-    expect(formatSize(1024 * 1024 - 1)).toBe('1.0 MB')
-    expect(formatSize(1024 * 1024 * 1024 - 1)).toBe('1.0 GB')
-    expect(formatSize(3 * 1024 * 1024 * 1024)).toBe('3.0 GB')
   })
 })

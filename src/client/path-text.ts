@@ -1,6 +1,6 @@
 /**
- * 路径字段用到的纯文本换算：从输入框猜起始目录、把目录切成面包屑、把字节数
- * 说成人话。与 React 无关，单独放一处，测试可以直接盯它。
+ * 路径字段用到的纯文本换算：从输入框猜起始目录、把目录切成面包屑、打字跳转。
+ * 与 React 无关，单独放一处，测试可以直接盯它。
  * @module @xiaoso/dsh-tool-plus/client
  */
 
@@ -72,16 +72,3 @@ export function firstMatchIndex(names: readonly string[], prefix: string, from: 
   return -1
 }
 
-/** 文件大小按人看的单位；目录没有大小。 */
-export function formatSize(bytes: number | null): string {
-  if (bytes === null) return ''
-  if (bytes < 1024) return bytes + ' B'
-  // 先取整再看档：1048575 B 四舍五入成 1024 KB、或者 `toFixed` 把 1023.99 MB
-  // 印成 "1024.0 MB" 都很怪，这一档装不下就退到上一档。
-  const round1 = (value: number): number => Math.round(value * 10) / 10
-  const kb = Math.round(bytes / 1024)
-  if (kb < 1024) return kb + ' KB'
-  const mb = round1(bytes / (1024 * 1024))
-  if (mb < 1024) return mb.toFixed(1) + ' MB'
-  return round1(bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
-}
