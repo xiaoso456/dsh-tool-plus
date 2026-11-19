@@ -18,52 +18,60 @@
 
 </div>
 
-DeepSeek Harness 基础工具增强：持久 bash、结构化 read、多模式 edit、原子 write、全文搜索、图像直读，一个插件全覆盖。基于 [Oh My Pi](https://github.com/can1357/oh-my-pi) 内核移植，安装后自动接管官方 bash / pwsh / 文件 / 搜索工具，另有可选的 `ast_grep` / `ast_edit` 结构化搜索与重写。
+DeepSeek Harness 基础工具增强：用 bash 取代 PowerShell 承担 shell 场景，并提供结构化 read、多模式 edit、原子 write、全文搜索与图像直读。内核移植自 [Oh My Pi](https://github.com/can1357/oh-my-pi)，安装后自动接管官方的 bash / pwsh / 文件 / 搜索工具。
+
+![dsh tool plus：Windows 上的 dsh 也能使用 bash 与常用 Linux 命令](./assets/hero.zh.png)
 
 ## 功能特性
 
-- **bash**：工作目录跟随 `cd` 跨调用保持；默认每条命令单独开 Shell，`export` 的变量、别名与函数不跨调用保留（换目录用 `workdir`）；冗长日志（git/npm/cargo…）自动压缩；超长输出只保留头尾，完整内容落盘可回读；长命令自动转后台；可选拦截 `cat`、`grep`、`find`、`sed -i`，引导改用专用工具（默认关闭）
-- **安全删除**：`rm` 默认把文件移入系统回收站而非永久删除，误删可恢复；需要真删时用 `command rm`
-- **read**：按行区间精准读取（支持 `:N-M`、`:raw`、多区间）；大代码文件默认返回结构摘要，细节按需展开；zip/tar 归档、SQLite、notebook、PDF 直接读；PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放；可抓取网页内容（含网页内图片）；SPA 站点（内容由 JS 动态渲染，如 excalidraw.com）自动改用本机浏览器渲染后抓取
-- **write**：原子写入，返回修改 diff；支持补丁式写入，可直接写 zip/tar 归档成员与 SQLite 数据
-- **edit**：replace 默认，另支持 patch / hashline / apply-patch 三种补丁格式；多段编辑、唯一性校验、空白差异模糊匹配
+### Shell
+
+- **bash**：内置 150+ 条命令，`ls`、`grep`、`sed`、`jq` 等常用工具不依赖系统里的同名程序
+  - `zip`、`tree`、`bc`、`gzip` / `zstd` / `xz` 等系统里常缺的命令也由插件自带（[说明](docs/shell-commands/README.md)）
+  - 工作目录跟随 `cd` 跨调用保持
+  - 冗长日志（git/npm/cargo…）自动压缩；超长输出只留头尾，完整内容落盘可回读
+  - 长命令自动转后台
+  - 可选拦截 `cat`、`grep`、`find`、`sed -i`，引导模型改用专用工具（默认关闭）
+- **安全删除**：`rm` 默认把文件移进系统回收站，误删可恢复；要真删用 `command rm`
+
+### 文件
+
+- **read**：按行区间读（`:N-M`、`:raw`、多区间）
+  - 大代码文件默认给结构摘要，细节按需展开
+  - zip/tar、SQLite、notebook、PDF 直接读
+  - PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放
+  - 可抓网页（含页内图片），SPA 站点改用本机浏览器渲染后再抓
+- **write**：原子写入并返回 diff；支持补丁式写入，可直接写归档成员与 SQLite 数据
+- **edit**：replace 默认，另支持 patch / hashline / apply-patch；多段编辑、唯一性校验、空白模糊匹配
+
+### 搜索
+
 - **grep / glob**：全文搜索与文件名匹配；mtime 排序、上下文行、忽略规则可配置
-- **ast_grep / ast_edit**（可选）：基于语法树的结构化代码搜索与重写，可在设置中开启
-- **agent 预设**：标准增强版 / PTC（Code Mode）两套配套模板
+- **ast_grep / ast_edit**（可选）：基于语法树的结构化搜索与重写，设置里开启
 
-设置面板（Bash 工具页）：
+### 设置与预设
 
-![Tool Plus 设置面板（Bash）](docs/screenshots/settings-bash-zh.png)
-
-## 推荐环境与配置
-
-- **完全权限模式**：建议在 `danger-full-access` 下使用本插件，可避免沙箱模式下文件写入被误拦。
+- **命令面板**：逐条指定每个命令用插件内建、系统程序，还是你自选的可执行文件
+- **agent 预设**：标准增强版 / PTC（Code Mode）两套
 
 ## 安装
 
-### 从 npm 安装（推荐）
-
-#### Web 端
+Web 端：
 
 ```sh
 dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
-插件自带编译好的原生 addon（`optionalDependencies` 里的六个平台包，按系统自动只装一个），安装时不编译、也没有安装脚本要放行——**不需要** `--allow-build`，也不用 `pnpm approve-builds`。这条命令会顺手把插件登记进 profile 的 `dsh.profile.bundles`，装完就能用。
+桌面端：在插件页输入包名 `@xiaoso/dsh-tool-plus` 安装。
 
-#### 桌面端
+### 环境要求
 
-在桌面端的插件页里输入包名安装：
+- **dsh**：`v0.2.2-rc.3` 及以上（pre-release，接口可能变动）
+- **Node.js** ≥ 24.9
+- **Git Bash**（Windows 推荐）：bash 本身由插件内置，Git Bash 只用来补充内置命令之外的常用 Linux 工具（如 `awk`）
+- **权限**：建议在 `danger-full-access` 下使用，避免沙箱模式误拦文件写入
 
-```text
-@xiaoso/dsh-tool-plus
-```
-
-### 本地开发
-
-```sh
-dsh plugin --profile web add link:<本仓库路径>
-```
+## 使用
 
 ### 预设
 
@@ -72,29 +80,18 @@ dsh plugin --profile web add link:<本仓库路径>
 | **Tool Plus 标准增强版** | 官方 standard | 官方标准模式全部能力 + 文件/Shell 工具集换成本插件 |
 | **Tool Plus PTC 增强版** | 官方 PTC（Code Mode） | 同上，但经 Code Mode 以 `run_code` 组合多步操作 |
 
-两个预设**随插件声明**：安装插件（作为 profile bundle）时，插件的补丁层里就带着两条 `@deepseek-ai/dsh-agent-preset` 声明行，装上即可在预设列表里选。没有安装步骤，插件启动时也不写任何文件。
+装好插件后在预设列表里直接选。需要调整时到 设置 → Tool Plus → 预设：官方升级后点「跟随官方」；想回到默认点「恢复随包」。
 
-设置页「Tool Plus → 预设」是改它们的地方（dsh 0.1.7 起官方的预设页只读、也没有 `agent_preset` 工具，所以这里是唯一的图形入口）：
+### 设置
 
-- **最小更新**：只把这几个仍挂着的官方工具行关掉，其他内容一个字节都不动
-- **对齐模板**：用所选模板整份替换这一行的插件列表
-- **跟随官方**：读取当前环境官方随附的预设声明，套上本插件的增量（去掉宿主面三行、pwsh 关闭、加文档行）后整份写入。官方升级后点它即可，不必等插件发版
-- **恢复随包**：删掉你写在 profile 配置（`<profile>/cordis.patch.yml`）里的覆盖，回落到随包声明
-- **查看差异**：先看差在哪几行，再决定动不动手
+都在 设置 → Tool Plus 里：
 
-写入通过宿主自己的 `ctx.configEditor` 完成，因此自带 profile 锁、并发保护、原子写与失败回滚。
-
-## 配置
-
-开箱即用，无需配置。需要微调时常用项有：后台阈值（`autoBackgroundMs`，设为 `0` 则共用一个持久 Shell，`export` 的变量、别名与函数跨调用保留）、超时（`defaultTimeoutMs` / `maxTimeoutMs`）、输出截断窗口、编辑默认模式（`editMode`，默认 `replace`）、结构化摘要开关（`readSummarizeEnabled`）。抓取相关：可切换网页转 Markdown 的后端（`fetchReader`，含浏览器 JS 渲染——SPA 页面），设置面板里可一键「探测浏览器」查看本机可用的 Chrome/Edge。
-
-Shell 初始化脚本（`bashInitEnabled`，默认开）：每次创建 shell 时执行一段可编辑脚本。内置默认会把真正的 Git Bash 排到系统目录之前——Windows 自带的 `C:\Windows\System32\bash.exe` 是 WSL 转发 stub，没装 WSL 发行版时裸 `bash` 会报 `execvpe(/bin/bash) failed`。在 设置 → Tool Plus → Bash → Shell 初始化 里编辑、试运行、恢复默认。
-
-Shell 预热（`warmShellEnabled`，默认开）：会话首次执行 bash 后，在后台预建空闲 Shell；下一条命令直接租用一个已经初始化好的 Shell，省掉启动与 snapshot/初始化脚本开销。`warmShellCount` 默认每会话 2 个，用掉即弃并补足；`warmShellTtlMs` 默认 5 分钟（0 表示不过期）。只保留从未执行过命令的 Shell，用过的不会放回池里。
+- **命令面板**（Bash → 命令）：列出 bash 里能跑的每条命令及其来源，可逐条改用插件内建、系统程序或自选的可执行文件；改完对新开的 shell 生效
+- **Shell 初始化**（Bash → Shell 初始化）：每次创建 shell 时执行的脚本，可编辑、试运行、恢复默认
 
 ## 性能
 
-标准模式/标准模式增强下，在 Linux 上跑 SWE-bench Multilingual（20 题 × 3 轮）：
+在 Linux 上跑 SWE-bench Multilingual（20 题 × 3 轮），对比官方标准模式与本插件标准增强版。数据来自插件 0.1.13，0.2.x 尚未重测。
 
 | 指标 | 官方工具面 | 本插件（命令拦截开） | 本插件（命令拦截关，默认） |
 |---|---|---|---|
@@ -108,37 +105,28 @@ Shell 预热（`warmShellEnabled`，默认开）：会话首次执行 bash 后�
 | `read` 调用次数 | 225 | 459 | **198** |
 | `bash` 每次调用耗时 | 3,140 ms | **2,391 ms** | 2,045 ms |
 | `bash` 每次调用返回 token | 790 tok | **343 tok** | 638 tok |
-| 平均耗时 / 题（未计入 token 速率波动、网络速度带来的误差） | **123 s** | 135 s | 151 s |
+| 平均耗时 / 题 | **123 s** | 135 s | 151 s |
 
 注：
 
-1. 平均耗时是端到端实测，未计入 `token` 速率波动、网络速度带来的误差，绝对值只作横向参考。
-2. 本节性能只代表在该基准测试下的表现（该基准任务占用上下文较低，因此无法代表大任务情况）
-3. 由大模型计算统计核对，数据可能有疏漏，但不影响整体结论
+1. 平均耗时为端到端实测，受 token 速率与网速影响，只作横向参考
+2. 该基准任务上下文占用较低，不代表大任务的表现
+3. 数据由大模型统计核对，可能有疏漏，但不影响整体结论
 
 结论：
 
 1. 解题率与官方持平（命令拦截关的那组低 1 题，属正常波动）
-2. `bash` 本身更省，省下的 token 基本能抵消工具定义变厚带来的系统提示词增量（功能更强，工具定义比官方预设更厚）
-3. `bash` 更快，但带来的增益会被 `bash` 自身以及其他增强工具带来的副作用抹平
-4. 在 `linux` 上，综合性能和官方默认标准模式工具相当，但功能更丰富
+2. `bash` 本身更省、更快，但省下的 token 基本被更厚的工具定义（功能更多）抵消
+3. 在 Linux 上综合性能与官方默认标准模式相当，功能更丰富；Windows 不适合跑标准测试，只能说**个人体感**比 PowerShell 好用
 
-因此本插件工具在 `linux` 上，无法承诺更省 `token` 或具有更强的性能；`windows` 不适合跑标准测试，只能从**个人体感**说比 `powershell` 更好用。
-
-完整的四组数据与逐题矩阵见 [docs/benchmark/sbml-compare-ops.md](docs/benchmark/sbml-compare-ops.md)。
-
-## 环境要求
-
-- **dsh CLI**：需全局安装，`npm i -g @deepseek-ai/dsh`
-- **Node.js** ≥ 24.9
-- **Git Bash**（推荐）：Windows 上作为 bash 执行环境
-- 适用于 DeepSeek Harness `dsh` v0.2.2-rc.3 及以上（pre-release，接口可能变动）；更低的宿主（含 0.2.2-rc.1/rc.2 与 0.2.1）会被 `engines` 挡下，不会装上来再把预设弄坏
+完整数据与逐题矩阵见 [docs/benchmark/sbml-compare-ops.md](docs/benchmark/sbml-compare-ops.md)。
 
 ## 注意事项
 
-- 不提供单独的 `pwsh` 工具：shell 场景由功能更全的持久 `bash` 统一承担
-- **bash 的状态保持**：默认每条命令单独开 Shell，只有工作目录跟随 `cd`；把 `autoBackgroundMs` 设为 `0` 后共用一个持久 Shell，`export` 的变量、别名与函数都跨调用保留。设置改完立即生效，工具给模型的说明会同步改写，不用重启。
-- 预设显示「加载失败」（dsh 0.2.2 起）：升级到 `@xiaoso/dsh-tool-plus@0.1.20` 或更新版本；之后官方改了预设，在 设置 → Tool Plus → 预设 点「跟随官方」即可修复
+- 不提供单独的 `pwsh` 工具：shell 场景由功能更全的 `bash` 统一承担
+- **bash 的状态保持**：默认每条命令单独开 Shell，只有工作目录跟随 `cd`；把 `autoBackgroundMs` 设为 `0` 后共用一个持久 Shell，`export` 的变量、别名与函数都跨调用保留。改完立即生效，工具给模型的说明会同步改写，不用重启
+- 预设显示「加载失败」：插件版本太旧（0.1.19 及以前），升级即可；升级后官方又改过预设的话，在 设置 → Tool Plus → 预设 点「跟随官方」重派生一次
+- 命令面板里把某条命令指错了：在同一处改回来，或删掉 `$DSH_HOME/tool-plus/commands.json` 回到默认
 
 **安全 rm 删掉的文件进系统回收站**，各平台的落点与可见性：
 
@@ -151,15 +139,6 @@ Shell 预热（`warmShellEnabled`，默认开）：会话首次执行 bash 后�
 | **放回原处** | 支持 | 支持 | 视文件管理器 |
 | **实现** | Shell API | 系统 API | 第三方 XDG 实现 |
 | **已知限制** | 网络盘无回收站 | 需 10.12+ | 部分桌面环境看不到，需到落点自行还原 |
-
-## 构建
-
-```sh
-pnpm install
-pnpm build     # tsc 声明 + tsdown 打包 + 资产复制
-pnpm typecheck
-pnpm test      # 含真实 bash 用例，Windows 需 Git Bash，缺失自动 skip
-```
 
 ## License
 

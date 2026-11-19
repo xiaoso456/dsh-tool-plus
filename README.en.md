@@ -18,52 +18,60 @@
 
 </div>
 
-Essential tools enhancement for DeepSeek Harness: persistent bash, structured read, multi-mode edit, atomic write, full-text search, and direct image reading — one plugin covers it all. Ported from the [Oh My Pi](https://github.com/can1357/oh-my-pi) core; once installed it automatically takes over the official bash / pwsh / file / search tools, with optional `ast_grep` / `ast_edit` structural search and rewrite.
+Essential tools enhancement for DeepSeek Harness: bash takes over the shell work PowerShell used to do, alongside structured read, multi-mode edit, atomic write, full-text search and direct image reading. The core is ported from [Oh My Pi](https://github.com/can1357/oh-my-pi); once installed it takes over the official bash / pwsh / file / search tools.
+
+![dsh tool plus: dsh on Windows, now with bash and common Linux commands](./assets/hero.en.png)
 
 ## Features
 
-- **bash**: the working directory follows `cd` across calls; other shell state (exported variables, aliases, shell functions) does not persist by default — see Notes for switching to a persistent shell; verbose logs (git/npm/cargo…) are condensed automatically; overlong output keeps only head and tail, with the full content written to disk for later retrieval; long-running commands are moved to the background automatically; optionally intercepts `cat`, `grep`, `find`, and `sed -i` to steer you toward the dedicated tools (off by default)
-- **Safe delete**: `rm` moves files to the system trash by default instead of deleting permanently, so accidental deletes are recoverable; use `command rm` for a real delete
-- **read**: precise line-range reading (supports `:N-M`, `:raw`, and multiple ranges); large code files return a structural summary by default, with details expanded on demand; zip/tar archives, SQLite, notebooks, and PDFs read directly; PNG / JPEG / WebP / GIF images read directly, oversized ones scaled down automatically; can fetch web content (including images embedded in the page); SPA sites (content rendered dynamically by JS, e.g. excalidraw.com) are automatically fetched via local browser rendering
-- **write**: atomic writes that return a diff of the changes; supports patch-style writing, and can write directly into zip/tar archive members and SQLite data
+### Shell
+
+- **bash**: 150+ commands built in — `ls`, `grep`, `sed`, `jq` and friends work without the system programs of the same name
+  - Commands the system often lacks, such as `zip`, `tree`, `bc` and `gzip` / `zstd` / `xz`, ship with the plugin ([details](docs/shell-commands/README.md))
+  - The working directory follows `cd` across calls
+  - Verbose logs (git/npm/cargo…) are condensed; overlong output keeps only head and tail, with the full content written to disk for later retrieval
+  - Long-running commands move to the background
+  - Optionally intercepts `cat`, `grep`, `find` and `sed -i` to steer the model toward the dedicated tools (off by default)
+- **Safe delete**: `rm` moves files to the system trash by default, so accidental deletes are recoverable; use `command rm` for a real delete
+
+### Files
+
+- **read**: precise line-range reading (`:N-M`, `:raw`, multiple ranges)
+  - Large code files return a structural summary by default, with details expanded on demand
+  - zip/tar archives, SQLite, notebooks and PDFs read directly
+  - PNG / JPEG / WebP / GIF images read directly and scaled down when oversized
+  - Fetches web content (including images embedded in the page); SPA sites are fetched through local browser rendering
+- **write**: atomic writes that return a diff; supports patch-style writing, and can write directly into archive members and SQLite data
 - **edit**: `replace` by default, with patch / hashline / apply-patch formats also supported; multi-hunk edits, uniqueness validation, fuzzy matching tolerant of whitespace differences
-- **grep / glob**: full-text search and filename matching; mtime sorting, context lines, and configurable ignore rules
-- **ast_grep / ast_edit** (optional): syntax-tree based structural code search and rewrite, enabled in settings
-- **agent presets**: two companion templates — Standard enhanced and PTC (Code Mode)
 
-Settings panel (Bash tab):
+### Search
 
-![Tool Plus settings panel (Bash)](docs/screenshots/settings-bash-en.png)
+- **grep / glob**: full-text search and filename matching; mtime sorting, context lines and configurable ignore rules
+- **ast_grep / ast_edit** (optional): syntax-tree based structural search and rewrite, enabled in settings
 
-## Recommended Environment & Configuration
+### Settings and presets
 
-- **Full-access mode**: the plugin is best used under `danger-full-access`, which avoids file writes being blocked by mistake in sandboxed modes.
+- **Command panel**: choose, per command, the plugin's built-in, the system program, or an executable of your own
+- **agent presets**: Standard enhanced and PTC (Code Mode)
 
 ## Installation
 
-### Install from npm (recommended)
-
-#### Web
+Web:
 
 ```sh
 dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ```
 
-The plugin ships its native addon prebuilt (six platform packages behind `optionalDependencies`; exactly one is installed for your system), so there is nothing to compile and no install script to approve — **no** `--allow-build`, no `pnpm approve-builds`. The command also registers the plugin in the profile's `dsh.profile.bundles`, so it is ready to use.
+Desktop: install from the app's plugin page by entering the package name `@xiaoso/dsh-tool-plus`.
 
-#### Desktop
+### Requirements
 
-Install it from the desktop app's plugin page by entering the package name:
+- **dsh**: `v0.2.2-rc.3` or newer (pre-release; interfaces may change)
+- **Node.js** ≥ 24.9
+- **Git Bash** (recommended on Windows): bash itself is built into the plugin; Git Bash only adds common Linux tools beyond the built-in commands (such as `awk`)
+- **Permissions**: `danger-full-access` is recommended, so sandboxed modes do not block file writes by mistake
 
-```text
-@xiaoso/dsh-tool-plus
-```
-
-### Local development
-
-```sh
-dsh plugin --profile web add link:<path to this repo>
-```
+## Usage
 
 ### Presets
 
@@ -72,28 +80,18 @@ dsh plugin --profile web add link:<path to this repo>
 | **Tool Plus 标准增强版** | official standard | everything in standard mode, with the file/shell toolset swapped for this plugin |
 | **Tool Plus PTC 增强版** | official PTC (Code Mode) | same, but composing multi-step operations through Code Mode's `run_code` |
 
-Both presets are **declared by the plugin**: installing it (as a profile bundle) brings two `@deepseek-ai/dsh-agent-preset` declaration rows along in its patch layer, so they appear in the preset list immediately. There is no install step, and the plugin writes nothing at startup.
+Once the plugin is installed, pick one from the preset list. To adjust them, go to Settings → Tool Plus → Presets: after an official upgrade, click "Follow the official preset"; to go back to the default, click "Revert to bundled".
 
-**Tool Plus → Presets** in the settings page is where you change them. Since dsh 0.1.7 the official preset page is read-only and the `agent_preset` tool is gone, so this panel is the only graphical entry point:
+### Settings
 
-- **Minimal update** — disables just the official tool rows still mounted, touching nothing else
-- **Align to template** — replaces this row's whole plugin list with the selected template
-- **Revert to bundled** — removes the override you wrote in the profile configuration (`<profile>/cordis.patch.yml`), falling back to the bundled declaration
-- **View differences** — shows which entries differ before you touch anything
+All under Settings → Tool Plus:
 
-Writes go through the harness's own `ctx.configEditor`, so they inherit the profile lock, concurrency protection, atomic write and rollback.
-
-> Upgrading from 0.1.9 or earlier: `~/.dsh/.agent-presets/` is **read by nothing** any more (0.1.7 moved presets into the patch layer), so it is safe to delete; the panel tells you when it finds one.
-
-## Configuration
-
-Works out of the box, no configuration needed. Common tweaks: background threshold (`autoBackgroundMs`), timeouts (`defaultTimeoutMs` / `maxTimeoutMs`), the output truncation window, the default edit mode (`editMode`, default `replace`), and the structured summary toggle (`readSummarizeEnabled`).
-
-Shell init script (`bashInitEnabled`, on by default): an editable script runs once per shell creation. The built-in default puts the real Git Bash ahead of the system directories — Windows ships `C:\Windows\System32\bash.exe` as a WSL relay stub, so a bare `bash` fails with `execvpe(/bin/bash) failed` when no WSL distro is installed. Edit, test-run and reset it under Settings → Tool Plus → Bash → Shell init.
+- **Command panel** (Bash → Commands): lists every command bash can run and where it comes from; point each one at the plugin's built-in, the system program, or an executable you pick. Changes apply to the next shell
+- **Shell init** (Bash → Shell init): a script run each time a shell is created; edit, test-run or reset it
 
 ## Performance
 
-On Linux, comparing the official standard mode with this plugin's Standard enhanced preset (SWE-bench Multilingual, 20 tasks × 3 rounds):
+On Linux, comparing the official standard mode with this plugin's Standard enhanced preset (SWE-bench Multilingual, 20 tasks × 3 rounds). Numbers are from plugin 0.1.13; 0.2.x has not been re-measured.
 
 | Metric | Official tool surface | This plugin (command interception on) | This plugin (command interception off, default) |
 |---|---|---|---|
@@ -107,35 +105,28 @@ On Linux, comparing the official standard mode with this plugin's Standard enhan
 | `read` calls | 225 | 459 | **198** |
 | `bash` time per call | 3,140 ms | **2,391 ms** | 2,045 ms |
 | `bash` tokens returned per call | 790 tok | **343 tok** | 638 tok |
-| Average time / task (excludes token-rate and network-speed fluctuation) | **123 s** | 135 s | 151 s |
+| Average time / task | **123 s** | 135 s | 151 s |
 
 Notes:
 
-1. The average time is an end-to-end measurement that does not account for token-rate or network-speed fluctuation; use the absolute values for horizontal comparison only.
-2. The figures above describe this benchmark only (its tasks use little context, so they do not represent large tasks).
+1. Average time is measured end to end and moves with token rate and network speed; use it for horizontal comparison only
+2. This benchmark uses little context and does not represent large tasks
+3. The figures were cross-checked by a model; small slips are possible without changing the overall conclusion
 
 Conclusions:
 
-1. The resolve rate matches the official tools (the interception-off group is 1 task lower, within normal variance).
-2. `bash` itself is leaner, and the tokens it saves roughly offset the extra system prompt from thicker tool definitions (the plugin adds capabilities, so its definitions are thicker than the official preset's).
-3. `bash` is faster, but the gain is cancelled out by side effects from `bash` itself and the other enhanced tools.
-4. On Linux the combined performance is on par with the official standard-mode tools, with a richer feature set.
-
-So on Linux this plugin cannot promise lower token usage or better performance; Windows is not suitable for running the standard benchmark, so the only claim there is a **personal impression** that it is more pleasant to use than PowerShell.
+1. The resolve rate matches the official tools (the interception-off group is 1 task lower, within normal variance)
+2. `bash` itself is leaner and faster, but the tokens it saves are roughly cancelled out by the thicker tool definitions (the plugin adds capabilities)
+3. On Linux the combined performance is on par with the official standard mode, with a richer feature set; Windows is not suitable for the standard benchmark, so the only claim there is a **personal impression** that it is more pleasant to use than PowerShell
 
 Full data and the per-task matrix: [docs/benchmark/sbml-compare-ops.md](docs/benchmark/sbml-compare-ops.md) (Chinese).
 
-## Requirements
-
-- **dsh CLI**: installed globally, `npm i -g @deepseek-ai/dsh`
-- **Node.js** ≥ 24.9
-- **Git Bash** (recommended): serves as the bash execution environment on Windows
-- Targets DeepSeek Harness `dsh` v0.2.2-rc.1 (pre-release; interfaces may change)
-
 ## Notes
 
-- No standalone `pwsh` tool: shell work is handled by the more capable persistent `bash`
-- **bash state**: by default each command gets its own shell and only the working directory follows `cd`; set `autoBackgroundMs` to `0` to share one persistent shell, where exported variables, aliases, and shell functions carry over. The change applies immediately — the description the model sees is rewritten with it, no restart.
+- No standalone `pwsh` tool: shell work is handled by the more capable `bash`
+- **bash state**: by default each command gets its own shell and only the working directory follows `cd`; set `autoBackgroundMs` to `0` to share one persistent shell, where exported variables, aliases and shell functions carry over. The change applies immediately — the description the model sees is rewritten with it, no restart.
+- Presets showing "failed to load": the plugin is too old (0.1.19 or earlier), upgrade it; if the official presets changed after that, click "Follow the official preset" under Settings → Tool Plus → Presets to rebase them
+- Pointed a command at the wrong program in the command panel: change it back there, or delete `$DSH_HOME/tool-plus/commands.json` to return to the defaults
 
 **Safe rm sends deleted files to the system trash.** Where they land, and whether you can see them:
 
@@ -148,15 +139,6 @@ Full data and the per-task matrix: [docs/benchmark/sbml-compare-ops.md](docs/ben
 | **Put back** | Yes | Yes | Depends on the file manager |
 | **Implementation** | Shell API | System API | Third-party XDG implementation |
 | **Known limits** | No Recycle Bin on network drives | Requires macOS 10.12+ | Some desktops do not list it — restore from the location above |
-
-## Build
-
-```sh
-pnpm install
-pnpm build     # type declarations (tsc) + tsdown bundle + asset copy
-pnpm typecheck
-pnpm test      # includes real-bash cases; needs Git Bash on Windows, auto-skips when missing
-```
 
 ## License
 

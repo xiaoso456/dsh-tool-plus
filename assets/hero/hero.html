@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh tool plus — hero</title>
+<!--
+  README hero banner. 1280×640 canvas, exported at 2× by scripts/render-hero.mjs
+  into assets/hero.zh.png and assets/hero.en.png (?lang=en selects English copy).
+  Fonts are the locally installed Noto Sans SC and Cascadia Mono.
+-->
+<style>
+  @font-face { font-family: "Display SC"; src: local("Noto Sans SC"), local("NotoSansSC-VF"); font-weight: 100 900; }
+
+  :root {
+    --bg: #0a0e17;
+    --panel: #0f1522;
+    --panel-2: #131b2a;
+    --line: rgb(170 195 240 / .10);
+    --line-2: rgb(170 195 240 / .16);
+    --text: #edf1f8;
+    --text-2: #a3aec2;
+    --text-3: #687489;
+    --blue: #5b9dff;
+    --blue-hi: #79b0ff;
+    --amber: #f0ac2e;
+    --teal: #3cc8b4;
+    --pink: #f0668c;
+    --ok: #5fd08a;
+    --bad: #ff6f6f;
+    --mono: "Cascadia Mono", "Cascadia Code", Consolas, "Display SC", monospace;
+    --feat-title: 92px; /* width of the feature-title column; English needs more */
+  }
+  :root:lang(en) { --feat-title: 140px; }
+  :root:lang(en) h1 { font-size: 30px; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; background: transparent; }
+  body { font-family: "Display SC", sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+
+  /* ---------- canvas: rounded card, dot grid, blue light top-right, faint pink bottom-left ---------- */
+  .frame {
+    position: absolute; inset: 0; overflow: hidden;
+    border-radius: 28px; border: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .frame::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, rgb(150 175 220 / .16) 1px, transparent 1.6px);
+    background-size: 22px 22px; background-position: 11px 11px;
+    -webkit-mask-image: radial-gradient(75% 85% at 50% 50%, #000 30%, transparent 85%);
+  }
+  .glow { position: absolute; border-radius: 50%; pointer-events: none; }
+  .glow.blue { width: 820px; height: 600px; right: -140px; top: -150px;
+    background: radial-gradient(closest-side, rgb(52 108 230 / .26), transparent); }
+  .glow.pink { width: 680px; height: 460px; left: -220px; bottom: -240px;
+    background: radial-gradient(closest-side, rgb(240 102 140 / .09), transparent); }
+
+  /* ---------- brand ---------- */
+  .brand { position: absolute; left: 56px; top: 36px; display: flex; align-items: center; gap: 18px; }
+  .brand .icon { width: 72px; height: 72px; border-radius: 18px; display: block; }
+  .brand .name { display: flex; flex-direction: column; gap: 9px; }
+  /* wordmark glyph box is x 48–1057, y 40–218 of the 1106×260 PNG; crop to it so the
+     glyphs (not the PNG padding) set the size and the left edge */
+  .brand .wm { --s: .2235; width: calc(1010px * var(--s)); height: calc(179px * var(--s)); overflow: hidden; }
+  .brand .wm img { display: block; height: calc(260px * var(--s)); margin: calc(-40px * var(--s)) 0 0 calc(-48px * var(--s)); }
+  .brand .tagline { font-size: 14.5px; line-height: 1; color: var(--text-2); letter-spacing: .06em; }
+  :root:lang(en) .brand .tagline { letter-spacing: .02em; }
+  .pill {
+    position: absolute; right: 56px; top: 54px;
+    padding: 8px 16px; border-radius: 999px;
+    border: 1px solid var(--line-2); background: rgb(15 21 34 / .6);
+    font-size: 13.5px; color: var(--text-2);
+  }
+  .pill b { color: var(--blue-hi); font-weight: 600; }
+
+  /* ---------- left column: copy on top, features + install on the bottom edge ---------- */
+  .copy { position: absolute; left: 56px; top: 146px; width: 600px; }
+  .lower { position: absolute; left: 56px; bottom: 40px; width: 600px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 26px; }
+  h1 { font-size: 32px; line-height: 1.34; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+  h1 .hl { color: var(--blue-hi); }
+  .lede { margin-top: 12px; font-size: 15px; line-height: 1.7; color: var(--text-2); }
+
+  .feats { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+  .feat {
+    --c: var(--blue);
+    display: grid; grid-template-columns: 34px var(--feat-title) 1fr; align-items: center;
+    column-gap: 14px; height: 46px;
+  }
+  .feat.amber { --c: var(--amber); }
+  .feat.teal  { --c: var(--teal); }
+  .feat.pink  { --c: var(--pink); }
+  .feat .ico {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: color-mix(in oklab, var(--c), transparent 74%);
+  }
+  .feat .ico svg {
+    width: 18px; height: 18px; fill: none; stroke: color-mix(in oklab, var(--c), white 18%);
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .feat h2 { font-size: 16.5px; font-weight: 700; line-height: 1.3; white-space: nowrap; }
+  .feat p { font-size: 14px; line-height: 1.6; color: #b9c3d5; white-space: nowrap; }
+  .feat code { font-family: var(--mono); font-size: .95em; color: var(--text); }
+
+  .install {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 18px; border-radius: 10px;
+    border: 1px solid var(--line-2); background: rgb(15 21 34 / .7);
+    font-family: var(--mono); font-size: 13.5px; color: var(--text);
+  }
+  .install .p { color: var(--blue); }
+
+  /* ---------- terminal cascade: upper-left → lower-right, equal heights ---------- */
+  .win {
+    position: absolute; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line-2); background: var(--panel);
+    box-shadow: 0 24px 50px -20px rgb(0 0 0 / .85);
+  }
+  .win .bar {
+    display: flex; align-items: center; gap: 14px; height: 36px; padding: 0 16px;
+    border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--text-2);
+  }
+  .dots { display: flex; gap: 7px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; background: #2a3344; }
+  .win .bar b { color: var(--text); font-weight: 600; }
+  .rows { padding: 10px 18px 14px; font-family: var(--mono); font-size: 13.5px; line-height: 1; }
+  .row { display: flex; align-items: center; gap: 12px; height: 31px; white-space: nowrap; }
+  .row svg { flex: none; width: 15px; height: 15px; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .row .cmt { color: var(--text-3); margin-left: 6px; font-size: 12.5px; }
+  .win.fail .row { color: var(--text-2); }
+  .win.fail svg { stroke: var(--bad); }
+  .win.fail .bar > *, .win.fail .rows { opacity: var(--dim); }
+  .win.ok svg { stroke: var(--ok); }
+
+  .w1 { left: 664px; top: 146px; width: 420px; background: #0c111b; --dim: .4; }
+  .w2 { left: 700px; top: 184px; width: 420px; background: #0d131e; --dim: .55; }
+  .w3 { left: 736px; top: 222px; width: 420px; background: #0e1521; --dim: .75; }
+  .w4 { left: 772px; top: 260px; width: 452px; background: var(--panel-2); }
+
+  /* ---------- command wall: four rows under the cascade, ending on the install baseline ---------- */
+  .wall {
+    position: absolute; left: 664px; right: 40px; top: 470px; bottom: 40px; overflow: hidden;
+    display: flex; flex-wrap: wrap; align-content: flex-start; gap: 7px 8px; pointer-events: none;
+    -webkit-mask-image:
+      linear-gradient(90deg, #000 0, #000 80%, transparent 100%),
+      linear-gradient(180deg, #000 55%, rgb(0 0 0 / .25) 100%);
+    -webkit-mask-composite: source-in; mask-composite: intersect;
+  }
+  .wall span {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1;
+    padding: 6px 10px; border-radius: 7px;
+    color: var(--text-2); background: rgb(20 28 43 / .85); border: 1px solid var(--line);
+  }
+  .wall span.k { color: var(--blue-hi); border-color: rgb(91 157 255 / .28); background: rgb(91 157 255 / .08); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="glow blue"></div>
+  <div class="glow pink"></div>
+
+  <header class="brand">
+    <img class="icon" src="../icon.png" alt="">
+    <div class="name">
+      <div class="wm"><img src="../wordmark.png" alt="dsh tool plus"></div>
+      <span class="tagline" data-t="tagline"></span>
+    </div>
+  </header>
+  <div class="pill" data-t="pill"></div>
+
+  <section class="copy">
+    <h1 data-t="title"></h1>
+    <p class="lede" data-t="lede"></p>
+  </section>
+  <section class="lower">
+    <div class="feats">
+      <div class="feat">
+        <div class="ico"><svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg></div>
+        <h2 data-t="f1.title"></h2><p data-t="f1.body"></p>
+      </div>
+      <div class="feat amber">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></div>
+        <h2 data-t="f2.title"></h2><p data-t="f2.body"></p>
+      </div>
+      <div class="feat teal">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></div>
+        <h2 data-t="f3.title"></h2><p data-t="f3.body"></p>
+      </div>
+      <div class="feat pink">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></div>
+        <h2 data-t="f4.title"></h2><p data-t="f4.body"></p>
+      </div>
+    </div>
+    <code class="install"><span class="p">$</span>dsh plugin --profile web add @xiaoso/dsh-tool-plus</code>
+  </section>
+
+  <div class="wall" aria-hidden="true"></div>
+  <div id="cascade" aria-hidden="true"></div>
+</div>
+
+<script>
+  const STRINGS = {
+    zh: {
+      tagline: "DSH 基础工具增强",
+      pill: "DeepSeek Harness 插件 · <b>MIT</b>",
+      title: 'Windows 上的 dsh<br>也能使用 <span class="hl">bash</span> 与常用 Linux 命令',
+      lede: "基于 Oh My Pi 及 Brush 内核移植，兼容大部分 bash 语法，<br>内置 150+ 条命令，.sh 脚本直接运行。",
+      "f1.title": "bash 工具", "f1.body": "内置 150+ 条命令，不用再为 PowerShell 的语法和转义绕路",
+      "f2.title": "命令可换", "f2.body": "每条命令可选插件内建、系统程序或自选程序",
+      "f3.title": "文件工具", "f3.body": "<code>read</code> 先看代码结构再展开细节，PDF、Office、SQLite 直接读",
+      "f4.title": "安全 rm", "f4.body": "删除的文件进回收站，误删能恢复，<code>command rm</code> 才真删",
+      rmNote: "# 进回收站",
+    },
+    en: {
+      tagline: "Enhanced base tools for DSH",
+      pill: "DeepSeek Harness plugin · <b>MIT</b>",
+      title: 'dsh on Windows, now with<br><span class="hl">bash</span> and common Linux commands',
+      lede: "Ported from Oh My Pi and Brush, compatible with most bash syntax,<br>with 150+ built-in commands and .sh scripts that run as is.",
+      "f1.title": "bash tool", "f1.body": "150+ built-in commands; no more PowerShell escaping",
+      "f2.title": "Swap commands", "f2.body": "Per command: built-in, system program, or your own",
+      "f3.title": "File tools", "f3.body": "<code>read</code> outlines code first; reads PDF, Office, SQLite",
+      "f4.title": "Safe rm", "f4.body": "Deletes go to the trash; <code>command rm</code> deletes for real",
+      rmNote: "# to trash",
+    },
+  };
+  const lang = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh";
+  const T = STRINGS[lang];
+  document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+  for (const el of document.querySelectorAll("[data-t]")) el.innerHTML = T[el.dataset.t];
+
+  // Every PowerShell failure verified on Windows PowerShell 5.1 and PowerShell 7;
+  // every bash line verified through the plugin's own shell engine.
+  const CMDS = [
+    ["ls -la"],
+    ["rm -rf node_modules", T.rmNote],
+    ["cat <<'EOF' > .env"],
+    ["ps aux | grep node"],
+  ];
+  const X = '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  const V = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const win = (cls, title, ok) => `
+    <div class="win ${ok ? "ok" : "fail"} ${cls}">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span>${title}</span></div>
+      <div class="rows">${CMDS.map(([c, note]) =>
+        `<div class="row">${ok ? V : X}${esc(c)}${ok && note ? `<span class="cmt">${note}</span>` : ""}</div>`).join("")}</div>
+    </div>`;
+  document.getElementById("cascade").innerHTML =
+    win("w1", "Windows PowerShell") + win("w2", "PowerShell 7") + win("w3", "PowerShell") +
+    win("w4", "<b>bash</b> · Tool Plus", true);
+
+  // Names come from src/tools/bash/builtin-commands.ts (plugin built-ins only).
+  const NAMES = `cat grep head tail sed sort uniq wc jq cut tr find xargs diff tee cp mv rm mkdir
+    touch ls du df stat rg fd base64 sha256sum tree zip gzip xz zstd bc uuidgen hexdump strings
+    envsubst timeout pkill which date seq realpath basename dirname sponge nproc uname paste comm`
+    .trim().split(/\s+/);
+  const KEY = new Set(["grep", "sed", "jq", "find", "rm", "rg", "tree", "xargs"]);
+  const wall = document.querySelector(".wall");
+  for (const n of NAMES) {
+    const s = document.createElement("span");
+    s.textContent = n;
+    if (KEY.has(n)) s.className = "k";
+    wall.appendChild(s);
+  }
+</script>
+</body>
+</html>
