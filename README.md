@@ -22,6 +22,25 @@ DeepSeek Harness 基础工具增强：用 bash 取代 PowerShell 承担 shell �
 
 ![dsh tool plus：Windows 上的 dsh 也能使用 bash 与常用 Linux 命令](./assets/hero.zh.png)
 
+## 安装
+
+### 环境要求
+
+- **dsh**：`v0.2.2-rc.3` 及以上（pre-release，接口可能变动）
+- **Node.js** ≥ 24.9
+- **Git Bash**（Windows 推荐）：bash 本身由插件内置，Git Bash 只用来补充内置命令之外的常用 Linux 工具（如 `awk`）
+- **权限**：建议在 `danger-full-access` 下使用，避免沙箱模式误拦文件写入
+
+### Web 端
+
+```sh
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
+```
+
+### 桌面端
+
+在插件页输入包名 `@xiaoso/dsh-tool-plus` 安装。
+
 ## 功能特性
 
 ### Shell
@@ -53,23 +72,6 @@ DeepSeek Harness 基础工具增强：用 bash 取代 PowerShell 承担 shell �
 
 - **命令面板**：逐条指定每个命令用插件内建、系统程序，还是你自选的可执行文件
 - **agent 预设**：标准增强版 / PTC（Code Mode）两套
-
-## 安装
-
-Web 端：
-
-```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus
-```
-
-桌面端：在插件页输入包名 `@xiaoso/dsh-tool-plus` 安装。
-
-### 环境要求
-
-- **dsh**：`v0.2.2-rc.3` 及以上（pre-release，接口可能变动）
-- **Node.js** ≥ 24.9
-- **Git Bash**（Windows 推荐）：bash 本身由插件内置，Git Bash 只用来补充内置命令之外的常用 Linux 工具（如 `awk`）
-- **权限**：建议在 `danger-full-access` 下使用，避免沙箱模式误拦文件写入
 
 ## 使用
 

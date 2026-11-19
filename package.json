@@ -64,7 +64,9 @@
     "THIRD_PARTY_NOTICES.md",
     "locale/*.json",
     "assets/icon.png",
-    "assets/wordmark.png"
+    "assets/wordmark.png",
+    "assets/hero.zh.png",
+    "assets/hero.en.png"
   ],
   "dsh": {
     "manifestVersion": 1,

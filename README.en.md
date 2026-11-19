@@ -22,6 +22,25 @@ Essential tools enhancement for DeepSeek Harness: bash takes over the shell work
 
 ![dsh tool plus: dsh on Windows, now with bash and common Linux commands](./assets/hero.en.png)
 
+## Installation
+
+### Requirements
+
+- **dsh**: `v0.2.2-rc.3` or newer (pre-release; interfaces may change)
+- **Node.js** ≥ 24.9
+- **Git Bash** (recommended on Windows): bash itself is built into the plugin; Git Bash only adds common Linux tools beyond the built-in commands (such as `awk`)
+- **Permissions**: `danger-full-access` is recommended, so sandboxed modes do not block file writes by mistake
+
+### Web
+
+```sh
+dsh plugin --profile web add @xiaoso/dsh-tool-plus
+```
+
+### Desktop
+
+Install from the app's plugin page by entering the package name `@xiaoso/dsh-tool-plus`.
+
 ## Features
 
 ### Shell
@@ -53,23 +72,6 @@ Essential tools enhancement for DeepSeek Harness: bash takes over the shell work
 
 - **Command panel**: choose, per command, the plugin's built-in, the system program, or an executable of your own
 - **agent presets**: Standard enhanced and PTC (Code Mode)
-
-## Installation
-
-Web:
-
-```sh
-dsh plugin --profile web add @xiaoso/dsh-tool-plus
-```
-
-Desktop: install from the app's plugin page by entering the package name `@xiaoso/dsh-tool-plus`.
-
-### Requirements
-
-- **dsh**: `v0.2.2-rc.3` or newer (pre-release; interfaces may change)
-- **Node.js** ≥ 24.9
-- **Git Bash** (recommended on Windows): bash itself is built into the plugin; Git Bash only adds common Linux tools beyond the built-in commands (such as `awk`)
-- **Permissions**: `danger-full-access` is recommended, so sandboxed modes do not block file writes by mistake
 
 ## Usage
 
