@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] - 2026-11-20
+
+> 修一个偶发故障：插件刚被重载或刚升级时，执行 bash 偶尔直接报错、命令一条都没跑。现在照常执行。
+
+### Fixed
+
+- **重载或升级后 bash 偶发无法执行**：宿主重载插件或升级版本之后，模型手里的工具还是重载前那份，调用时拿不到 shell 环境服务，整条命令直接失败。现在拿不到就是拿不到，命令照常执行，只是这一次不会带上插件注入的环境变量（`DSH_HOME`、`DSH_PROFILE` 这几个）。同时在宿主日志里记一条警告并带上会话 id，下次要排查能直接看到。
+
+### 说明
+
+- 这类失败只会出现在重载和升级之后的短暂窗口里，重启一次 dsh 就不会再碰到。README 的安装一节已补上这条提醒。
+
+[对比 0.2.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.2.0...tool-plus-v0.2.1)
+
 ## [0.2.0] - 2026-11-20
 
 > 正式版：原生工具包改由插件自己分发，装上即自带 `zip`、`tree`、`bc`、`gzip` 等系统里常缺的命令；bash 增加 Shell 预热，常用命令不用再等初始化；设置里新增命令面板与路径浏览弹窗。

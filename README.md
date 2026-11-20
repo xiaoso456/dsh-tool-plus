@@ -41,6 +41,10 @@ dsh plugin --profile web add @xiaoso/dsh-tool-plus
 
 在插件页输入包名 `@xiaoso/dsh-tool-plus` 安装。
 
+### 装完请重启
+
+**首次安装和每次升级后，都要重启一次 dsh。** 宿主只在启动时加载插件，运行中的进程不会自己换成新装的那一份，重启前看到的可能还是旧版本的行为。桌面端退出应用再打开；Web 端重启起这个界面的 dsh 进程。
+
 ## 功能特性
 
 ### Shell

@@ -271,7 +271,20 @@ export function apply(ctx: Context, config: Config = {}): void {
       // capped before the 1s floor so a maxTimeoutMs below 1s cannot produce
       // a sub-floor deadline.
       const timeoutMs = timeoutDisabled ? 0 : Math.max(1_000, Math.min(rawTimeoutMs, cfg.maxTimeoutMs))
-      const dshEnv = ctx.shellEnv.collect(exec)
+      // Read the service through `ctx.get` rather than `ctx.shellEnv`: a host
+      // reload retires this plugin's fiber while callers may still hold the
+      // tools it registered, and property access on a retired fiber throws
+      // `cannot get required service "shellEnv" in inactive context`. `get`
+      // yields undefined instead, so a missing service costs the DSH_* snapshot
+      // but never the command itself.
+      const shellEnv = ctx.get('shellEnv')
+      if (shellEnv === undefined) {
+        // Losing the snapshot is not worth losing the command, but it is worth
+        // a warning: the description promises managed DSH_* variables, and a
+        // silent miss would look like the shell simply has empty ones.
+        runtimeLogger().warn('bash: shellEnv unavailable, running without the managed DSH_* variables', { sessionId })
+      }
+      const dshEnv = shellEnv === undefined ? {} : shellEnv.collect(exec)
       const env = { ...dshEnv, ...commandEnv }
       const jobs = ctx.get('jobs')
       // Owned-job access is fenced by the owner's SESSION id (0.1.7): the job's
