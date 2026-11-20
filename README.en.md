@@ -24,6 +24,8 @@ Essential tools enhancement for DeepSeek Harness: bash takes over the shell work
 
 ## Installation
 
+> ⚠️ **Restart dsh after the first install and after every upgrade.**
+
 ### Requirements
 
 - **dsh**: `v0.2.2-rc.3` or newer (pre-release; interfaces may change)
@@ -40,10 +42,6 @@ dsh plugin --profile web add @xiaoso/dsh-tool-plus
 ### Desktop
 
 Install from the app's plugin page by entering the package name `@xiaoso/dsh-tool-plus`.
-
-### Restart afterwards
-
-**Restart dsh after the first install and after every upgrade.** The host loads plugins at startup, so a running process keeps whatever it already loaded and may still behave like the old version. Quit and reopen the desktop app, or restart the dsh process behind this web UI.
 
 ## Features
 
