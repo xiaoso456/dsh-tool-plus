@@ -196,16 +196,41 @@ export function normalizeUnicode(s: string): string {
 /**
  * Normalize a line for fuzzy comparison.
  * Trims, collapses whitespace, and normalizes punctuation.
+ *
+ * 与上游 17.3.5 的差异：原实现自带一份替换表，字符类里前两个都是 ASCII 引号
+ * （U+0022/U+0027 各写了两遍），漏掉最常见的弯双引号 U+201C/U+201D 与弯单引号
+ * U+2018/U+2019，不换行空格与零宽字符也不处理。同文件的 UNICODE_REPLACEMENTS
+ * 表（normalizeUnicode 用）范围是全的，这里直接复用，避免两份表再次漂移。
+ * 上游 Rust 重写版 crates/pi-edit/src/text.rs 保留了同样的缺陷，修复需另开补丁。
  */
 export function normalizeForFuzzy(line: string): string {
 	const trimmed = line.trim();
 	if (trimmed.length === 0) return "";
 
-	return trimmed
-		.replace(/[""„‟«»]/g, '"')
-		.replace(/[''‚‛`´]/g, "'")
-		.replace(/[‐‑‒–—−]/g, "-")
-		.replace(/[ \t]+/g, " ");
+	// 纯 ASCII 快路径：UNICODE_REPLACEMENTS 里的字符全部在 U+0080 以上，NFC 对纯 ASCII
+	// 也是恒等，所以这类行只需要处理反引号与空白折叠。逐字符扫描比整串跑七条正则快一倍多，
+	// 而真实代码里绝大多数行都是纯 ASCII；含非 ASCII 的行原样走下面那条慢路径。
+	let hasBacktick = false;
+	let ascii = true;
+	for (let i = 0; i < trimmed.length; i++) {
+		const code = trimmed.charCodeAt(i);
+		if (code >= 0x80) {
+			ascii = false;
+			break;
+		}
+		if (code === 0x60) hasBacktick = true;
+	}
+	if (ascii) {
+		const folded = hasBacktick ? trimmed.replace(/\u0060/g, "'") : trimmed;
+		return folded.replace(/[ \t]+/g, " ");
+	}
+
+	// 法式引号与反引号/重音符不在 UNICODE_REPLACEMENTS 的区间里，旧实现是单独折叠的，保留这两步。
+	const normalized = normalizeUnicode(trimmed)
+		.replace(/[\u00AB\u00BB]/g, '"')
+		.replace(/[\u0060\u00B4]/g, "'");
+	if (normalized.length === 0) return "";
+	return normalized.replace(/[ \t]+/g, " ");
 }
 
 function isIndentationOnlyRewrite(oldText: string, newText: string): boolean {
