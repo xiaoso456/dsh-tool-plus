@@ -1,26 +1,13 @@
 /**
  * Session token-efficiency probe: decompress DSH session.jsonl.zstd (multi-frame)
  * and tally user/assistant/tool volumes + tool-call mix.
- * Usage: node scripts/session-token-stats.mjs <session-dir> [<session-dir> ...]
+ * Usage: node analysis/session-token-stats.mjs <session-dir> [<session-dir> ...]
+ *
+ * 解压与选版统一走 session-store.mjs，别再在脚本里复制一份。
  */
-import { zstdDecompressSync } from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'
-
-function decompressSession(file) {
-  const buf = fs.readFileSync(file)
-  const magic = Buffer.from([0x28, 0xB5, 0x2F, 0xFD])
-  const frames = []
-  for (let pos = 0; (pos = buf.indexOf(magic, pos)) !== -1; pos += 4) frames.push(pos)
-  frames.push(buf.length)
-  let all = ''
-  for (let i = 0; i < frames.length - 1; i++) {
-    try {
-      all += zstdDecompressSync(buf.subarray(frames[i], frames[i + 1])).toString()
-    } catch { /* false-positive magic inside compressed data */ }
-  }
-  return all
-}
+import { decompressSession } from './session-store.mjs'
 
 export function analyzeSessionFile(file) {
   const lines = decompressSession(file).split('\n').filter(l => l.startsWith('{'))
