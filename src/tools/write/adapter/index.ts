@@ -8,8 +8,9 @@
  *  - constructs the verbatim `WriteTool` and calls its `execute`,
  *  - converts the `AgentToolResult` back to a DSH tool result.
  *
- * LSP/ACP/TUI are absent in DSH (plan.md §2): writethrough writes through
- * ctx.fs, diagnostics are never produced, and no TUI rendering happens.
+ * LSP/ACP/TUI are absent in DSH (plan.md §2): the writethrough is injected
+ * from the shared write channel (DSH ctx.fs by default, OMP native on demand),
+ * diagnostics are never produced, and no TUI rendering happens.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -22,7 +23,10 @@ import { projectWriteCardMeta } from '../../../web/host/write.ts'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
 import type { ToolSession } from '../../omp/sdk.ts'
+import type { WritethroughCallback } from '../../omp/tools/writethrough.ts'
+import { writethroughNoop } from '../../omp/tools/writethrough.ts'
 import { WriteTool } from '../../omp/tools/write.ts'
+import { createWriteChannel } from '../../shared/write-channel.ts'
 import writeMd from '../../omp/prompts/tools/write.md' with { type: 'text' }
 
 // OMP tools import `Settings` from the tools barrel (`..`); surface it here.
@@ -60,9 +64,11 @@ export interface WriteToolOutput {
 }
 
 /** 完整执行链路（defineTool.execute 与单测共用）。 */
-export async function executeWriteTool(exec: any, cfg: RuntimeConfig, args: any): Promise<WriteToolOutput> {
+export async function executeWriteTool(exec: any, cfg: RuntimeConfig, args: any, ctx?: Context | null): Promise<WriteToolOutput> {
   const session = createToolSession(exec, cfg)
-  const tool = new WriteTool(session)
+  // ctx 在场时按 writeBackend 选通道；直调/单测无 ctx 时退回 OMP 原生直写。
+  const writethrough: WritethroughCallback = ctx ? createWriteChannel(ctx, exec, cfg) : writethroughNoop
+  const tool = new WriteTool(session, writethrough)
   const result = await tool.execute(
     'write',
     { path: String(args.path ?? ''), content: String(args.content ?? '') },
@@ -112,7 +118,7 @@ export function registerWrite(ctx: Context, getConfig: () => RuntimeConfig): voi
       presentationMeta: (_args: any, value: any) => (projectWriteCardMeta(value) ?? null) as any,
     },
     async execute(args: any, exec: any) {
-      return executeWriteTool(exec, getConfig(), args)
+      return executeWriteTool(exec, getConfig(), args, ctx)
     },
     presentCall: (args: any) => ({
       card: 'generic',

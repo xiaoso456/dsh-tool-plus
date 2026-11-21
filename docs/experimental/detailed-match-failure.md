@@ -28,7 +28,7 @@ Closest match was below the 95% similarity threshold.
 ## 为什么放实验性、为什么默认开
 
 它改变的是模型看到的失败信息长度，不改任何结果，风险比多条目预检低。默认开是因为收益直接
-（省一次 read），且开关可随时关掉。这是「实验性」tab 里唯一默认开启的项。
+（省一次 read），且开关可随时关掉。它和写入重试是 tab 里默认开启的两项；两者都只影响报错或可恢复失败，不改成功路径。
 
 ## 实现方式
 
@@ -38,6 +38,8 @@ Closest match was below the 95% similarity threshold.
   `throw withClosestMatch(err)`。单条编辑会原样抛到工具结果；多条会被 dispatch 捕获并用
   `err.message` 拼聚合文案，所以两条路径都覆盖。
 - 不改上游 verbatim 的 `EditMatchError` / `replaceText`。
+- 只覆盖 TS 引擎的 replace / patch 错误；`hashline` 走 native 引擎，不经过这条路径
+  （弯引号折叠的现状见 [hashline-quote-folding.md](hashline-quote-folding.md)）。
 - 开关 `detailedMatchFailure` 默认 `true`。
 
 ## 性能

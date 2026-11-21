@@ -48,7 +48,7 @@ import {
   sanitizePatchPrompt,
   sanitizeReplacePrompt,
 } from '../../shared/omp-prompt.ts'
-import { resolveSandboxPolicy } from '../../shared/sandbox-policy.ts'
+import { createWriteChannel } from '../../shared/write-channel.ts'
 import patchMd from './prompts/tools/patch.md' with { type: 'text' }
 import applyPatchMd from './prompts/tools/apply-patch.md' with { type: 'text' }
 import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
@@ -94,28 +94,6 @@ function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   // 恢复本 DSH session 上次调用保存的 OMP 引擎状态（冲突注册表等，T11-2）。
   attachOmpSessionState(session, exec?.agent?.session)
   return session
-}
-
-/** File-write channel for DSH (方案A, 2026-08-27): every edit mode funnels
- * through `ctx.fs` with the per-call sandbox policy resolved from the session
- * (official tool-fs semantics). The OMP engines pass a `file` handle for
- * patch/hashline modes — previously this adapter wrote through that handle
- * (OMP node-fs direct write), bypassing the host's sandbox fence entirely,
- * while replace mode went through `ctx.fs` WITHOUT the policy argument and
- * was denied by the deployment fallback. Both defects are fixed here: the
- * handle is ignored and the policy is always attached. */
-export function createWritethrough(ctx: Context, exec: any): WritethroughCallback {
-  return async (
-    dst: string,
-    content: string,
-    signal?: AbortSignal,
-    _file?: { write(content: string): Promise<void> },
-  ): Promise<void> => {
-    const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
-    const target = await ctx.fs.resolve(dst, { cwd, signal })
-    const sandboxPolicy = resolveSandboxPolicy(ctx, exec)
-    await ctx.fs.writeText(target, content, undefined, signal, sandboxPolicy)
-  }
 }
 
 /** Extract the text content of an OMP AgentToolResult (throws on isError). */
@@ -221,7 +199,8 @@ export function resolveFuzzyThreshold(raw: unknown): number {
 export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, ctx: Context | null): Promise<EditToolOutput> {
   const session = createToolSession(exec, cfg)
   // 无宿主 ctx（直调/单测）时退回 OMP 原生直写通道；宿主环境恒有 ctx.fs 沙箱通道。
-  const writethrough = ctx ? createWritethrough(ctx, exec) : writethroughNoop
+  // 写通道由实验项 writeBackend 选择：默认 DSH 原子写（方案A），可切 OMP 原生直写。
+  const writethrough = ctx ? createWriteChannel(ctx, exec, cfg) : writethroughNoop
   const cwd = session.cwd
   const signal = exec?.signal
   // fuzzy 配置补线：面板 edit.fuzzyMatch/edit.fuzzyThreshold 经 Settings 门面

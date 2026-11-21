@@ -47,6 +47,8 @@ export interface ToolPlusField {
   /** Locale keys for the control label and hint. */
   labelKey: BashPlusLocaleKey
   hintKey: BashPlusLocaleKey
+  /** Optional hover/focus explanation rendered behind an info icon. */
+  tipKey?: BashPlusLocaleKey
   /** Group id (a Bash subgroup or the whole-tool group); order = render order. */
   group: string
   /** Owning tool tab. */
@@ -217,9 +219,16 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'astEditEnabled', kind: 'boolean', default: true, labelKey: 'astEditEnabled', hintKey: 'astEditEnabledHint', group: 'ast', tool: 'astEdit' },
 
   // 实验性 tab：默认关闭为主，打开后才启用对应实验实现（文档见 docs/experimental/）。
-  // 例外：detailedMatchFailure 只往报错里补信息、不改结果，默认开启。
-  { name: 'multiEditPreflight', kind: 'boolean', default: false, labelKey: 'multiEditPreflight', hintKey: 'multiEditPreflightHint', group: 'experimental', tool: 'experimental' },
-  { name: 'detailedMatchFailure', kind: 'boolean', default: true, labelKey: 'detailedMatchFailure', hintKey: 'detailedMatchFailureHint', group: 'experimental', tool: 'experimental' },
+  // 例外：detailedMatchFailure 只往报错里补信息、不改结果，默认开启；
+  // writeRetryEnabled 只重试可恢复的写盘竞争，失败模式不变，默认开启。
+  { name: 'writeBackend', kind: 'select', default: 'dsh', labelKey: 'writeBackend', hintKey: 'writeBackendHint', tipKey: 'writeBackendTip', group: 'experimental', tool: 'experimental', options: [
+    { value: 'dsh', labelKey: 'optWriteDsh' },
+    { value: 'native', labelKey: 'optWriteNative' },
+  ] },
+  { name: 'writeRetryEnabled', kind: 'boolean', default: true, labelKey: 'writeRetryEnabled', hintKey: 'writeRetryEnabledHint', tipKey: 'writeRetryTip', group: 'experimental', tool: 'experimental' },
+  { name: 'writeRetryCount', kind: 'number', default: 3, labelKey: 'writeRetryCount', hintKey: 'writeRetryCountHint', tipKey: 'writeRetryCountTip', group: 'experimental', tool: 'experimental', visibility: { requiresEnabled: 'writeRetryEnabled' } },
+  { name: 'multiEditPreflight', kind: 'boolean', default: false, labelKey: 'multiEditPreflight', hintKey: 'multiEditPreflightHint', tipKey: 'multiEditPreflightTip', group: 'experimental', tool: 'experimental' },
+  { name: 'detailedMatchFailure', kind: 'boolean', default: true, labelKey: 'detailedMatchFailure', hintKey: 'detailedMatchFailureHint', tipKey: 'detailedMatchFailureTip', group: 'experimental', tool: 'experimental' },
 ]
 
 /** Tool tabs in nav order; empty `fields` = no configurable settings. */

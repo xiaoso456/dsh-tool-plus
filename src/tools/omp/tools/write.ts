@@ -491,8 +491,13 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 	readonly #writethrough: WritethroughCallback;
 
-	constructor(private readonly session: ToolSession) {
-		this.#writethrough = writethroughNoop;
+	// DSH seam (not in upstream): the host injects the write channel so edit and
+	// write share the writeBackend experiment. Upstream always uses noop here.
+	constructor(
+		private readonly session: ToolSession,
+		writethrough: WritethroughCallback = writethroughNoop,
+	) {
+		this.#writethrough = writethrough;
 		this.description = prompt.render(writeDescription);
 	}
 
@@ -750,7 +755,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		const splice = spliceConflict(originalText, entry, expanded);
 		const newContent = splice.text;
 
-		await writethroughNoop(absolutePath, newContent, signal);
+		await this.#writethrough(absolutePath, newContent, signal);
 		invalidateFsScanAfterWrite(absolutePath);
 		this.session.editStore?.invalidate(absolutePath);
 		const history = this.session.conflictHistory;
@@ -928,7 +933,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 				continue;
 			}
 
-			await writethroughNoop(absolutePath, text, signal);
+			await this.#writethrough(absolutePath, text, signal);
 			invalidateFsScanAfterWrite(absolutePath);
 			this.session.editStore?.invalidate(absolutePath);
 			for (const entry of resolvedEntries) history.invalidate(entry.id);

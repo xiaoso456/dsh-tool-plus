@@ -42,18 +42,20 @@ const SHOW_DELAY_MS = 320
 const TIP_MAX_WIDTH = 320
 const VIEWPORT_PAD = 8
 
-/**
- * 一段可能被 ellipsis 截断的文本：真截断了才在悬停/聚焦时出提示。
- *
- * @param props.text - 完整文本（提示里显示这一份）。
- * @param props.className - 作用在文本元素上的类（该元素负责 ellipsis）。
- * @param props.children - 元素里要显示的（可能是缩短版）；不给就用 `text`。
- * @param props.always - 元素里显示的是 `text` 的缩写（长度上不会溢出 CSS），
- *   所以「有没有被截断」量不出来：给真就一直出提示。路径行就是这种。
- */
-export function ClippedText(props: { text: string; className?: string; always?: boolean; children?: ReactNode }): ReactNode {
-  const { text, className, always = false, children } = props
-  const ref = useRef<HTMLSpanElement | null>(null)
+/** 由目标元素的位置算提示卡位置：下方放不下就翻到上方。 */
+function tipBoxFromRect(rect: DOMRect): TipBox {
+  const above = rect.bottom + 48 > window.innerHeight
+  return {
+    left: Math.max(VIEWPORT_PAD, Math.min(rect.left, window.innerWidth - TIP_MAX_WIDTH - VIEWPORT_PAD)),
+    top: above ? rect.top - 6 : rect.bottom + 6,
+    above,
+  }
+}
+
+type TipMeasure = () => TipBox | null
+
+/** 提示卡的显隐与定位：悬停后延迟执行 measure，滚动或改尺寸立即收起。 */
+function useTip(): { box: TipBox | null; schedule: (measure: TipMeasure) => void; hide: () => void } {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [box, setBox] = useState<TipBox | null>(null)
   useInsertionEffect(injectCss, [])
@@ -64,29 +66,13 @@ export function ClippedText(props: { text: string; className?: string; always?: 
       timer.current = null
     }
   }
-
   const hide = (): void => {
     clearTimer()
     setBox(null)
   }
-
-  const measure = (): void => {
-    const element = ref.current
-    if (element === null) return
-    // 没被截断就不出提示：这是换成自绘之后最实的收益。
-    if (!always && element.scrollWidth <= element.clientWidth + 1) return
-    const rect = element.getBoundingClientRect()
-    const above = rect.bottom + 48 > window.innerHeight
-    setBox({
-      left: Math.max(VIEWPORT_PAD, Math.min(rect.left, window.innerWidth - TIP_MAX_WIDTH - VIEWPORT_PAD)),
-      top: above ? rect.top - 6 : rect.bottom + 6,
-      above,
-    })
-  }
-
-  const schedule = (): void => {
+  const schedule = (measure: TipMeasure): void => {
     clearTimer()
-    timer.current = setTimeout(measure, SHOW_DELAY_MS)
+    timer.current = setTimeout(() => setBox(measure()), SHOW_DELAY_MS)
   }
 
   // 提示卡是 fixed 的：滚动或改尺寸后原来的坐标就失效了，直接收起。
@@ -101,6 +87,80 @@ export function ClippedText(props: { text: string; className?: string; always?: 
   }, [box])
 
   useEffect(() => clearTimer, [])
+  return { box, schedule, hide }
+}
+
+function TipCard(props: { box: TipBox; text: string }): ReactNode {
+  return createPortal(
+    <span
+      className="tpt-tip"
+      role="tooltip"
+      style={{ left: String(props.box.left) + 'px', top: String(props.box.top) + 'px', transform: props.box.above ? 'translateY(-100%)' : undefined }}
+    >
+      {props.text}
+    </span>,
+    document.body,
+  )
+}
+
+/**
+ * 设置页选项后的信息图标：悬停或键盘聚焦时显示完整说明。
+ * 真实 button，Tab 可达；图标本身 aria-hidden，可读文本由 aria-label 提供。
+ */
+export function InfoTip(props: { text: string; label: string }): ReactNode {
+  const { text, label } = props
+  const ref = useRef<HTMLButtonElement | null>(null)
+  const { box, schedule, hide } = useTip()
+  const show = (): void => {
+    schedule(() => {
+      const element = ref.current
+      return element === null ? null : tipBoxFromRect(element.getBoundingClientRect())
+    })
+  }
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className="tp-infoBtn"
+        aria-label={label}
+        onPointerEnter={show}
+        onPointerLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M8 7.1v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <circle cx="8" cy="4.6" r="0.9" fill="currentColor" />
+        </svg>
+      </button>
+      {box === null ? null : <TipCard box={box} text={text} />}
+    </>
+  )
+}
+
+/**
+ * 一段可能被 ellipsis 截断的文本：真截断了才在悬停/聚焦时出提示。
+ *
+ * @param props.text - 完整文本（提示里显示这一份）。
+ * @param props.className - 作用在文本元素上的类（该元素负责 ellipsis）。
+ * @param props.children - 元素里要显示的（可能是缩短版）；不给就用 `text`。
+ * @param props.always - 元素里显示的是 `text` 的缩写（长度上不会溢出 CSS），
+ *   所以「有没有被截断」量不出来：给真就一直出提示。路径行就是这种。
+ */
+export function ClippedText(props: { text: string; className?: string; always?: boolean; children?: ReactNode }): ReactNode {
+  const { text, className, always = false, children } = props
+  const ref = useRef<HTMLSpanElement | null>(null)
+  const { box, schedule: scheduleTip, hide } = useTip()
+  const schedule = (): void => {
+    scheduleTip(() => {
+      const element = ref.current
+      if (element === null) return null
+      if (!always && element.scrollWidth <= element.clientWidth + 1) return null
+      return tipBoxFromRect(element.getBoundingClientRect())
+    })
+  }
 
   return (
     <>

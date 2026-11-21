@@ -136,6 +136,9 @@ export interface RuntimeConfig {
   editEnforceSeenLines: boolean
   multiEditPreflight: boolean
   detailedMatchFailure: boolean
+  writeBackend: 'dsh' | 'native'
+  writeRetryEnabled: boolean
+  writeRetryCount: number
   readSummarizeEnabled: boolean
   readSummarizeProse: boolean
   readSummarizeMinBodyLines: number
@@ -249,6 +252,9 @@ export interface Config {
   editEnforceSeenLines?: boolean
   multiEditPreflight?: boolean
   detailedMatchFailure?: boolean
+  writeBackend?: 'dsh' | 'native'
+  writeRetryEnabled?: boolean
+  writeRetryCount?: number
   readSummarizeEnabled?: boolean
   readSummarizeProse?: boolean
   readSummarizeMinBodyLines?: number
@@ -345,6 +351,9 @@ export const Config = z.object({
   editEnforceSeenLines: z.boolean().default(fieldDefault('editEnforceSeenLines', false)).volatile(),
   multiEditPreflight: z.boolean().default(fieldDefault('multiEditPreflight', false)).volatile(),
   detailedMatchFailure: z.boolean().default(fieldDefault('detailedMatchFailure', true)).volatile(),
+  writeBackend: z.union(['dsh', 'native'] as const).default(fieldDefault('writeBackend', 'dsh')).volatile(),
+  writeRetryEnabled: z.boolean().default(fieldDefault('writeRetryEnabled', true)).volatile(),
+  writeRetryCount: z.number().default(fieldDefault('writeRetryCount', 3)).volatile(),
   readDefaultLimit: z.number().default(fieldDefault('readDefaultLimit', 300)).volatile(),
   readLineNumbers: z.boolean().default(fieldDefault('readLineNumbers', false)).volatile(),
   readRenderMarkdown: z.boolean().default(fieldDefault('readRenderMarkdown', false)).volatile(),
@@ -464,6 +473,9 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     editEnforceSeenLines: config.editEnforceSeenLines ?? fieldDefault('editEnforceSeenLines', false),
     multiEditPreflight: config.multiEditPreflight ?? fieldDefault('multiEditPreflight', false),
     detailedMatchFailure: config.detailedMatchFailure ?? fieldDefault('detailedMatchFailure', true),
+    writeBackend: config.writeBackend ?? fieldDefault('writeBackend', 'dsh'),
+    writeRetryEnabled: config.writeRetryEnabled ?? fieldDefault('writeRetryEnabled', true),
+    writeRetryCount: config.writeRetryCount ?? fieldDefault('writeRetryCount', 3),
     readDefaultLimit: config.readDefaultLimit ?? fieldDefault('readDefaultLimit', 300),
     readLineNumbers: config.readLineNumbers ?? fieldDefault('readLineNumbers', false),
     readRenderMarkdown: config.readRenderMarkdown ?? fieldDefault('readRenderMarkdown', false),

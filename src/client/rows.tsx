@@ -8,6 +8,7 @@
 
 import { useId, useLayoutEffect, type ReactNode, type RefObject } from 'react'
 import type { BashPlusLocaleKey } from './locales.ts'
+import { InfoTip } from './tooltip.tsx'
 import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 
 /** One rendered number control. */
@@ -15,6 +16,8 @@ export interface NumberControl {
   field: string
   labelKey: BashPlusLocaleKey
   hintKey: BashPlusLocaleKey
+  /** Optional hover/focus explanation rendered behind an info icon. */
+  tipKey?: BashPlusLocaleKey
   /** Staged text exactly as typed; blank stays blank. */
   text: string
   /** What a blank box falls back to, shown as the placeholder. */
@@ -28,6 +31,8 @@ export interface SelectControl {
   field: string
   labelKey: BashPlusLocaleKey
   hintKey: BashPlusLocaleKey
+  /** Optional hover/focus explanation rendered behind an info icon. */
+  tipKey?: BashPlusLocaleKey
   options: readonly { value: string; labelKey: BashPlusLocaleKey }[]
   value: string
   overridden: boolean
@@ -38,6 +43,8 @@ export interface ToggleControl {
   field: string
   labelKey: BashPlusLocaleKey
   hintKey: BashPlusLocaleKey
+  /** Optional hover/focus explanation rendered behind an info icon. */
+  tipKey?: BashPlusLocaleKey
   checked: boolean
   overridden: boolean
 }
@@ -77,6 +84,11 @@ export const SETTINGS_ROWS_CSS = `
 .tp-row:last-child{border-bottom:none}
 .tp-rowText{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .tp-rowTitle{font-size:14px;font-weight:400;line-height:22px;color:var(--dsw-alias-label-primary)}
+.tp-rowTitleLine{display:flex;align-items:center;gap:2px;min-width:0}
+.tp-rowTitleLine .tp-rowTitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-infoBtn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;border:0;background:none;color:var(--dsw-alias-label-tertiary);cursor:help;border-radius:50%;flex:none;transition:color .16s ease}
+.tp-infoBtn:hover,.tp-infoBtn:focus-visible{color:var(--dsw-alias-label-primary)}
+.tp-infoBtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}
 .tp-rowDesc{font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-secondary)}
 /* Hint and error stack in one cell: the box keeps the hint's height, so the
    row never shrinks when the shorter error text replaces it. */
@@ -151,7 +163,7 @@ html[data-tp-pointer] .tp-input.tp-invalid:focus-visible{outline:none}
 .tp-nativeDetail{display:flex;flex-direction:column;gap:4px}
 @keyframes tp-soft-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
-  .tp-row,.tp-reset,.tp-reset::after,.tp-input,.tp-selectTrigger,.tp-selectChevron,.tp-nativeChevron,.tp-switchTrack,.tp-thumb,.tp-actionButton{transition:none}
+  .tp-row,.tp-reset,.tp-reset::after,.tp-input,.tp-selectTrigger,.tp-selectChevron,.tp-nativeChevron,.tp-switchTrack,.tp-thumb,.tp-actionButton,.tp-infoBtn{transition:none}
   .tp-invalidText,.tp-actionResult{animation:none}
 }
 `
@@ -239,6 +251,21 @@ function RowBadges(props: {
   )
 }
 
+/** 行标题：可选的信息图标，悬停/键盘聚焦时显示完整说明。 */
+function RowTitle(props: {
+  t: (key: BashPlusLocaleKey) => string
+  labelKey: BashPlusLocaleKey
+  tipKey?: BashPlusLocaleKey
+  htmlFor: string
+}): ReactNode {
+  return (
+    <span className="tp-rowTitleLine">
+      <label className="tp-rowTitle" htmlFor={props.htmlFor}>{props.t(props.labelKey)}</label>
+      {props.tipKey === undefined ? null : <InfoTip text={props.t(props.tipKey)} label={props.t(props.labelKey) + ' ' + props.t('tipLabel')} />}
+    </span>
+  )
+}
+
 /**
  * Number row: same left-text / right-control anatomy as toggle and select
  * rows, with the input right-aligned at a fixed width. The title is wired to
@@ -259,7 +286,7 @@ export function NumberRow(props: {
   return (
     <div className="tp-row">
       <div className="tp-rowText">
-        <label className="tp-rowTitle" htmlFor={inputId}>{t(control.labelKey)}</label>
+        <RowTitle t={t} labelKey={control.labelKey} tipKey={control.tipKey} htmlFor={inputId} />
         {/*
           Both texts share one grid cell so the row keeps the hint's line count
           while the error shows: swapping a two-line hint for a one-line error
@@ -318,7 +345,7 @@ export function SelectRow(props: {
   return (
     <div className="tp-row">
       <div className="tp-rowText">
-        <label className="tp-rowTitle" htmlFor={triggerId}>{t(control.labelKey)}</label>
+        <RowTitle t={t} labelKey={control.labelKey} tipKey={control.tipKey} htmlFor={triggerId} />
         <div className="tp-rowDesc" id={descId}>{t(control.hintKey)}</div>
       </div>
       <RowBadges t={t} overridden={control.overridden} disabled={disabled} onReset={() => onReset(control.field)} />
@@ -365,7 +392,7 @@ export function ToggleRow(props: {
   return (
     <div className="tp-row">
       <div className="tp-rowText">
-        <label className="tp-rowTitle" htmlFor={inputId}>{t(control.labelKey)}</label>
+        <RowTitle t={t} labelKey={control.labelKey} tipKey={control.tipKey} htmlFor={inputId} />
         <div className="tp-rowDesc" id={descId}>{t(control.hintKey)}</div>
       </div>
       <RowBadges t={t} overridden={control.overridden} disabled={disabled} onReset={() => onReset(control.field)} />

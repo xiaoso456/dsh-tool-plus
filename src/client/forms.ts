@@ -98,7 +98,7 @@ function renderNumber(field: ToolPlusField, numbers: Record<string, string>, val
   // The reverted value lives in the placeholder: an emptied box shows what it
   // will fall back to without ever pretending it holds that value.
   const placeholder = baseVal === undefined ? '' : String(baseVal)
-  return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, text, placeholder, overridden, invalid }
+  return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, tipKey: field.tipKey, text, placeholder, overridden, invalid }
 }
 
 function renderSelect(field: ToolPlusField, selects: Record<string, string | null>, value: ToolSettingsValue, snap: ConfigFormSnapshot<ToolSettingsValue>, defaults: Record<string, number | boolean | string>): SelectControl {
@@ -121,6 +121,7 @@ function renderSelect(field: ToolPlusField, selects: Record<string, string | nul
     field: field.name,
     labelKey: field.labelKey,
     hintKey: field.hintKey,
+    tipKey: field.tipKey,
     options: field.options ?? [],
     value: v,
     overridden,
@@ -144,7 +145,7 @@ function renderToggle(field: ToolPlusField, toggles: Record<string, boolean | nu
     overridden = userStored
   }
 
-  return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, checked: effectiveVal, overridden }
+  return { field: field.name, labelKey: field.labelKey, hintKey: field.hintKey, tipKey: field.tipKey, checked: effectiveVal, overridden }
 }
 
 /** Whether any staged edit would change the user document. */

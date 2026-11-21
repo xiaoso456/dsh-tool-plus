@@ -52,8 +52,13 @@ export type BashPlusLocaleKey =
   | 'editFuzzyMatch' | 'editFuzzyMatchHint'
   | 'editFuzzyThreshold' | 'editFuzzyThresholdHint'
   | 'editEnforceSeenLines' | 'editEnforceSeenLinesHint'
-  | 'multiEditPreflight' | 'multiEditPreflightHint'
-  | 'detailedMatchFailure' | 'detailedMatchFailureHint'
+  | 'multiEditPreflight' | 'multiEditPreflightHint' | 'multiEditPreflightTip'
+  | 'detailedMatchFailure' | 'detailedMatchFailureHint' | 'detailedMatchFailureTip'
+  | 'writeBackend' | 'writeBackendHint' | 'writeBackendTip'
+  | 'optWriteDsh' | 'optWriteNative'
+  | 'writeRetryEnabled' | 'writeRetryEnabledHint' | 'writeRetryTip'
+  | 'writeRetryCount' | 'writeRetryCountHint' | 'writeRetryCountTip'
+  | 'tipLabel'
   | 'grepContextBefore' | 'grepContextBeforeHint'
   | 'grepContextAfter' | 'grepContextAfterHint'
   | 'grepCaseDefault' | 'grepCaseDefaultHint'
@@ -251,8 +256,22 @@ readRenderMarkdown: '渲染 Markdown',
   editEnforceSeenLinesHint: '禁止修改此前读取或搜索从未完整展示过的行。',
   multiEditPreflight: '多条目编辑预检',
   multiEditPreflightHint: '一次编辑带多个条目时先全部试算，任一条匹配失败就一条都不写，并在报错里列出失败条目。',
+  multiEditPreflightTip: '一次编辑带多个条目时，先在内存里把每一条都试算一遍；任一条匹配失败就一条都不写，报错里列出失败条目。默认关闭，打开后多条目编辑会多花几毫秒。',
   detailedMatchFailure: '详细匹配失败提示',
   detailedMatchFailureHint: '匹配失败时，把文件里最接近的整段文本附在报错里（相似度不低于 80%，最多 40 行 / 4KB），可以直接拿它当 old_string 重试。超过上限时只给起始行号。',
+  detailedMatchFailureTip: '匹配失败时，把文件里最接近的整段文本附在报错里（相似度不低于 80%，最多 40 行 / 4KB），可以直接拿它当 old_string 重试。只影响报错内容，不改变编辑结果，默认开启。',
+  writeBackend: '写入通道',
+  writeBackendHint: 'DSH 写入走宿主 ctx.fs，原子替换并遵守沙箱；原生写入走 OMP 直写，更快但不原子、绕过沙箱。默认 DSH 写入。',
+  writeBackendTip: 'DSH 写入：临时文件 + fsync + 原子替换，失败时原文件完好；遵守 read-only / workspace-write；小文件单次约 6 到 12ms，可能遇到 1175/32，由写入重试兜住。原生写入：OMP 的 node:fs 直写，单次约 0.5 到 2ms；不原子（崩溃可能留半截文件）、不检查沙箱；不会出现 1175/32，但同样的占用会以 EBUSY/EPERM 出现，或在对方允许共享写时直接覆盖。',
+  optWriteDsh: 'DSH 写入',
+  optWriteNative: '原生写入',
+  writeRetryEnabled: '写入重试',
+  writeRetryEnabledHint: 'DSH 写入遇到 1175/32、原生写入遇到 EBUSY 时自动重试。1176/1177、EPERM、EACCES 不重试。',
+  writeRetryTip: '只重试可恢复的文件占用：DSH 写入识别 ReplaceFileW 的 1175（被替换文件删不掉）和 32（文件被占用）；原生写入识别 EBUSY。1176/1177 可能丢文件，EPERM/EACCES 多是权限问题，都不重试。每次重试重新执行完整写入，等待 50/150/400ms；3 次全失败时最多多等约 0.6 秒。',
+  writeRetryCount: '重试次数',
+  writeRetryCountHint: '0 表示不重试；默认 3 次，退避 50/150/400ms，最多 10 次。',
+  writeRetryCountTip: '每次重试都会重新写一遍（DSH 写入约 6 到 12ms，原生写入约 0.5 到 2ms），两次之间等待 50/150/400ms。次数越多，极端情况下的失败延迟越长。',
+  tipLabel: '说明',
   grepContextBefore: '匹配前上下文行数',
   grepContextBeforeHint: '每个匹配结果上方连带显示几行，方便对照命中处的前后文。',
   grepContextAfter: '匹配后上下文行数',
@@ -695,8 +714,22 @@ export const en: Record<BashPlusLocaleKey, string> = {
   editEnforceSeenLinesHint: 'Reject edits on lines a previous read or search never displayed in full.',
   multiEditPreflight: 'Multi-entry preflight',
   multiEditPreflightHint: 'Dry-run every entry of a multi-entry edit first. If any entry fails to match, nothing is written and the error lists the failed entries.',
+  multiEditPreflightTip: 'Dry-run every entry in memory before writing anything. If any entry fails to match, nothing is written and the error lists the failed entries. Off by default; enabling it costs a few milliseconds per multi-entry edit.',
   detailedMatchFailure: 'Detailed match failures',
   detailedMatchFailureHint: 'When a match fails, include the closest block of file text in the error (at least 80% similar, up to 40 lines / 4KB) so it can be reused as old_string. Over the limit, only the starting line is given.',
+  detailedMatchFailureTip: 'When a match fails, include the closest block of file text in the error (at least 80% similar, up to 40 lines / 4KB) so it can be reused as old_string. It only changes the error text, never the edit result. On by default.',
+  writeBackend: 'Write channel',
+  writeBackendHint: 'DSH writes go through the host ctx.fs: atomic replace and sandbox-aware. Native writes use OMP direct writes: faster, but non-atomic and sandbox-bypassing. DSH is the default.',
+  writeBackendTip: 'DSH write: temp file + fsync + atomic replace, the original stays intact on failure; honours read-only / workspace-write; about 6 to 12ms per small write, may hit 1175/32 and is covered by write retry. Native write: OMP node:fs direct write, about 0.5 to 2ms; non-atomic (a crash can leave a half-written file), bypasses the sandbox; never produces 1175/32, but the same contention surfaces as EBUSY/EPERM, or overwrites silently when the other side allows shared writes.',
+  optWriteDsh: 'DSH write',
+  optWriteNative: 'Native write',
+  writeRetryEnabled: 'Write retry',
+  writeRetryEnabledHint: 'Retry DSH writes on 1175/32 and native writes on EBUSY. 1176/1177, EPERM and EACCES are never retried.',
+  writeRetryTip: 'Only retryable file contention: DSH write recognises ReplaceFileW 1175 (unable to remove the replaced file) and 32 (file in use); native write recognises EBUSY. 1176/1177 can lose files and EPERM/EACCES are usually permission problems, so neither is retried. Each retry reruns the whole write after 50/150/400ms; three failed retries add about 0.6s.',
+  writeRetryCount: 'Retry count',
+  writeRetryCountHint: '0 disables retry; default 3, backoff 50/150/400ms, at most 10.',
+  writeRetryCountTip: 'Each retry runs the whole write again (about 6 to 12ms for DSH, 0.5 to 2ms for native) and waits 50/150/400ms between attempts. A higher count only extends the worst-case failure delay.',
+  tipLabel: 'Details',
   grepContextBefore: 'Context lines before match',
   grepContextBeforeHint: 'Lines shown above each match so you can see the context around a hit.',
   grepContextAfter: 'Context lines after match',

@@ -89,10 +89,28 @@ describe('fields vs settings schema', () => {
     const tab = TOOL_PLUS_TABS[TOOL_PLUS_TABS.length - 1]
     // 常驻：tab 表里始终有一项，与当前有无开着的实验功能无关。
     expect(tab?.id).toBe('experimental')
-    expect(tab?.fields).toEqual(['multiEditPreflight', 'detailedMatchFailure'])
-    // 预检改行为，默认关；详细失败提示只加报错信息，是整个 tab 唯一默认开的项。
+    expect(tab?.fields).toEqual(['writeBackend', 'writeRetryEnabled', 'writeRetryCount', 'multiEditPreflight', 'detailedMatchFailure'])
+    // 写通道默认 DSH 原子写；重试只重试可恢复的竞争，默认开；预检改行为，默认关。
+    expect(toolPlusField('writeBackend')?.default).toBe('dsh')
+    expect(toolPlusField('writeRetryEnabled')?.default).toBe(true)
+    expect(toolPlusField('writeRetryCount')?.default).toBe(3)
     expect(toolPlusField('multiEditPreflight')?.default).toBe(false)
     expect(toolPlusField('detailedMatchFailure')?.default).toBe(true)
+  })
+
+  it('每个实验项都有悬浮说明', () => {
+    for (const field of TOOL_PLUS_FIELDS.filter(f => f.tool === 'experimental')) {
+      expect(field.tipKey, field.name).toBeDefined()
+    }
+  })
+
+  it('写入通道与重试的选项、可见性和 schema 覆盖', () => {
+    expect(toolPlusField('writeBackend')?.options?.map(option => option.value)).toEqual(['dsh', 'native'])
+    expect(toolPlusField('writeRetryCount')?.visibility).toEqual({ requiresEnabled: 'writeRetryEnabled' })
+    const cfg = resolveConfig({ writeBackend: 'native', writeRetryEnabled: false, writeRetryCount: 5 })
+    expect(cfg.writeBackend).toBe('native')
+    expect(cfg.writeRetryEnabled).toBe(false)
+    expect(cfg.writeRetryCount).toBe(5)
   })
 
   it('schema defaults equal the field table defaults (resolveConfig on empty)', () => {

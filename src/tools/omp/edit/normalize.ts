@@ -201,7 +201,9 @@ export function normalizeUnicode(s: string): string {
  * （U+0022/U+0027 各写了两遍），漏掉最常见的弯双引号 U+201C/U+201D 与弯单引号
  * U+2018/U+2019，不换行空格与零宽字符也不处理。同文件的 UNICODE_REPLACEMENTS
  * 表（normalizeUnicode 用）范围是全的，这里直接复用，避免两份表再次漂移。
- * 上游 Rust 重写版 crates/pi-edit/src/text.rs 保留了同样的缺陷，修复需另开补丁。
+ * 上游 Rust 重写版 crates/pi-edit/src/text.rs 保留了同样的缺陷（v18.12.6 仍在）。
+ * 2026-11-21 决定暂不给 native 引擎打补丁，hashline 仍受影响；说明与后续修法见
+ * docs/experimental/hashline-quote-folding.md。
  */
 export function normalizeForFuzzy(line: string): string {
 	const trimmed = line.trim();

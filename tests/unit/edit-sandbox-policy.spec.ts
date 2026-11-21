@@ -4,12 +4,14 @@
  * 缺陷（P1，tool-plus-lab 真机实测发现）：replace 模式经 ctx.fs.writeText 时
  * 缺第 5 参 per-call sandboxPolicy，被宿主部署回退 workspace-write 拒绝
  * （FS_SANDBOX_DENIED）；而 patch/hashline 模式借 OMP file 句柄直写绕过沙箱。
- * 修复：createWritethrough 忽略 file 句柄、全部走 ctx.fs，并按官方 tool-fs
+ * 修复：createWriteChannel 的 DSH 通道忽略 file 句柄、全部走 ctx.fs，并按官方 tool-fs
  * 语义解析 per-call policy（sandboxMode 能力事实 + sandboxPolicy.resolve）。
  */
 import { describe, expect, it } from 'vitest'
-import { createWritethrough } from '../../src/tools/edit/adapter/index.ts'
+import { createWriteChannel } from '../../src/tools/shared/write-channel.ts'
 import { resolveSandboxPolicy } from '../../src/tools/shared/sandbox-policy.ts'
+
+const DSH_CFG = { writeBackend: 'dsh', writeRetryEnabled: false, writeRetryCount: 0 } as any
 
 function execFor(cwd: string): any {
   return { agent: { session: { header: { cwd } } }, signal: undefined }
@@ -69,13 +71,13 @@ describe('resolveSandboxPolicy（官方 tool-fs 语义对齐）', () => {
   })
 })
 
-describe('createWritethrough（方案A 收敛）', () => {
-  it('忽略 file 句柄，policy 作为 writeText 第 5 参', async () => {
+describe('createWriteChannel（方案A 收敛）', () => {
+  it('DSH 通道忽略 file 句柄，policy 作为 writeText 第 5 参', async () => {
     const { ctx, writeCalls } = mockCtx({
       sandboxMode: 'workspace-write',
       policy: { resolve: (req: any) => ({ mode: 'workspace-write', workspaceRoot: req.session.header.cwd }) },
     })
-    const writethrough = createWritethrough(ctx, execFor('D:/w'))
+    const writethrough = createWriteChannel(ctx, execFor('D:/w'), DSH_CFG)
     const bombFile = {
       write: async () => {
         throw new Error('OMP file handle must not be used')
@@ -92,7 +94,7 @@ describe('createWritethrough（方案A 收敛）', () => {
 
   it('无 confining 后端 → policy 参数为 undefined（行为与修复前等价）', async () => {
     const { ctx, writeCalls } = mockCtx({})
-    const writethrough = createWritethrough(ctx, execFor('D:/w'))
+    const writethrough = createWriteChannel(ctx, execFor('D:/w'), DSH_CFG)
     await writethrough('D:/w/lab/b.txt', 'x')
     expect(writeCalls[0][4]).toBeUndefined()
   })
