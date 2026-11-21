@@ -27,10 +27,15 @@ import type { ToolSession } from '../../omp/tools/index.ts'
 import type { WritethroughCallback } from '../../omp/tools/writethrough.ts'
 import { DEFAULT_FUZZY_THRESHOLD, executeReplace } from '../../omp/edit/modes/replace.ts'
 import { executePatchSingle, type PatchEditEntry } from '../../omp/edit/modes/patch.ts'
+import { readEditFileText } from '../../omp/edit/read-file.ts'
+import { normalizeToLF, stripBom } from '../../omp/edit/normalize.ts'
 import { executeHashlineSingle } from '../../omp/edit/hashline/execute.ts'
 import { expandApplyPatchToEntries } from '../../omp/edit/modes/apply-patch.ts'
 import { executeApplyPatchPerFile, executeSinglePathEntries, resolveEditPath } from '../../omp/edit/dispatch.ts'
 import { writethroughNoop } from '../../omp/tools/writethrough.ts'
+import { formatPreflightError, preflightReplaceEntries } from './preflight.ts'
+import { withClosestMatch } from './match-error.ts'
+import { resolvePlanPath } from './tools/plan-mode-guard.ts'
 import { attachOmpSessionState, persistOmpSessionState } from '../../shared/session-state.ts'
 // Web 卡片投影（plan web-tool-cards §4.2）：只搬引擎已算好的 diff，不重新采样。
 import { projectEditCardMeta } from '../../../web/host/edit.ts'
@@ -329,6 +334,22 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
     // A-8：执行前统一 resolveEditPath（mustExist stat 失败后
     // findUniqueWorkspaceSuffix 工作区唯一后缀纠错）——上游 replace 模式语义。
     const targetPath = await resolveEditPath(session, filePath, { mustExist: true, signal })
+    // 实验性：多条目预检（设置页「实验性」tab 的 multiEditPreflight，默认关闭）。
+    // 关闭时这一块不存在，行为与上游逐条应用逐条写盘完全一致。
+    if (cfg.multiEditPreflight && editsInput.length > 1) {
+      // 与 executeReplace 同口径：先把调用方路径解析成绝对路径再读，否则相对路径
+      // 会按进程 cwd 解析，读错文件或直接 File not found。
+      const absolutePath = resolvePlanPath(session, targetPath)
+      const { text } = stripBom(await readEditFileText(absolutePath, filePath))
+      const preflight = preflightReplaceEntries(normalizeToLF(text), editsInput, {
+        allowFuzzy,
+        threshold: fuzzyThreshold,
+        replaceAll: args.replace_all ?? false,
+      })
+      if (preflight.failures.length > 0) {
+        throw new Error(formatPreflightError(filePath, editsInput.length, preflight.failures))
+      }
+    }
     // A-7：多段编辑聚合改走上游 dispatch（executeSinglePathEntries），保留引擎
     // per-entry resultText 与聚合 diff；failedEntry 供末条目失败的指引补线。
     let failedEntry: number | undefined
@@ -345,7 +366,9 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
         })
       } catch (err) {
         failedEntry = idx + 1
-        throw err
+        // 实验性：详细匹配失败提示（detailedMatchFailure，默认开启）。
+        // 只往报错消息里补 closest 块，不改成功/失败语义。
+        throw cfg.detailedMatchFailure ? withClosestMatch(err) : err
       }
     })
     const result = await executeSinglePathEntries(targetPath, runs, undefined, undefined, cwd, signal)

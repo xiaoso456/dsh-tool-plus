@@ -9,9 +9,9 @@
 export type BashPlusLocaleKey =
   | 'title' | 'description'
   | 'nav' | 'pageTitle' | 'pageDescription'
-  | 'tabWeb' | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage'
+  | 'tabWeb' | 'tabBash' | 'tabRead' | 'tabWriteEdit' | 'tabGrep' | 'tabGlob' | 'tabAstGrep' | 'tabAstEdit' | 'tabReadImage' | 'tabExperimental'
   | 'groupCards' | 'groupTiming' | 'groupWarmShell' | 'groupOutput' | 'groupTruncation' | 'groupBehavior'
-  | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupSearchDefaults' | 'groupFetch' | 'groupAst'
+  | 'groupReading' | 'groupSummary' | 'groupImages' | 'groupEditMode' | 'groupGuard' | 'groupGrep' | 'groupSearchDefaults' | 'groupFetch' | 'groupAst' | 'groupExperimental'
   | 'groupPresets'
   | 'presetNoteBroken' | 'presetNoteUnrecognized' | 'presetNoteNoRow' | 'presetNoteOther'
   | 'presetNoteCustomized' | 'presetNoteNoProfile' | 'presetNoteLegacy'
@@ -52,6 +52,8 @@ export type BashPlusLocaleKey =
   | 'editFuzzyMatch' | 'editFuzzyMatchHint'
   | 'editFuzzyThreshold' | 'editFuzzyThresholdHint'
   | 'editEnforceSeenLines' | 'editEnforceSeenLinesHint'
+  | 'multiEditPreflight' | 'multiEditPreflightHint'
+  | 'detailedMatchFailure' | 'detailedMatchFailureHint'
   | 'grepContextBefore' | 'grepContextBeforeHint'
   | 'grepContextAfter' | 'grepContextAfterHint'
   | 'grepCaseDefault' | 'grepCaseDefaultHint'
@@ -164,6 +166,7 @@ export const zh: Record<BashPlusLocaleKey, string> = {
   tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
+  tabExperimental: '实验性',
   tabReadImage: 'Read Image',
     groupCards: '对话卡片',
   groupTiming: '超时与后台',
@@ -246,6 +249,10 @@ readRenderMarkdown: '渲染 Markdown',
   editFuzzyThresholdHint: '相似度阈值，低于该值不视为命中。',
   editEnforceSeenLines: '已见行守卫',
   editEnforceSeenLinesHint: '禁止修改此前读取或搜索从未完整展示过的行。',
+  multiEditPreflight: '多条目编辑预检',
+  multiEditPreflightHint: '一次编辑带多个条目时先全部试算，任一条匹配失败就一条都不写，并在报错里列出失败条目。',
+  detailedMatchFailure: '详细匹配失败提示',
+  detailedMatchFailureHint: '匹配失败时，把文件里最接近的整段文本附在报错里（相似度不低于 80%，最多 40 行 / 4KB），可以直接拿它当 old_string 重试。超过上限时只给起始行号。',
   grepContextBefore: '匹配前上下文行数',
   grepContextBeforeHint: '每个匹配结果上方连带显示几行，方便对照命中处的前后文。',
   grepContextAfter: '匹配后上下文行数',
@@ -265,6 +272,7 @@ readRenderMarkdown: '渲染 Markdown',
   groupGrep: '匹配上下文',
   groupSearchDefaults: '搜索默认值',
   groupAst: 'AST 工具',
+  groupExperimental: '实验性功能',
   optReplace: 'replace（字面量替换）',
   optPatch: 'patch（unified diff）',
   optHashline: 'hashline（行锚点）',
@@ -601,6 +609,7 @@ export const en: Record<BashPlusLocaleKey, string> = {
   tabGlob: 'Glob',
   tabAstGrep: 'Ast Grep',
   tabAstEdit: 'Ast Edit',
+  tabExperimental: 'Experimental',
   tabReadImage: 'Read Image',
     groupCards: 'Conversation cards',
   groupTiming: 'Timeouts & backgrounding',
@@ -684,6 +693,10 @@ export const en: Record<BashPlusLocaleKey, string> = {
   editFuzzyThresholdHint: 'Similarity threshold below which a match is not accepted.',
   editEnforceSeenLines: 'Seen-line guard',
   editEnforceSeenLinesHint: 'Reject edits on lines a previous read or search never displayed in full.',
+  multiEditPreflight: 'Multi-entry preflight',
+  multiEditPreflightHint: 'Dry-run every entry of a multi-entry edit first. If any entry fails to match, nothing is written and the error lists the failed entries.',
+  detailedMatchFailure: 'Detailed match failures',
+  detailedMatchFailureHint: 'When a match fails, include the closest block of file text in the error (at least 80% similar, up to 40 lines / 4KB) so it can be reused as old_string. Over the limit, only the starting line is given.',
   grepContextBefore: 'Context lines before match',
   grepContextBeforeHint: 'Lines shown above each match so you can see the context around a hit.',
   grepContextAfter: 'Context lines after match',
@@ -703,6 +716,7 @@ export const en: Record<BashPlusLocaleKey, string> = {
   groupGrep: 'Match context',
   groupSearchDefaults: 'Search defaults',
   groupAst: 'AST tools',
+  groupExperimental: 'Experimental',
   optReplace: 'replace (literal)',
   optPatch: 'patch (unified diff)',
   optHashline: 'hashline (line anchors)',

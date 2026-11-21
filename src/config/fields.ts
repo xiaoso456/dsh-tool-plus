@@ -72,6 +72,7 @@ export type ToolPlusToolId =
   | 'web'
   | 'bash' | 'read' | 'writeEdit'
   | 'grep' | 'glob' | 'astGrep' | 'astEdit'
+  | 'experimental'
 
 /** Field group ids -> locale key of the group heading. */
 export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
@@ -95,6 +96,7 @@ export const TOOL_PLUS_GROUP_LABELS: Record<string, BashPlusLocaleKey> = {
   grep: 'groupGrep',
   searchDefaults: 'groupSearchDefaults',
   ast: 'groupAst',
+  experimental: 'groupExperimental',
 }
 
 /**
@@ -213,6 +215,11 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // astEdit.enabled 默认 true。glob/grep 不设开关，默认开启（用户拍板 2026-08-25）。
   { name: 'astGrepEnabled', kind: 'boolean', default: false, labelKey: 'astGrepEnabled', hintKey: 'astGrepEnabledHint', group: 'ast', tool: 'astGrep' },
   { name: 'astEditEnabled', kind: 'boolean', default: true, labelKey: 'astEditEnabled', hintKey: 'astEditEnabledHint', group: 'ast', tool: 'astEdit' },
+
+  // 实验性 tab：默认关闭为主，打开后才启用对应实验实现（文档见 docs/experimental/）。
+  // 例外：detailedMatchFailure 只往报错里补信息、不改结果，默认开启。
+  { name: 'multiEditPreflight', kind: 'boolean', default: false, labelKey: 'multiEditPreflight', hintKey: 'multiEditPreflightHint', group: 'experimental', tool: 'experimental' },
+  { name: 'detailedMatchFailure', kind: 'boolean', default: true, labelKey: 'detailedMatchFailure', hintKey: 'detailedMatchFailureHint', group: 'experimental', tool: 'experimental' },
 ]
 
 /** Tool tabs in nav order; empty `fields` = no configurable settings. */
@@ -230,6 +237,7 @@ export const TOOL_PLUS_TABS: readonly ToolPlusTab[] = [
   { id: 'glob', labelKey: 'tabGlob', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'glob').map(f => f.name) },
   { id: 'astGrep', labelKey: 'tabAstGrep', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astGrep').map(f => f.name) },
   { id: 'astEdit', labelKey: 'tabAstEdit', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'astEdit').map(f => f.name) },
+  { id: 'experimental', labelKey: 'tabExperimental', fields: TOOL_PLUS_FIELDS.filter(f => f.tool === 'experimental').map(f => f.name) },
 ]
 
 /** Look up one field definition by its schema key. */

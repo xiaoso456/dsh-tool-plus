@@ -66,6 +66,9 @@ docs/*
 # Windows 路径方言参考（模型/维护者共用的路径契约，随仓库发布）
 !docs/reference/
 !docs/reference/**
+# 实验性功能设计文档（设置页「实验性」tab 里的开关，默认关闭）
+!docs/experimental/
+!docs/experimental/**
 
 # 平台包产物（scripts/build-native-packages.mjs 生成，发布时不入库）
 dist-natives/

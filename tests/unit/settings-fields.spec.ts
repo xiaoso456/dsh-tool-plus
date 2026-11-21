@@ -85,6 +85,16 @@ describe('fields vs settings schema', () => {
     expect([...all].sort()).toEqual([...TOOL_PLUS_FIELD_NAMES].sort())
   })
 
+  it('实验性 tab 常驻在末尾，默认值以字段表为准', () => {
+    const tab = TOOL_PLUS_TABS[TOOL_PLUS_TABS.length - 1]
+    // 常驻：tab 表里始终有一项，与当前有无开着的实验功能无关。
+    expect(tab?.id).toBe('experimental')
+    expect(tab?.fields).toEqual(['multiEditPreflight', 'detailedMatchFailure'])
+    // 预检改行为，默认关；详细失败提示只加报错信息，是整个 tab 唯一默认开的项。
+    expect(toolPlusField('multiEditPreflight')?.default).toBe(false)
+    expect(toolPlusField('detailedMatchFailure')?.default).toBe(true)
+  })
+
   it('schema defaults equal the field table defaults (resolveConfig on empty)', () => {
     const cfg = resolveConfig({})
     const truncate = cfg.outputTruncate

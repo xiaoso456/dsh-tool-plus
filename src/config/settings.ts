@@ -134,6 +134,8 @@ export interface RuntimeConfig {
   editFuzzyMatch: boolean
   editFuzzyThreshold: number
   editEnforceSeenLines: boolean
+  multiEditPreflight: boolean
+  detailedMatchFailure: boolean
   readSummarizeEnabled: boolean
   readSummarizeProse: boolean
   readSummarizeMinBodyLines: number
@@ -245,6 +247,8 @@ export interface Config {
   editFuzzyMatch?: boolean
   editFuzzyThreshold?: number
   editEnforceSeenLines?: boolean
+  multiEditPreflight?: boolean
+  detailedMatchFailure?: boolean
   readSummarizeEnabled?: boolean
   readSummarizeProse?: boolean
   readSummarizeMinBodyLines?: number
@@ -339,6 +343,8 @@ export const Config = z.object({
   editFuzzyMatch: z.boolean().default(fieldDefault('editFuzzyMatch', true)).volatile(),
   editFuzzyThreshold: z.number().default(fieldDefault('editFuzzyThreshold', 0.95)).volatile(),
   editEnforceSeenLines: z.boolean().default(fieldDefault('editEnforceSeenLines', false)).volatile(),
+  multiEditPreflight: z.boolean().default(fieldDefault('multiEditPreflight', false)).volatile(),
+  detailedMatchFailure: z.boolean().default(fieldDefault('detailedMatchFailure', true)).volatile(),
   readDefaultLimit: z.number().default(fieldDefault('readDefaultLimit', 300)).volatile(),
   readLineNumbers: z.boolean().default(fieldDefault('readLineNumbers', false)).volatile(),
   readRenderMarkdown: z.boolean().default(fieldDefault('readRenderMarkdown', false)).volatile(),
@@ -456,6 +462,8 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     editFuzzyMatch: config.editFuzzyMatch ?? fieldDefault('editFuzzyMatch', true),
     editFuzzyThreshold: config.editFuzzyThreshold ?? fieldDefault('editFuzzyThreshold', 0.95),
     editEnforceSeenLines: config.editEnforceSeenLines ?? fieldDefault('editEnforceSeenLines', false),
+    multiEditPreflight: config.multiEditPreflight ?? fieldDefault('multiEditPreflight', false),
+    detailedMatchFailure: config.detailedMatchFailure ?? fieldDefault('detailedMatchFailure', true),
     readDefaultLimit: config.readDefaultLimit ?? fieldDefault('readDefaultLimit', 300),
     readLineNumbers: config.readLineNumbers ?? fieldDefault('readLineNumbers', false),
     readRenderMarkdown: config.readRenderMarkdown ?? fieldDefault('readRenderMarkdown', false),
