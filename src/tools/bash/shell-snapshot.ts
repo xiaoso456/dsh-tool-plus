@@ -238,6 +238,10 @@ fi
  *
  * `timeoutMs` is configurable so callers exercising failure handling do not
  * have to wait out the production startup budget.
+ *
+ * `env` is the shell-config overlay, not the whole child environment: the child
+ * always starts from `process.env` with this overlay on top, because whatever
+ * PATH the child sees is the PATH the snapshot bakes.
  */
 /** Optional knobs for one snapshot creation. */
 export interface SnapshotOptions {
@@ -254,6 +258,12 @@ export interface SnapshotOptions {
 	 * rebuilds the snapshot instead of reusing a stale one.
 	 */
 	extraLines?: readonly string[]
+	/**
+	 * Platform override. Production leaves it unset; the tests pin it so the
+	 * POSIX branch can be exercised on a Windows box (same seam as
+	 * `buildNonInteractiveEnv`'s `platform` argument).
+	 */
+	platform?: NodeJS.Platform
 }
 
 export async function getOrCreateSnapshot(
@@ -261,7 +271,8 @@ export async function getOrCreateSnapshot(
 	env: Record<string, string | undefined>,
 	options: SnapshotOptions = {},
 ): Promise<string | null> {
-	const { timeoutMs = SNAPSHOT_TIMEOUT_MS, initSourceLine, captureUserRc = true, extraLines = [] } = options;
+	const { timeoutMs = SNAPSHOT_TIMEOUT_MS, initSourceLine, captureUserRc = true, extraLines = [] } = options
+	const platform = options.platform ?? process.platform;
 	const extraBlock = extraLines.length === 0 ? '' : `\n${extraLines.join('\n')}`;
 	const cacheKey = initSourceLine || extraBlock ? `${shell}|${initSourceLine ?? ''}|${extraBlock}` : shell;
 	// Return cached snapshot if valid
@@ -278,7 +289,7 @@ export async function getOrCreateSnapshot(
 	// (rmSafe's rm → trash redefinition) have a source point on Windows Git
 	// bash. The file holds only a comment header; executeBash appends the
 	// injection when rmSafe is enabled.
-	if (process.platform === "win32" || !captureUserRc) {
+	if (platform === "win32" || !captureUserRc) {
 		const uid = process.getuid?.();
 		const snapshotDir = path.join(
 			os.tmpdir(),
@@ -305,7 +316,20 @@ export async function getOrCreateSnapshot(
 		}
 	}
 
-	const rcFile = getShellConfigFile(shell, env);
+	// The child shell starts from the host environment, not from the shell
+	// config overlay alone. This function bakes the child's `$PATH` into the
+	// snapshot (the script's `export PATH='$PATH'`), and that file is sourced
+	// LAST when a session shell is created — so a child that starts without
+	// PATH inherits bash's compiled-in default and overwrites the PATH brush
+	// already copied from `process.env`. That is how POSIX lost every directory
+	// an image adds through ENV (`/usr/local/cargo/bin`, `/usr/local/go/bin`, a
+	// JDK or conda bin dir): `cargo`/`go`/`python3`/`javac` answered
+	// `command not found` while the same container worked in a real shell. The
+	// overlay keeps the last word (a configured env still beats the host value)
+	// and `sanitizeSnapshotEnv` keeps BASH_ENV/ENV out of the child.
+	const childEnv = sanitizeSnapshotEnv({ ...process.env, ...env });
+
+	const rcFile = getShellConfigFile(shell, childEnv);
 
 	// Snapshot dir is per-uid. `os.tmpdir()` is shared between accounts on Linux and
 	// this dir is 0700 because the script may inline env-var values referenced by
@@ -349,9 +373,8 @@ export async function getOrCreateSnapshot(
 
 	let succeeded = false;
 	try {
-		const snapshotEnv = sanitizeSnapshotEnv(env);
 		const spawnEnv: Record<string, string> = {};
-		for (const [key, value] of Object.entries(snapshotEnv)) {
+		for (const [key, value] of Object.entries(childEnv)) {
 			if (value !== undefined) {
 				spawnEnv[key] = value;
 			}
