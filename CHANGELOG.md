@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2-beta.0] - 2026-11-21
+
+> 测试版：修 Linux / macOS 上插件 bash 找不到工具链的问题。
+
+### Fixed
+
+- **POSIX 上 bash 丢掉了宿主的 PATH**：生成 shell 快照的子 shell 之前只拿到一份几乎空的环境，bash 于是把编译期默认值（`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`）写进了快照；这份快照在会话创建时是最后才被加载的，正好盖掉从进程环境继承来的那份 PATH。结果是镜像通过 ENV 加的目录（`/usr/local/cargo/bin`、`/usr/local/go/bin`、JDK 的 bin、conda 的 `python3`）全部消失，`cargo`、`go`、`python3`、`javac` 一律 `command not found`。现在生成快照的子 shell 从宿主环境起步，再叠加 shell 配置，快照里的 PATH 就是真实 PATH 加上用户 rc 自己的调整。Windows 不受影响，那边本来就是最小快照、没有 PATH 这一行。
+
+### 说明
+
+- 这个测试版只动了根包的 JS，原生平台包不重新发布，装的时候沿用 `18.12.6-plus.2`。
+
+[对比 0.2.1](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.2.1...tool-plus-v0.2.2-beta.0)
+
 ## [0.2.1] - 2026-11-20
 
 > 修一个偶发故障：插件刚被重载或刚升级时，执行 bash 偶尔直接报错、命令一条都没跑。现在照常执行。
