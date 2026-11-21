@@ -247,18 +247,28 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
       // Upstream bash.ts resolves an explicit cwd through `resolveToCwd`
       // (path-utils): MSYS drive aliases (`/d/…`), stray `:` prefixes, and `~`
-      // all normalize before `path.resolve`, and a stat check fails loud with a
-      // clear message instead of the shell's cryptic "Failed to set cwd".
+      // all normalize before `path.resolve`. Both branches feed the same native
+      // `set cwd` at run start, so both are checked here: a stale `state.cwd`
+      // (the last successful cd target, deleted or renamed) would otherwise
+      // surface as the shell's cryptic "Failed to set cwd". The check also runs
+      // before jobs.start, so a dead cwd never registers a doomed background
+      // job. The explicit-workdir messages stay unchanged for compatibility.
       const commandCwd = workdir === undefined ? state.cwd : resolveToCwd(workdir, state.cwd)
-      if (workdir !== undefined) {
-        let cwdStat: fs.Stats
-        try {
-          cwdStat = await fs.promises.stat(commandCwd)
-        } catch {
-          throw new Error(`Working directory does not exist: ${commandCwd}`)
+      const cwdLabel = workdir === undefined ? 'Session working directory' : 'Working directory'
+      let cwdStat: fs.Stats
+      try {
+        cwdStat = await fs.promises.stat(commandCwd)
+      } catch {
+        if (workdir === undefined) {
+          throw new Error(
+            `Session working directory does not exist: ${commandCwd}. `
+            + 'It may have been deleted or renamed. Pass an absolute workdir, '
+            + 'or start the command with `cd "<absolute path>" && ...`.',
+          )
         }
-        if (!cwdStat.isDirectory()) throw new Error(`Working directory is not a directory: ${commandCwd}`)
+        throw new Error(`Working directory does not exist: ${commandCwd}`)
       }
+      if (!cwdStat.isDirectory()) throw new Error(`${cwdLabel} is not a directory: ${commandCwd}`)
       if (cfg.interceptorEnabled) {
         const availableTools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))].filter(tool => ctx.tools.get(tool, exec.agent) !== undefined)
         const interception = checkBashInterception(command, availableTools)

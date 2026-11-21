@@ -30,8 +30,10 @@ interface RecordedCall {
   options?: { cwd?: string; timeout?: number }
 }
 
-const { recorded } = vi.hoisted(() => ({
+const { recorded, nextWorkingDirs } = vi.hoisted(() => ({
   recorded: [] as Array<{ command: string; options?: { cwd?: string; timeout?: number } }>,
+  /** Each successful call consumes one entry and reports it as its final cwd. */
+  nextWorkingDirs: [] as string[],
 }))
 
 vi.mock('../../src/tools/bash/bash-executor.ts', async importOriginal => {
@@ -40,6 +42,7 @@ vi.mock('../../src/tools/bash/bash-executor.ts', async importOriginal => {
     ...actual,
     executeBash: async (command: string, options?: RecordedCall['options']) => {
       recorded.push({ command, options })
+      const workingDir = nextWorkingDirs.shift()
       return {
         output: `mock-output:${command}`,
         exitCode: 0,
@@ -49,6 +52,7 @@ vi.mock('../../src/tools/bash/bash-executor.ts', async importOriginal => {
         totalBytes: 1,
         outputLines: 1,
         outputBytes: 1,
+        ...(workingDir !== undefined ? { workingDir } : {}),
       }
     },
   }
@@ -80,7 +84,7 @@ async function setup(config: Record<string, unknown> = {}): Promise<{ ctx: Conte
   }
 }
 
-function registerFakeAgent(ctx: Context, sessionId: string, fibers: Fiber[]): Agent {
+function registerFakeAgent(ctx: Context, sessionId: string, fibers: Fiber[], headerCwd?: string): Agent {
   const scopeFiber = ctx.plugin(() => {})
   fibers.push(scopeFiber)
   const id = SessionId(sessionId)
@@ -88,7 +92,10 @@ function registerFakeAgent(ctx: Context, sessionId: string, fibers: Fiber[]): Ag
     id,
     ctx: scopeFiber.ctx,
     inject: () => {},
-    session: { id, header: { version: 0, id, createdAt: 0 } },
+    session: {
+      id,
+      header: { version: 0, id, createdAt: 0, ...(headerCwd !== undefined ? { cwd: headerCwd } : {}) },
+    },
   } as unknown as Agent
   ctx.agents.register(agent)
   return agent
@@ -117,10 +124,10 @@ interface Harness {
   agentFibers: Fiber[]
 }
 
-async function harness(config: Record<string, unknown>): Promise<Harness> {
+async function harness(config: Record<string, unknown>, headerCwd?: string): Promise<Harness> {
   const agentFibers: Fiber[] = []
   const { ctx, dispose } = await setup(config)
-  const agent = registerFakeAgent(ctx, `timeout-wiring-${++sessionCounter}`, agentFibers)
+  const agent = registerFakeAgent(ctx, `timeout-wiring-${++sessionCounter}`, agentFibers, headerCwd)
   return {
     ctx,
     agent,
@@ -329,5 +336,98 @@ describe('cd workdir MSYS path forms (S-16b)', () => {
     )
     expect(result.isError).toBe(true)
     expect(textOf(result)).toContain('Working directory is not a directory')
+  })
+})
+
+describe('session cwd validation (S-16c)', () => {
+  let h: Harness
+  const tmpDirs: string[] = []
+  const tmpDir = (prefix: string): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+    tmpDirs.push(dir)
+    return dir
+  }
+
+  beforeEach(() => {
+    recorded.length = 0
+    nextWorkingDirs.length = 0
+  })
+  afterEach(async () => {
+    if (h) await h.dispose()
+    for (const dir of tmpDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('reports a clear error when the last cd target was deleted', async () => {
+    const workspace = tmpDir('dsh-cwd-ws-')
+    const target = tmpDir('dsh-cwd-target-')
+    h = await harness({ autoBackgroundMs: 0 }, workspace)
+    nextWorkingDirs.push(target)
+    const first = await call(h.ctx, { command: 'enter-target', description: 'move cwd' }, h.agent)
+    expect(first.isError).toBe(false)
+    expect(recorded[0]!.options?.cwd).toBe(workspace)
+    fs.rmSync(target, { recursive: true, force: true })
+    recorded.length = 0
+
+    const result = await call(h.ctx, { command: 'pwd', description: 'stale cwd' }, h.agent)
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain(`Session working directory does not exist: ${target}`)
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('reports the same clear error when the session cwd is missing at start', async () => {
+    const dead = tmpDir('dsh-cwd-dead-')
+    fs.rmSync(dead, { recursive: true, force: true })
+    h = await harness({ autoBackgroundMs: 0 }, dead)
+
+    const result = await call(h.ctx, { command: 'pwd', description: 'dead workspace' }, h.agent)
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain(`Session working directory does not exist: ${dead}`)
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('reports a clear error when the session cwd points at a file', async () => {
+    const dir = tmpDir('dsh-cwd-file-')
+    const file = path.join(dir, 'plain.txt')
+    fs.writeFileSync(file, 'x')
+    h = await harness({ autoBackgroundMs: 0 }, file)
+
+    const result = await call(h.ctx, { command: 'pwd', description: 'file cwd' }, h.agent)
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain(`Session working directory is not a directory: ${file}`)
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('recovers through an absolute workdir and follows it on the next call', async () => {
+    const dead = tmpDir('dsh-cwd-dead-')
+    fs.rmSync(dead, { recursive: true, force: true })
+    const live = tmpDir('dsh-cwd-live-')
+    h = await harness({ autoBackgroundMs: 0 }, dead)
+    nextWorkingDirs.push(live)
+
+    const first = await call(h.ctx, { command: 'pwd', description: 'recover', workdir: live }, h.agent)
+    expect(first.isError).toBe(false)
+    expect(recorded[0]!.options?.cwd).toBe(live)
+
+    recorded.length = 0
+    const second = await call(h.ctx, { command: 'pwd', description: 'after recovery' }, h.agent)
+    expect(second.isError).toBe(false)
+    expect(recorded[0]!.options?.cwd).toBe(live)
+  })
+
+  it('recovers through an absolute leading cd while the session cwd is dead', async () => {
+    const dead = tmpDir('dsh-cwd-dead-')
+    fs.rmSync(dead, { recursive: true, force: true })
+    const live = tmpDir('dsh-cwd-live-')
+    h = await harness({ autoBackgroundMs: 0 }, dead)
+    nextWorkingDirs.push(live)
+
+    const result = await call(
+      h.ctx,
+      { command: `cd "${live}" && pwd`, description: 'recover via cd' },
+      h.agent,
+    )
+    expect(result.isError).toBe(false)
+    expect(recorded[0]!.command).toBe('pwd')
+    expect(recorded[0]!.options?.cwd).toBe(live)
   })
 })
