@@ -63,7 +63,7 @@ dsh plugin --profile web add @xiaoso/dsh-tool-plus
   - PNG / JPEG / WebP / GIF 图片直读，超大图自动缩放
   - 可抓网页（含页内图片），SPA 站点改用本机浏览器渲染后再抓
 - **write**：原子写入并返回 diff；支持补丁式写入，可直接写归档成员与 SQLite 数据
-- **edit**：replace 默认，另支持 patch / hashline / apply-patch；多段编辑、唯一性校验、空白模糊匹配
+- **edit**：replace 默认，另支持 patch / hashline / apply-patch；唯一性校验、空白模糊匹配
 
 ### 搜索
 

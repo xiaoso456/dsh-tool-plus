@@ -5,8 +5,8 @@
  * This file is pure glue. All edit logic lives in `omp/` (copied verbatim);
  * this adapter only:
  *  - builds an OMP `ToolSession` from the DSH exec context + tool-plus config,
- *  - picks the edit mode from the call shape (replace / patch / hashline /
- *    apply_patch), exactly like OMP's `EditTool.mode` resolution,
+ *  - exposes only the configured mode's parameter table (replace / patch /
+ *    hashline / apply_patch) and still dispatches execution by call shape,
  *  - hands replace/apply_patch to the verbatim upstream dispatch layer
  *    (`omp/edit/dispatch.ts`，A-7/A-8：resolveEditPath 路径纠错 +
  *    executeSinglePathEntries / executeApplyPatchPerFile 聚合) and converts
@@ -59,7 +59,7 @@ import { editDescription } from '../../hashline/native/index.ts'
 /**
  * S-14c：patch.md 是 OMP JSON patch 入口的 verbatim 提示词，其 <parameters>
  * 块教模型发 `{ path, edits: Entry[] }` 形状；而 DSH schema（registerEdit）只收
- * `patch: string`（unified-diff 文本 + `file_path` 定位文件），create/delete/
+ * `patch: string`（unified-diff 文本 + `path` 定位文件），create/delete/
  * rename 走 `input` 的 `*** Begin Patch` 信封（apply_patch 模式）。此处把该块
  * 重写为与 schema 一致的参数说明，其余段落（hunk/anchor 语法、critical、avoid）
  * 保持 verbatim。sanitize 本体在 shared/omp-prompt.ts（不动）。
@@ -71,9 +71,9 @@ function rewritePatchParametersForSchema(description: string): string {
     block[0],
     [
       '<parameters>',
-      '- `file_path` (string, required): the file to patch.',
+      '- `path` (string, required): the file to patch.',
       '- `patch` (string, required): unified diff applied to that file — one or more hunks, each beginning with `@@` (anchor optional); hunk body lines start with a space (context), `+` (add), or `-` (remove); every hunk must contain at least one change.',
-      '- Creating, deleting or renaming files is not available in patch mode: pass an `input` string with a Codex `*** Begin Patch` envelope instead (`*** Add File:`, `*** Delete File:`, `*** Update File:` with `*** Move to:`).',
+      '- Creating, deleting or renaming files is not available in patch mode: switch editMode to apply_patch and use a Codex `*** Begin Patch` envelope (`*** Add File:`, `*** Delete File:`, `*** Update File:` with `*** Move to:`).',
       '</parameters>',
     ].join('\n'),
   )
@@ -85,6 +85,37 @@ export const EDIT_MODE_DESCRIPTIONS = {
   apply_patch: renderOmpPrompt(sanitizeApplyPatchPrompt(applyPatchMd), {}),
   hashline: renderOmpPrompt(sanitizeHashlinePrompt(editDescription('hashline')), {}),
 } as const
+
+type EditModeName = keyof typeof EDIT_MODE_DESCRIPTIONS
+
+/**
+ * 每种模式只暴露自己那一套参数（A 方案，2026-11-21）：模型不再看到合并表，
+ * required 也跟着模式走。edits[] 仍是内部兼容路径，不再出现在 schema 里。
+ */
+function editParametersForMode(mode: EditModeName): Record<string, any> {
+  if (mode === 'patch') {
+    return {
+      path: { type: 'string', required: true, description: 'Path to the file to edit' },
+      patch: { type: 'string', required: true, description: 'Unified diff patch text to apply' },
+    }
+  }
+  if (mode === 'replace') {
+    return {
+      path: { type: 'string', required: true, description: 'Path to the file to edit' },
+      old_string: { type: 'string', required: true, description: 'Literal text to replace; must appear exactly once unless replace_all is true' },
+      new_string: { type: 'string', required: true, description: 'Replacement text; pass an empty string to delete' },
+      replace_all: { type: 'boolean', description: 'Replace all occurrences instead of requiring exactly one' },
+    }
+  }
+  if (mode === 'apply_patch') {
+    return {
+      input: { type: 'string', required: true, description: 'Codex *** Begin Patch envelope' },
+    }
+  }
+  return {
+    input: { type: 'string', required: true, description: 'Hashline patch input' },
+  }
+}
 
 /** Build the OMP ToolSession facade over a DSH exec context. */
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
@@ -214,7 +245,7 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
     // hashline / apply_patch mode
     // (OMP-faithful: these modes carry their paths inside `input` — the
     // `[PATH#TAG]` section headers / `*** <File|Move>:` envelope markers —
-    // so no top-level file_path is required.)
+    // so no top-level path is required.)
     if (typeof args.input === 'string' && args.input.trim().length > 0) {
       const isApplyPatch = /^\s*\*\*\* Begin Patch/.test(args.input)
       if (isApplyPatch) {
@@ -274,9 +305,11 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
       return withEditCard(result, toText(result))
     }
 
+    // `path` is the model-facing name (OMP); `file_path` stays as a legacy
+    // alias so old direct/PTC calls keep the current precedence.
     const filePath: string = args.file_path ?? args.path ?? ''
     if (!filePath || typeof filePath !== 'string' || filePath.trim().length === 0) {
-      throw new Error('file_path must be a non-empty string')
+      throw new Error('path (or file_path) must be a non-empty string')
     }
 
     // patch mode (unified diff)
@@ -300,15 +333,28 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
       return withEditCard(result, toText(result))
     }
 
-    // replace mode (single or multi-segment)
-    const editsInput: { oldText: string; newText: string }[] =
-      Array.isArray(args.edits) && args.edits.length > 0
-        ? args.edits
-        : typeof args.old_string === 'string'
-          ? [{ oldText: args.old_string, newText: String(args.new_string ?? '') }]
-          : []
+    // replace mode (single or internal multi-segment)
+    // edits[] 不再出现在模型面 schema，但 adapter 仍保留兼容；单条路径必须显式
+    // 给出 new_string，缺失时不能当成空串删除。
+    const hasEdits = Array.isArray(args.edits) && args.edits.length > 0
+    if (hasEdits) {
+      // 内部批量路径同样不能把缺失的 newText 当成空串删除。
+      for (const [idx, entry] of args.edits.entries()) {
+        if (typeof entry?.oldText !== 'string' || typeof entry?.newText !== 'string') {
+          throw new Error(`edit: edits[${idx}] requires string oldText and newText; pass "" to delete.`)
+        }
+      }
+    }
+    if (!hasEdits && typeof args.old_string === 'string' && typeof args.new_string !== 'string') {
+      throw new Error('edit: new_string is required when old_string is provided; pass "" to delete.')
+    }
+    const editsInput: { oldText: string; newText: string }[] = hasEdits
+      ? args.edits
+      : typeof args.old_string === 'string'
+        ? [{ oldText: args.old_string, newText: args.new_string }]
+        : []
     if (editsInput.length === 0) {
-      throw new Error('edit: provide old_string/new_string, edits[], patch, or input')
+      throw new Error('edit: provide old_string/new_string, patch, or input')
     }
     // A-8：执行前统一 resolveEditPath（mustExist stat 失败后
     // findUniqueWorkspaceSuffix 工作区唯一后缀纠错）——上游 replace 模式语义。
@@ -359,42 +405,22 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
 }
 
 /**
- * Register the edit tool. Mode is resolved per call from the argument shape
- * (matching OMP's mode dispatch):
+ * Register the edit tool. The exposed parameter table follows `editMode`
+ * (A 方案); execution still dispatches by argument shape:
  *  - `input` present → hashline, or apply_patch when it starts with `***`
  *  - `patch` present → unified-diff patch mode
  *  - `edits` present (or old_string) → replace mode
  */
 export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () => void {
-  // 返回 disposer：editMode 热更新时重注册以刷新按模式选择的描述（见 src/index.ts）。
+  // 返回 disposer：editMode 热更新时重注册，同时刷新描述和参数表（见 src/index.ts）。
+  const editMode = (getConfig().editMode ?? 'replace') as EditModeName
   return ctx.tools.register(defineTool({
     name: 'edit',
     // "是什么模式，就给什么描述"（用户拍板 2026-08-25）：按配置 editMode
     // 选 OMP 原版模式提示词（replace/patch/apply_patch/hashline 四份 md）。
-    // DSH 描述静态，配置变更后需重启生效。
-    description:
-      EDIT_MODE_DESCRIPTIONS[getConfig().editMode as keyof typeof EDIT_MODE_DESCRIPTIONS] ??
-      EDIT_MODE_DESCRIPTIONS.replace,
-    parameters: {
-      file_path: { type: 'string', description: 'Path to the file to edit (required in replace/patch mode; hashline/apply_patch carry their paths inside `input`)' },
-      old_string: { type: 'string', description: 'Literal text to replace (replace mode; required without edits/patch/input)' },
-      new_string: { type: 'string', description: 'Replacement text (replace mode; empty string deletes)' },
-      replace_all: { type: 'boolean', description: 'Replace all occurrences instead of requiring exactly one (replace mode)' },
-      edits: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            oldText: { type: 'string', required: true },
-            newText: { type: 'string', required: true },
-          },
-        },
-        description: 'Multi-segment replacements (replace mode; alternative to old_string/new_string)',
-      },
-      patch: { type: 'string', description: 'Unified diff patch text to apply (patch mode; alternative to old_string/edits)' },
-      input: { type: 'string', description: 'Hashline patch input, or Codex *** Begin Patch envelope (hashline/apply_patch mode)' },
-    },
+    // DSH 描述和参数表都是静态的，配置变更由 index.ts 重注册刷新。
+    description: EDIT_MODE_DESCRIPTIONS[editMode] ?? EDIT_MODE_DESCRIPTIONS.replace,
+    parameters: editParametersForMode(editMode),
     output: {
       schema: {
         type: 'object',

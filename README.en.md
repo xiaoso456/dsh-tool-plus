@@ -63,7 +63,7 @@ Install from the app's plugin page by entering the package name `@xiaoso/dsh-too
   - PNG / JPEG / WebP / GIF images read directly and scaled down when oversized
   - Fetches web content (including images embedded in the page); SPA sites are fetched through local browser rendering
 - **write**: atomic writes that return a diff; supports patch-style writing, and can write directly into archive members and SQLite data
-- **edit**: `replace` by default, with patch / hashline / apply-patch formats also supported; multi-hunk edits, uniqueness validation, fuzzy matching tolerant of whitespace differences
+- **edit**: `replace` by default, with patch / hashline / apply-patch formats also supported; uniqueness validation, fuzzy matching tolerant of whitespace differences
 
 ### Search
 

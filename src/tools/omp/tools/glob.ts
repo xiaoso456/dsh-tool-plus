@@ -13,7 +13,7 @@ import { isScoutSpawnable } from "../../omp/task/spawn-policy.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import { applyListLimit } from "../../omp/tools/list-limit.ts";
 import { type OutputMeta } from "../../omp/tools/output-meta.ts";
-import { expandDelimitedPathEntries, formatPathRelativeToCwd, hasGlobPathChars, isSshUrl, normalizePathLikeInput, parseFindPattern, partitionExistingPaths, resolveExplicitFindPatterns, resolveToCwd, toPathList } from "../../omp/tools/path-utils.ts";
+import { expandDelimitedPathEntries, formatPathNotFound, formatPathRelativeToCwd, hasGlobPathChars, isSshUrl, normalizePathLikeInput, parseFindPattern, partitionExistingPaths, resolveExplicitFindPatterns, resolveToCwd, toPathList } from "../../omp/tools/path-utils.ts";
 import { formatCount } from "../../omp/tools/render-utils.ts";
 import { ToolAbortError, ToolError, throwIfAborted } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
@@ -190,7 +190,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			if (normalizedPatterns.length > 1 && !this.#customOps) {
 				const partition = await partitionExistingPaths(normalizedPatterns, this.session.cwd, parseFindPattern);
 				if (partition.valid.length === 0) {
-					throw new ToolError(`Path not found: ${partition.missing.join(", ")}`);
+					throw new ToolError(formatPathNotFound(partition.missing.map(input => ({ input })), this.session.cwd));
 				}
 				effectivePatterns = partition.valid;
 				missingPaths = partition.missing;
@@ -309,7 +309,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				const perTarget = await Promise.all(
 					targets.map(async target => {
 						if (!(await customOps.exists(target.searchPath))) {
-							if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
+							if (isSingle) throw new ToolError(formatPathNotFound([{ input: scopePath, requested: effectivePatterns[0] }], this.session.cwd));
 							return [] as string[];
 						}
 						if (!target.hasGlob && customOps.stat) {
@@ -378,7 +378,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					// ENAMETOOLONG can never name a real target; surface a clean
 					// "Path not found" instead of leaking the raw errno (issue #7597).
 					if (isEnoent(err) || hasFsCode(err, "ENAMETOOLONG")) {
-						if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
+						if (isSingle) throw new ToolError(formatPathNotFound([{ input: scopePath, requested: effectivePatterns[0] }], this.session.cwd));
 						return [];
 					}
 					throw err;

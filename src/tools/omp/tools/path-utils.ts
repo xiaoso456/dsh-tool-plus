@@ -6,6 +6,7 @@ import { glob } from "@oh-my-pi/pi-natives";
 import { hasFsCode, isEnoent, isEnotdir, stripWindowsExtendedLengthPathPrefix, untilAborted } from "@oh-my-pi/pi-utils";
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
+import { normalizeWindowsUnixTmpPath } from "../../shared/windows-tmp-path";
 import { ToolAbortError, ToolError } from "./tool-errors";
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
@@ -516,7 +517,7 @@ export function isReadableUrlPath(value: string): boolean {
  */
 export function resolveToCwd(filePath: string, cwd: string): string {
 	const normalized = normalizeLocalScheme(filePath);
-	const expanded = normalizeWindowsDriveAliasPath(expandPath(normalized));
+	const expanded = normalizeWindowsUnixTmpPath(normalizeWindowsDriveAliasPath(expandPath(normalized)));
 	const expandedAndNormalized = normalizeLocalScheme(expanded);
 
 	assertNotInternalUrl(expandedAndNormalized, normalized);
@@ -618,6 +619,39 @@ function isSymlink(target: string): boolean {
 	}
 }
 
+export interface MissingPathDisplay {
+	/** Display text used for a relative input. */
+	input: string;
+	/** Original argument, used only to decide whether it was relative. */
+	requested?: string;
+}
+
+/** True when the original argument is a relative filesystem path. */
+function isRelativePathInput(filePath: string): boolean {
+	const normalized = normalizeLocalScheme(normalizeAtPrefix(filePath));
+	if (isInternalUrlPath(normalized) || isSshUrl(normalized)) return false;
+	const expanded = normalizeWindowsUnixTmpPath(normalizeWindowsDriveAliasPath(expandPath(normalized)));
+	return !path.isAbsolute(expanded);
+}
+
+/**
+ * Render one or more missing-path errors. A relative input gets the working
+ * directory it was resolved against; an absolute input is already complete.
+ * Multiple entries are separated by a blank line.
+ */
+export function formatPathNotFound(entries: readonly MissingPathDisplay[], cwd: string): string {
+	return entries
+		.map(entry => {
+			const requested = entry.requested ?? entry.input;
+			const relative = isRelativePathInput(requested);
+			const input = relative ? entry.input : requested;
+			const lines = [`Path not found: ${input}`];
+			if (relative) lines.push(`working directory: ${cwd}`);
+			return lines.join("\n");
+		})
+		.join("\n\n");
+}
+
 export function formatPathRelativeToCwd(
 	filePath: string,
 	cwd: string,
@@ -628,7 +662,7 @@ export function formatPathRelativeToCwd(
 	if (isInternalUrlPath(normalized)) {
 		return normalized;
 	}
-	const expanded = expandPath(normalized);
+	const expanded = expandPath(normalizeWindowsUnixTmpPath(normalized));
 	const resolvedPath = path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(cwd, expanded);
 	const relative = path.relative(resolvedCwd, resolvedPath);
 	const isWithinCwd = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -1430,7 +1464,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	if (resolvedPathInputs.length > 1) {
 		const partition = await partitionExistingPaths(resolvedPathInputs, cwd, parseSearchPath);
 		if (partition.valid.length === 0) {
-			throw new ToolError(`Path not found: ${partition.missing.join(", ")}`);
+			throw new ToolError(formatPathNotFound(partition.missing.map(input => ({ input })), cwd));
 		}
 		effectivePaths = partition.valid;
 		missingPaths = partition.missing;
@@ -1473,7 +1507,8 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		isDirectory = stat.isDirectory();
 	} catch {
 		const hint = opts.multipathStatHint && rawPaths.length > 1 ? opts.multipathStatHint : "";
-		throw new ToolError(`Path not found: ${scopePath}${hint}`);
+		const requested = effectivePaths[0] ?? scopePath;
+		throw new ToolError(`${formatPathNotFound([{ input: scopePath, requested }], cwd)}${hint}`);
 	}
 
 	return {

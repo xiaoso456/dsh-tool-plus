@@ -51,7 +51,7 @@
         {
           "id": "call_edit",
           "name": "edit",
-          "arguments": "{\"file_path\":\"<scratch>/fixture.ts\",\"old_string\":\"'hello'\",\"new_string\":\"'HELLO'\"}"
+          "arguments": "{\"path\":\"<scratch>/fixture.ts\",\"old_string\":\"'hello'\",\"new_string\":\"'HELLO'\"}"
         }
       ]
     },

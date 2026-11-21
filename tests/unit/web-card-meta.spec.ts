@@ -1012,11 +1012,11 @@ describe('web card metadata', () => {
         expect(out.diffs!.map(hunk => hunk.newText).join('\n')).toContain('const b = 2;')
       })
 
-      it('回归：失败文案一字未变（缺 file_path）', async () => {
+      it('回归：缺路径时报 path/file_path 错误', async () => {
         const dir = realTmpDir('edit-card-meta')
         await expect(
           executeEditTool(execFor(dir), {} as never, { old_string: 'a', new_string: 'b' }, null),
-        ).rejects.toThrow('file_path must be a non-empty string')
+        ).rejects.toThrow('path (or file_path) must be a non-empty string')
       })
 
       it('presentationMeta：有 diffs 才产 meta，没有就走兜底（null）', () => {

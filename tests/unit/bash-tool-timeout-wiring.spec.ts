@@ -24,6 +24,7 @@ import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as BashPlus from '../../src/index.ts'
+import { resolveWindowsTempDir } from '../../src/tools/shared/windows-tmp-path.ts'
 
 interface RecordedCall {
   command: string
@@ -347,6 +348,11 @@ describe('session cwd validation (S-16c)', () => {
     tmpDirs.push(dir)
     return dir
   }
+  const tmpDirInWindowsTemp = (prefix: string): string => {
+    const dir = fs.mkdtempSync(path.join(resolveWindowsTempDir(), prefix))
+    tmpDirs.push(dir)
+    return dir
+  }
 
   beforeEach(() => {
     recorded.length = 0
@@ -412,6 +418,51 @@ describe('session cwd validation (S-16c)', () => {
     const second = await call(h.ctx, { command: 'pwd', description: 'after recovery' }, h.agent)
     expect(second.isError).toBe(false)
     expect(recorded[0]!.options?.cwd).toBe(live)
+  })
+
+  it.skipIf(process.platform !== 'win32')('resolves an explicit /tmp workdir to the host temp directory', async () => {
+    const workspace = tmpDir('dsh-cwd-ws-')
+    const target = tmpDirInWindowsTemp('dsh-cwd-tmp-')
+    h = await harness({ autoBackgroundMs: 0 }, workspace)
+
+    const result = await call(
+      h.ctx,
+      { command: 'pwd', description: 'tmp workdir', workdir: '/tmp/' + path.basename(target) },
+      h.agent,
+    )
+    expect(result.isError).toBe(false)
+    expect(recorded[0]!.options?.cwd).toBe(target)
+  })
+
+  it.skipIf(process.platform !== 'win32')('resolves a leading cd /tmp to the host temp directory', async () => {
+    const workspace = tmpDir('dsh-cwd-ws-')
+    const target = tmpDirInWindowsTemp('dsh-cwd-tmp-')
+    h = await harness({ autoBackgroundMs: 0 }, workspace)
+
+    const result = await call(
+      h.ctx,
+      { command: 'cd "/tmp/' + path.basename(target) + '" && pwd', description: 'tmp cd' },
+      h.agent,
+    )
+    expect(result.isError).toBe(false)
+    expect(recorded[0]!.command).toBe('pwd')
+    expect(recorded[0]!.options?.cwd).toBe(target)
+  })
+
+  it.skipIf(process.platform !== 'win32')('normalizes a legacy logical /tmp session cwd', async () => {
+    const workspace = tmpDir('dsh-cwd-ws-')
+    const target = tmpDirInWindowsTemp('dsh-cwd-tmp-')
+    const logical = '/tmp/' + path.basename(target)
+    h = await harness({ autoBackgroundMs: 0 }, workspace)
+    nextWorkingDirs.push(logical)
+
+    const first = await call(h.ctx, { command: 'enter-target', description: 'move to logical /tmp' }, h.agent)
+    expect(first.isError).toBe(false)
+    recorded.length = 0
+
+    const second = await call(h.ctx, { command: 'pwd', description: 'after logical /tmp' }, h.agent)
+    expect(second.isError).toBe(false)
+    expect(recorded[0]!.options?.cwd).toBe(target)
   })
 
   it('recovers through an absolute leading cd while the session cwd is dead', async () => {

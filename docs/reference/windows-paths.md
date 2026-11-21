@@ -1,7 +1,7 @@
 # Windows 路径方言与 shell 边界
 
 对象：本插件的 `bash` 工具，OMP 18.12.6 / `brush-core` 0.5.0，Windows 10.0.28000。
-状态（2026-11-15）：0002 已本地覆盖“相对路径可执行文件”，0003 覆盖 `/cygdrive/<盘符>` 输入别名；两者都还不是已发布 addon 的行为。
+状态（2026-11-21）：0002 已本地覆盖“相对路径可执行文件”，0003 覆盖 `/cygdrive/<盘符>` 输入别名；两者都还不是已发布 addon 的行为。内置工具层新增 `/tmp` 映射（见 §4.1）。
 
 这份文档回答一个问题：**同一条路径，为什么 `pwd`、`cygpath`、Git Bash、`cmd.exe` 给出的写法不一样，模型应该信哪一个、shell 应该接受哪一个。**
 
@@ -32,7 +32,7 @@
 关键歧义：**`/foo` 在 Windows 原生是“当前盘根 + foo”，在 MSYS 是虚拟根。** 两边都合法，无法在不选边的情况下自动判断。本 shell 的选择是：
 
 - 只把明确的盘符别名（`/c`、`/mnt/c`、`/cygdrive/c`）翻译成盘根；
-- 其余 `/foo` 保留 Windows 原生语义（当前盘根）。
+- 其余 `/foo` 保留 Windows 原生语义（当前盘根），唯一例外是 `/tmp`：shell 与内置工具都把它映射到系统临时目录（见 §4.1）。
 
 ## 2. 谁输出什么（本机实测）
 
@@ -97,7 +97,27 @@ patterns::expand_pattern
   -> read_dir(根) + 逐段展开
 ```
 
-因此 `/cygdrive` 的代码改动只需要两个函数：
+### 4.1 `/tmp`：shell 与内置工具统一映射
+
+`/tmp` 是唯一被单独改写的 `/` 根。shell 的 `translate_unix_tmp_path` 已经把它映射到 Windows 临时目录；插件内置工具（read/write/edit/grep/glob/ast_edit/ast_grep，以及 bash 的 `workdir` 和前导 `cd`）现在走同一套规则，避免 `bash` 写 `%TEMP%`、read 却去 `C:\tmp` 找。
+
+临时目录的取值顺序与 Rust `env::temp_dir()` 一致：`TMP` → `TEMP` → 操作系统默认。只有字面小写 `/tmp` 根会映射，且先按 POSIX 语义折叠 `.`/`..`：
+
+| 输入 | 结果 |
+|---|---|
+| `/tmp` | 系统临时目录 |
+| `/tmp/a/b` | `<临时目录>\a\b` |
+| `/tmp/../tmp/x` | `<临时目录>\x` |
+| `/tmp/..` | 不映射，按当前盘根解析 |
+| `C:\tmp`、`C:/tmp`、`D:\tmp` | 原样不动 |
+| `\tmp`、`//tmp`、`//server/share/tmp` | 原样不动 |
+| `/tmpfoo`、`/TMP`、`///tmp` | 原样不动 |
+
+非 Windows 零改动。`C:\tmp` 是真实目录时不会被 `/tmp` 别名遮蔽；要访问它请直接写原生路径。
+
+### 4.2 `/cygdrive` 的接线点
+
+代码改动只需要两个函数：
 
 - `translate_unix_drive_path` / `drive_alias_parts`：普通路径；
 - `pattern_drive_alias_root_impl`：glob 根。
@@ -140,6 +160,7 @@ Cygwin 的 `/cygdrive` 前缀可配置；本实现只认默认值。自定义前
 | `C:foo` drive-relative | 不保证 | 依赖进程/盘的“当前目录”，和 shell 逻辑 cwd 不是一回事 |
 | 非 UTF-8 的别名路径 | 有局限 | `translate_unix_drive_path` 当前要求 UTF-8；原生 UTF-16 路径不受影响 |
 | 当前盘下真实存在 `\cygdrive\c` | 被别名遮蔽 | 0003 的已知风险；极罕见，文档记录 |
+| `/tmp` 之外的 `/foo` | 当前盘根 | 只有字面 `/tmp` 映射到系统临时目录；访问盘根 `\tmp` 请写 `C:\tmp` 或 `C:/tmp` |
 
 ## 7. 给模型的规则
 

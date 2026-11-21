@@ -100,8 +100,8 @@ describe('S-14c：patch 模式最终描述与 schema（patch: string）一致', 
     expect(desc).not.toMatch(/Entry\[\]/)
     expect(desc).not.toMatch(/op:\s*"(create|delete|update)"/)
     expect(desc).not.toMatch(/rename:\s*string/)
-    // schema 参数名是 file_path，不是裸 `path`
-    expect(desc).not.toContain('`path`')
+    // schema 参数名已与 OMP 对齐为 `path`，不再暴露 file_path
+    expect(desc).not.toContain('`file_path`')
   })
 
   it('含 unified-diff/apply_patch 信封说明与 @@ hunk 语法', async () => {
@@ -110,7 +110,7 @@ describe('S-14c：patch 模式最终描述与 schema（patch: string）一致', 
     expect(desc, 'adapter 应导出 EDIT_MODE_DESCRIPTIONS（sanitize 管线真值）').toBeTypeOf('string')
     expect(desc).toContain('*** Begin Patch')
     expect(desc).toContain('`patch`')
-    expect(desc).toContain('`file_path`')
+    expect(desc).toContain('`path`')
     expect(desc).toContain('@@')
   })
 })

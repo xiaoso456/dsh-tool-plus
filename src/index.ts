@@ -29,6 +29,7 @@ import { defaultInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { readNativeStatus } from './tools/shared/native-status.ts'
+import { normalizeWindowsUnixTmpPath } from './tools/shared/windows-tmp-path.ts'
 import { ensureInheritableHiddenConsole } from './host/win32-console.ts'
 import { applyPresetAction, comparePresetAgainstTemplate, listPresetStatuses } from './host/preset-host.ts'
 import { bashCardMeta } from './web/host/bash.ts'
@@ -253,7 +254,11 @@ export function apply(ctx: Context, config: Config = {}): void {
       // surface as the shell's cryptic "Failed to set cwd". The check also runs
       // before jobs.start, so a dead cwd never registers a doomed background
       // job. The explicit-workdir messages stay unchanged for compatibility.
-      const commandCwd = workdir === undefined ? state.cwd : resolveToCwd(workdir, state.cwd)
+      // The base cwd is normalized too: a legacy session may still carry a
+      // logical `/tmp/...` from an older shell snapshot. Native paths are
+      // unaffected, so this is a no-op for every normal session.
+      const baseCwd = normalizeWindowsUnixTmpPath(state.cwd)
+      const commandCwd = workdir === undefined ? baseCwd : resolveToCwd(workdir, baseCwd)
       const cwdLabel = workdir === undefined ? 'Session working directory' : 'Working directory'
       let cwdStat: fs.Stats
       try {
@@ -420,7 +425,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:edit',
     order: 102,
-    text: 'Use the edit tool — not shell sed — for literal replacements. `old_string` must appear exactly once by default; use `replace_all:true` for multiple occurrences. Multi-segment `edits[]` and unified `patch` are supported. Fuzzy matching helps with whitespace differences.',
+    text: 'Use the edit tool — not shell sed — for literal replacements. `old_string` must appear exactly once by default; use `replace_all:true` for multiple occurrences. Unified `patch` is supported. Fuzzy matching helps with whitespace differences.',
   })
   ctx.systemPrompt.section({
     name: 'tool:grep',

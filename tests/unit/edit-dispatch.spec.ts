@@ -77,6 +77,23 @@ describe('edit dispatch 聚合（A-7）', () => {
     // adapter 自造的 `Edited <path>: N replacement(s)` 单行
     expect(out.text).not.toMatch(/^Edited .+: \d+ replacement/)
   })
+
+  it('内部 edits[] 缺 newText：拒绝整条调用，文件保持原样', async () => {
+    const dir = tmpDir()
+    const file = path.join(dir, 'code.txt')
+    fs.writeFileSync(file, 'alpha\nbeta\n')
+
+    const err = await executeEditTool(execFor(dir), {} as never, {
+      file_path: file,
+      edits: [{ oldText: 'alpha' }],
+    }, null as never).then(
+      () => null,
+      (e: Error) => e,
+    )
+
+    expect(err?.message).toContain('edits[0] requires string oldText and newText')
+    expect(fs.readFileSync(file, 'utf8')).toBe('alpha\nbeta\n')
+  })
 })
 
 describe('edit 路径纠错（A-8）', () => {

@@ -29,6 +29,7 @@ import { formatMatchLine } from "./match-line-format";
 import type { OutputMeta } from "../../omp/tools/output-meta.ts";
 import {
 	expandDelimitedPathEntries,
+	formatPathNotFound,
 	hasGlobPathChars,
 	isLineInRanges,
 	type LineRange,
@@ -1079,7 +1080,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 							? ` (archive members were not searchable: ${archiveUnreadable.join(", ")})`
 							: "";
 					throw new ToolError(
-						`Path not found: ${missingPaths.join(", ")}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
+						`${formatPathNotFound(missingPaths.map(input => ({ input })), this.session.cwd)}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
 					);
 				}
 				const baseDisplayMode = resolveFileDisplayMode(this.session);

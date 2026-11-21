@@ -86,7 +86,7 @@ function FileMutationCard(props: RowProps & { title: string }) {
  * @returns one hunk, or `null` when the call is not the replace form.
  */
 function replaceHunks(args: Record<string, unknown> | null): DiffHunk[] | null {
-  const path = argText(args, 'file_path')
+  const path = argText(args, 'file_path') ?? argText(args, 'path')
   const oldText = argText(args, 'old_string')
   const newText = args?.new_string
   if (path === null || oldText === null || typeof newText !== 'string') return null

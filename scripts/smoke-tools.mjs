@@ -122,15 +122,15 @@ async function main() {
   ok('read 目录列表', !rError(r) && (textOf(r).includes('a.txt') || textOf(r).includes('📄')), textOf(r).slice(0, 60))
 
   // ── edit: replace ────────────────────────────────────────────────────────
-  r = await run(ctx, 'edit', { file_path: 'a.txt', old_string: 'v2-line2', new_string: 'v2-line2-EDITED' }, agent)
+  r = await run(ctx, 'edit', { path: 'a.txt', old_string: 'v2-line2', new_string: 'v2-line2-EDITED' }, agent)
   ok('edit replace', !rError(r) && readFileSync(join(work, 'a.txt'), 'utf8').includes('v2-line2-EDITED'))
 
-  r = await run(ctx, 'edit', { file_path: 'a.txt', old_string: '不存在的内容', new_string: 'x' }, agent)
+  r = await run(ctx, 'edit', { path: 'a.txt', old_string: '不存在的内容', new_string: 'x' }, agent)
   ok('edit replace 未命中报错', rError(r) || textOf(r).toLowerCase().includes('not found') || textOf(r).includes('occurrence'), textOf(r).slice(0, 80))
 
   // ── edit: patch (unified diff) ───────────────────────────────────────────
   const patch = '--- a.txt\n+++ a.txt\n@@ -1,2 +1,2 @@\n-v2-line1\n-v2-line2-EDITED\n+v2-line1-PATCHED\n+v2-line2-EDITED\n'
-  r = await run(ctx, 'edit', { file_path: 'a.txt', patch }, agent)
+  r = await run(ctx, 'edit', { path: 'a.txt', patch }, agent)
   ok('edit patch unified diff', !rError(r) && readFileSync(join(work, 'a.txt'), 'utf8').includes('v2-line1-PATCHED'), textOf(r).slice(0, 80))
 
   // ── edit: hashline ───────────────────────────────────────────────────────
