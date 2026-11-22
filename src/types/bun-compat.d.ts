@@ -41,7 +41,7 @@ declare global {
       bytes(): Promise<Uint8Array>
       writer(): Bun.FileSink
       stream(): ReadableStream<Uint8Array>
-      stat(): Promise<{ mtimeMs: number; size: number; isDirectory(): boolean }>
+      stat(): Promise<{ mtimeMs: number; size: number; isFile(): boolean; isDirectory(): boolean }>
       unlink(): Promise<void>
       write(content: string | Uint8Array | Blob | ArrayBuffer): Promise<void>
       slice(start?: number, end?: number): BunFile
@@ -76,6 +76,19 @@ declare global {
     /** PATH/PATHEXT lookup; `options.PATH`/`cwd` per Bun, `null` when absent. */
     const which: (command: string, options?: { PATH?: string; cwd?: string }) => string | null
     const sleep: (ms: number) => Promise<void>
+    /** Subprocess handle — only the fields verbatim OMP code reads (bun-shim.ts::bunSpawn). */
+    interface Subprocess {
+      readonly pid: number | undefined
+      readonly stdout: ReadableStream<Uint8Array> | null
+      readonly stderr: ReadableStream<Uint8Array> | null
+      readonly exited: Promise<number>
+      kill(signal?: string): boolean
+    }
+    function spawn(
+      argv: readonly string[],
+      options?: { cwd?: string; env?: Record<string, string | undefined>; stdout?: 'pipe'; stderr?: 'pipe' },
+    ): Subprocess
+
     const hash: {
       (input: string | ArrayBuffer | Uint8Array, seed?: number | bigint): number
       xxHash64(input: string | ArrayBuffer | Uint8Array, seed?: bigint): bigint

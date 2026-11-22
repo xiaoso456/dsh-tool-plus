@@ -1,4 +1,6 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { splitAddressableFileLines } from "@oh-my-pi/hashline";
 import { type } from "@oh-my-pi/omptype";
@@ -52,8 +54,28 @@ import {
 	scanFileForConflicts,
 } from "../../omp/tools/conflict-detect.ts";
 import { executeReadUrl, fetchReadUrl, parseReadUrlTarget } from "../../omp/tools/fetch.ts";
-import { ImageInputTooLargeError, type LoadedImageInput, loadImageInput, MAX_IMAGE_INPUT_BYTES, webpExclusionForModel } from "../../omp/utils/image-loading.ts";
-import type { ImageResizeOptions } from "../../omp/utils/image-resize.ts";
+import {
+	ImageInputTooLargeError,
+	type LoadedImageInput,
+	loadImageInput,
+	loadSvgImageInput,
+	MAX_IMAGE_INPUT_BYTES,
+	webpExclusionForModel,
+} from "../../omp/utils/image-loading.ts";
+import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "../../omp/utils/image-resize.ts";
+import {
+	buildVideoContactSheetPng,
+	extractVideoFramePng,
+	formatVideoDetails,
+	parseVideoSelector,
+	probeVideo,
+	splitVideoReadTarget,
+	VideoError,
+	type VideoMetadata,
+	type VideoPng,
+	videoMimeForPath,
+} from "../../omp/utils/video.ts";
+import { isVideoPath } from "@oh-my-pi/pi-tui/prompt/video";
 import {
 	formatImageUnsupportedNote,
 	imageByteCap,
@@ -75,9 +97,11 @@ import {
 } from "../../omp/tools/path-utils.ts";
 import { probeLiteralPathExists, splitPathAndSelPreferringLiteral } from "../../shared/win-path-fixes";
 import { readArchive, resolveArchiveReadPath } from "./read-archive";
+import { readJson, resolveJsonReadPath } from "./read-json";
 import {
 	BRACKET_CONTEXT_ELLIPSIS,
 	buildInMemoryMultiRangeResult,
+	buildInMemorySelectorResult,
 	buildInMemoryTextResult,
 	contiguousLineNumbers,
 	countTextLines,
@@ -102,7 +126,14 @@ import {
 	isRemoteMountPath,
 	type SuffixMatchCache,
 } from "./read-path-resolution";
-import { isMultiRange, isRawSelector, type ParsedSelector, parseSel, selToOffsetLimit } from "./read-selector";
+import {
+	isMultiRange,
+	isRawSelector,
+	type ParsedSelector,
+	parseSel,
+	resolveTailSelector,
+	selToOffsetLimit,
+} from "./read-selector";
 import { readSqlite, resolveSqliteReadPath } from "./read-sqlite";
 import { isProseSummaryPath, renderSummary, trySummarize } from "./read-summary";
 import { formatBytes, shortenPath } from "../../omp/tools/render-utils.ts";
@@ -127,6 +158,41 @@ async function readBracketContextFullLines(absolutePath: string, fileSize: numbe
 interface StreamFileLinesOptions {
 	includeTerminalNewline?: boolean;
 	stopScanAfterCollect?: boolean;
+}
+
+/** Byte value of `\n`, used by the line-counting scans. */
+const LF_BYTE = 0x0a;
+
+/**
+ * Count the lines of a file without materializing it, mirroring
+ * `streamLinesFromFile`'s final-line rule: an empty file counts as one line and a
+ * missing terminal newline leaves the last line open, while a terminal newline
+ * closes it. Only `:-N` reads pay this extra scan; `resolveFileTailSelector` in
+ * OMP 18.12.6 avoids it with a seek ring buffer, which needs a streamer that
+ * accepts a starting byte offset (not ported yet).
+ */
+async function countFileLines(filePath: string, signal?: AbortSignal): Promise<number> {
+	const chunk = Buffer.allocUnsafe(READ_CHUNK_SIZE);
+	const handle = await fs.open(filePath, "r");
+	let newlines = 0;
+	let position = 0;
+	let lastByte = -1;
+	try {
+		while (true) {
+			throwIfAborted(signal);
+			const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
+			if (bytesRead === 0) break;
+			const view = chunk.subarray(0, bytesRead);
+			for (let at = view.indexOf(LF_BYTE); at !== -1; at = view.indexOf(LF_BYTE, at + 1)) {
+				newlines++;
+			}
+			position += bytesRead;
+			lastByte = view[bytesRead - 1]!;
+		}
+	} finally {
+		await handle.close();
+	}
+	return newlines + (position === 0 || lastByte !== LF_BYTE ? 1 : 0);
 }
 
 async function streamLinesFromFile(
@@ -353,9 +419,17 @@ const readSchemaWithoutMemory = type({
 
 export type ReadToolInput = typeof readSchema.infer;
 
+/**
+ * Truncation facts without the duplicated output text. OMP types `details.truncation`
+ * this way everywhere; ours historically stored the whole `TruncationResult`, which
+ * keeps a second copy of content that is already in the result body. Both shapes are
+ * accepted so existing writers stay untouched.
+ */
+export type ReadTruncationStats = Omit<TruncationResult, "content">;
+
 export interface ReadToolDetails {
 	kind?: "file" | "url";
-	truncation?: TruncationResult;
+	truncation?: TruncationResult | ReadTruncationStats;
 	isDirectory?: boolean;
 	resolvedPath?: string;
 	suffixResolution?: { from: string; to: string };
@@ -460,6 +534,108 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 	}
 
 	/**
+	 * Video frame selectors (`:412`, `:1h5m42s`, `:0:05`) are not line selectors and
+	 * are not peeled by the path splitter. When the literal path does not exist, retry
+	 * the split as `<video>:<selector>` so the selector reaches the video reader.
+	 */
+	async #applyVideoSelectorFallback(
+		literalSplit: { path: string; sel?: string },
+		readPath: string,
+	): Promise<{ path: string; sel?: string }> {
+		const videoSplit = splitVideoReadTarget(readPath);
+		if (!videoSplit) return literalSplit;
+		if ((await probeLiteralPathExists(literalSplit.path, this.session.cwd)) === "exists") return literalSplit;
+		return videoSplit;
+	}
+	/**
+	 * Video read path (OMP 18.12.6). Bare path renders a contact-sheet preview grid;
+	 * a selector (`:412` frame or `:1h5m42s` timestamp) extracts exactly one frame.
+	 * Requires ffmpeg/ffprobe on PATH — without them the helpers throw a VideoError
+	 * carrying an install hint, which surfaces as a plain ToolError here.
+	 *
+	 * DSH deltas: no `question` parameter (this tree has no image-Q&A route), and the
+	 * resize switch comes from `images.autoResize` instead of a settings getter.
+	 */
+	async #readVideoFile(
+		absolutePath: string,
+		sel: string | undefined,
+		fileSize: number,
+		suffixResolution: { from: string; to: string } | undefined,
+		signal?: AbortSignal,
+	): Promise<AgentToolResult<ReadToolDetails>> {
+		const resolvedDisplayPath = formatPathRelativeToCwd(absolutePath, this.session.cwd);
+		const mimeType = videoMimeForPath(absolutePath);
+		const selector = parseVideoSelector(sel);
+		if (selector === null && sel !== undefined) {
+			throw new ToolError(
+				`Invalid selector ':${sel}' on '${resolvedDisplayPath}'. Use :<frame> (e.g. :412) or :<timestamp> (e.g. :1h5m42s, :90s) to extract a frame, or read without a selector for a preview grid.`,
+			);
+		}
+		const applySuffix = (text: string): string =>
+			suffixResolution ? prependSuffixResolutionNotice(text, suffixResolution) : text;
+		let meta: VideoMetadata;
+		try {
+			meta = await probeVideo(absolutePath, signal);
+		} catch (error) {
+			if (error instanceof VideoError) throw new ToolError(error.message);
+			throw error;
+		}
+		// DSH port: OMP branches here on `session.getActiveModel().input`, which this
+		// tree leaves unwired — image capability is decided by the attachment bridge
+		// (`routeImageSupport()`), exactly as it is for PNG reads. Keeping a second
+		// decision path would let the two disagree, so the frame is committed through
+		// #loadImageContent below and that single gate answers "can this model see it".
+		let png: VideoPng;
+		let label: string;
+		try {
+			if (selector) {
+				png = await extractVideoFramePng(absolutePath, selector, signal);
+				label =
+					selector.kind === "time"
+						? `Video frame: ${resolvedDisplayPath} @ ${selector.raw}`
+						: `Video frame: ${resolvedDisplayPath} (frame ${selector.frame})`;
+			} else {
+				const sheet = await buildVideoContactSheetPng(absolutePath, meta, signal);
+				png = sheet.png;
+				label = `Video preview grid: ${resolvedDisplayPath} (${sheet.thumbs} frames, ${sheet.cols}x${sheet.rows})`;
+			}
+		} catch (error) {
+			if (error instanceof VideoError) throw new ToolError(error.message);
+			throw error;
+		}
+		const detailsText = applySuffix(`${label}\n${formatVideoDetails(resolvedDisplayPath, meta, fileSize, mimeType)}`);
+		// Commit through the image path instead of returning an inline image block:
+		// DSH's read adapter only renders `details.image` (拍板#22), so an inline
+		// `{type:"image"}` block would be flattened away and the model would get
+		// metadata without ever seeing the frame.
+		const pngBytes = Buffer.from(png.data, "base64");
+		if (pngBytes.byteLength > MAX_IMAGE_INPUT_BYTES) {
+			throw new ToolError(
+				`Video preview too large: ${formatBytes(pngBytes.byteLength)} exceeds ${formatBytes(MAX_IMAGE_INPUT_BYTES)} limit.`,
+			);
+		}
+		const scratch = path.join(os.tmpdir(), `omp-video-${process.pid}-${crypto.randomUUID()}.png`);
+		await fs.writeFile(scratch, pngBytes);
+		try {
+			const committed = await this.#loadImageContent({
+				readPath: absolutePath,
+				absolutePath: scratch,
+				mimeType: png.mimeType,
+				imageMetadata: null,
+				fileSize: pngBytes.byteLength,
+				displayPath: resolvedDisplayPath,
+				extraNote: detailsText,
+			});
+			if (suffixResolution) {
+				const firstText = committed.content.find((entry): entry is TextContent => entry.type === "text");
+				if (firstText) firstText.text = applySuffix(firstText.text);
+			}
+			return committed;
+		} finally {
+			await fs.rm(scratch, { force: true });
+		}
+	}
+	/**
 	 * Image read path — OMP pipeline (loadImageInput → resizeImage) as the
 	 * skeleton, DSH attachment commit as the exit (upstream's inline base64
 	 * `ImageContent` has no counterpart in DSH's content model).
@@ -479,8 +655,20 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		imageMetadata: ImageMetadata | null;
 		fileSize: number;
 		displayPath: string;
+		/**
+		 * `"svg"` means the caller asked for `:img`: rasterize instead of returning
+		 * markup. SVG has no magic bytes, so `mimeType` is null on this path and the
+		 * rasterizer is the only source of the bytes we commit.
+		 */
+		imageKind?: "svg";
+		/**
+		 * Leading line for callers whose picture is not a plain file read (video
+		 * frames/preview grids). Prepended to the committed envelope text so the
+		 * model still sees what the picture is.
+		 */
+		extraNote?: string;
 	}): Promise<AgentToolResult<ReadToolDetails>> {
-		const { readPath, absolutePath, mimeType, imageMetadata, fileSize, displayPath } = options;
+		const { readPath, absolutePath, mimeType, imageMetadata, fileSize, displayPath, imageKind, extraNote } = options;
 		const finish = (
 			content: Array<TextContent | ImageContent>,
 			image?: SavedImageRef,
@@ -528,18 +716,25 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 		let loaded: LoadedImageInput;
 		try {
-			const maybeLoaded = await loadImageInput({
+			const loaderOptions = {
 				path: readPath,
 				cwd: this.session.cwd,
 				autoResize: this.#autoResizeImages,
 				maxBytes,
 				resolvedPath: absolutePath,
-				detectedMimeType: mimeType,
 				excludeWebP: this.#forceExcludeWebp ? true : webpExclusionForModel(this.session.getActiveModel?.()),
 				resize: this.#imageResizeOptions,
-			});
+			};
+			const maybeLoaded =
+				imageKind === "svg"
+					? await loadSvgImageInput(loaderOptions)
+					: await loadImageInput({ ...loaderOptions, detectedMimeType: mimeType });
 			if (!maybeLoaded) {
-				throw new ToolError(`Read image file [${mimeType}] failed: unsupported image format.`);
+				throw new ToolError(
+					imageKind === "svg"
+						? "The ':img' selector only rasterizes .svg and .svgz files. Read a raster image such as PNG or JPEG without ':img'."
+						: `Read image file [${mimeType}] failed: unsupported image format.`,
+				);
 			}
 			loaded = maybeLoaded;
 		} catch (error) {
@@ -576,6 +771,10 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			displayPath,
 		});
 		const blocks = imageContentBlocks(displayPath, saved);
+		if (extraNote) {
+			const first = blocks[0] as { text: string };
+			first.text = `${extraNote}\n${first.text}`;
+		}
 		// OMP dimension note keeps its meaning when our pre-resize downscaled the
 		// committed bytes (host originalDimensions then only reports the host-side
 		// hop); append it after the official envelope line.
@@ -827,31 +1026,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (!this.session.settings.get("fetch.enabled")) {
 				throw new ToolError("URL reads are disabled by settings.");
 			}
-			const urlRaw = parsedUrlTarget.raw;
-			const urlRanges = parsedUrlTarget.ranges;
-			if (urlRanges !== undefined && urlRanges.length > 1) {
+			// Ported from OMP 18.12.6 read.ts: the URL target carries the same
+			// ParsedSelector the file path uses, so `lines`/`tail` go through the one
+			// shared in-memory selector path (which also resolves the tail count).
+			const urlSel = parsedUrlTarget.sel;
+			const urlRaw = isRawSelector(urlSel);
+			if (urlSel.kind === "lines" || urlSel.kind === "tail") {
 				const entry = await fetchReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal, {
 					ensureArtifact: true,
 				});
-				return buildInMemoryMultiRangeResult(this.session, entry.output, urlRanges, {
+				return buildInMemorySelectorResult(this.session, entry.output, urlSel, {
 					details: { ...entry.details },
 					sourceUrl: entry.details.finalUrl,
 					entityLabel: "URL output",
-					raw: urlRaw,
-					immutable: true,
-				});
-			}
-			const urlOffset = parsedUrlTarget.offset;
-			const urlLimit = parsedUrlTarget.limit;
-			if (urlOffset !== undefined || urlLimit !== undefined) {
-				const entry = await fetchReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal, {
-					ensureArtifact: true,
-				});
-				return buildInMemoryTextResult(this.session, entry.output, urlOffset, urlLimit, {
-					details: { ...entry.details },
-					sourceUrl: entry.details.finalUrl,
-					entityLabel: "URL output",
-					raw: urlRaw,
 					immutable: true,
 				});
 			}
@@ -936,11 +1123,25 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			if (sqlitePath) {
 				return readSqlite(sqlitePath, signal);
 			}
+
+			// `file.json?q=<filter>` and `data.jsonl:20-40`: a JSON suffix routes to
+			// the query reader. Tried after archive/sqlite so a literal `?` filename
+			// still wins when it exists on disk (see `rawPathIsLiteral`).
+			const jsonPath = await resolveJsonReadPath(this.session, literalSplit.path, suffixCache, signal);
+			if (jsonPath) {
+				return readJson(this.session, jsonPath, literalSplit.sel, signal);
+			}
 		}
 
-		const localTarget = literalSplit;
+		const localTarget = await this.#applyVideoSelectorFallback(literalSplit, readPath);
 		const localReadPath = localTarget.path;
-		const parsed = parseSel(localTarget.sel);
+		// Video frame selectors (`:412`, `:1h5m42s`, `:0:05`) are not line selectors;
+		// keep them out of the line parser so they reach the video reader intact.
+		const parsed =
+			isVideoPath(localTarget.path) &&
+			(localTarget.sel === undefined || parseVideoSelector(localTarget.sel) !== null)
+				? ({ kind: "none" } as const)
+				: parseSel(localTarget.sel);
 
 		let absolutePath = resolveReadPath(localReadPath, this.session.cwd);
 		let suffixResolution: { from: string; to: string } | undefined;
@@ -1055,6 +1256,34 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		let truncationInfo:
 			| { result: TruncationResult; options: { direction: "head"; startLine?: number; totalFileLines?: number } }
 			| undefined;
+
+		// Video: bare path renders a preview grid, `:412` / `:1h5m42s` extracts one
+		// frame. Checked before the image branches because a video has no magic-byte
+		// mime the earlier dispatch would recognise.
+		if (isVideoPath(absolutePath)) {
+			return this.#readVideoFile(absolutePath, localTarget.sel, fileSize, suffixResolution, signal);
+		}
+
+		// `:img` rasterizes an SVG/SVGZ into a picture. SVG has no magic bytes, so it
+		// never reaches the `mimeType` branch below — this one has to come first.
+		if (parsed.kind === "image") {
+			// Validate the extension up front: a raster image must be read without
+			// `:img`, and saying so is more useful than any downstream image note.
+			if (ext !== ".svg" && ext !== ".svgz") {
+				throw new ToolError(
+					"The ':img' selector only rasterizes .svg and .svgz files. Read a raster image such as PNG or JPEG without ':img'.",
+				);
+			}
+			return this.#loadImageContent({
+				readPath,
+				absolutePath,
+				mimeType: "image/svg+xml",
+				imageMetadata,
+				fileSize,
+				displayPath: resolvedDisplayPath,
+				imageKind: "svg",
+			});
+		}
 
 		if (mimeType) {
 			return this.#loadImageContent({
@@ -1171,12 +1400,19 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			}
 
 			if (!content) {
-				if (isMultiRange(parsed) && parsed.kind === "lines") {
+				// `:-N` stays symbolic until the line count is known, and every branch
+				// below derives its window from the selector. Resolve once here so the
+				// plain-file path needs no tail awareness of its own.
+				const sel =
+					parsed.kind === "tail"
+						? resolveTailSelector(parsed, await countFileLines(absolutePath, signal))
+						: parsed;
+				if (isMultiRange(sel) && sel.kind === "lines") {
 					const multiResult = await this.#readLocalFileMultiRange(
 						absolutePath,
-						parsed.ranges,
+						sel.ranges,
 						fileSize,
-						parsed,
+						sel,
 						displayMode,
 						suffixResolution,
 						undefined, // plain-file read: deterministic and fast, never abort mid-read
@@ -1189,13 +1425,13 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					}
 				} else {
 					// Raw text or line-range mode
-					const { offset, limit } = selToOffsetLimit(parsed);
+					const { offset, limit } = selToOffsetLimit(sel);
 					// User-requested 0-indexed range start. Lines BEFORE this become
 					// leading context (added below if offset is explicit). Raw mode
 					// never adds context: without line numbers the padding is
 					// indistinguishable from requested content, so `raw:31-31` must
 					// return line 31 and nothing else.
-					const rawSelector = isRawSelector(parsed);
+					const rawSelector = isRawSelector(sel);
 					const requestedStart = offset ? Math.max(0, offset - 1) : 0;
 					const expandStart = !rawSelector && offset !== undefined && offset > 1;
 					const expandEnd = !rawSelector && limit !== undefined;

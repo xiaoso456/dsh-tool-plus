@@ -83,8 +83,36 @@ export async function dismissPreviewNotice(screen: Screen): Promise<void> {
  * `fill` 不敲键盘：宿主不靠按键事件做事，敲一遍只会让用例慢。
  */
 export async function sendPrompt(screen: Screen, text: string): Promise<void> {
-  await screen.getByRole('textbox', /调用指令/).fill(text)
-  await screen.getByRole('button', '发送消息').tap()
+  const box = screen.getByRole('textbox', /调用指令/)
+  const send = screen.getByRole('button', '发送消息')
+  await box.fill(text)
+  /**
+   * 填完到点发送之间，宿主可能把作曲区重渲染掉：草稿没了、发送键跟着回到禁用，
+   * 这时候点下去只会等到动作超时（实测偶发，重填一次就好）。以「发送键可用」为准最多补填三次，
+   * 仍然不可用就让最后的 tap 照常超时报错——别把真失败吞掉。
+   */
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      // 用带重试的断言等它可用，别读一次就跑：宿主的状态更新有延迟，瞬时读只会读到旧值。
+      await expect(send).toBeEnabled({ timeout: 5_000 })
+      break
+    } catch (error) {
+      if (attempt === 3) throw error
+      await box.fill(text)
+    }
+  }
+  await send.tap()
+}
+
+/**
+ * 等这一轮真的收尾。
+ *
+ * 收尾文本出现在界面上 ≠ 宿主已经空闲：流还在收、作曲区还挂着「正在发送消息」、发送键还禁用。
+ * 这时候换会话或发下一条，动作会打在还在跑的那个会话上——theme-cards 的第二轮就是栽在这里
+ * （填进去的字被重渲染清掉，发送键一直禁用，点它 30 秒超时）。
+ */
+export async function waitForTurnEnd(screen: Screen, timeoutMs = 120_000): Promise<void> {
+  await expect(screen.getByRole('button', '正在发送消息')).toBeHidden({ timeout: timeoutMs })
 }
 
 /**
@@ -110,15 +138,42 @@ export async function newSession(screen: Screen): Promise<void> {
  * 先开菜单，再点菜单项。
  */
 export async function openSettings(screen: Screen): Promise<void> {
-  await screen.getByRole('button', '账号菜单').tap()
-  await screen.getByRole('menuitem', '设置').tap()
-  await expect(screen.getByRole('button', '关闭')).toBeVisible()
+  /**
+   * 弹窗一出来就有左侧导航，右上那颗「关闭」要等内容异步加载完才挂上。宿主偶尔卡在这一步：
+   * 导航出来了、关闭键一直不出现（rc.5 上实测约两成），关掉重开一次又立刻正常。
+   * 所以给两次机会，每次 8 秒；两次都不出来就照旧抛错，不把真失败吞掉。
+   */
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const dialog = screen.getByRole('dialog', '设置')
+    // 上一轮卡住的弹窗可能还开着（只是缺头部）：先按 Esc 关掉，免得下一轮点不到菜单入口。
+    if (await dialog.count() > 0) await dialog.press('Escape').catch(() => {})
+    await screen.getByRole('button', '账号菜单').tap()
+    await screen.getByRole('menuitem', '设置').tap()
+    try {
+      await expect(screen.getByRole('button', '关闭')).toBeVisible({ timeout: 8_000 })
+      return
+    } catch (error) {
+      if (attempt === 2) throw error
+    }
+  }
 }
 
-/** 关掉设置面板，并等它真的消失。 */
+/**
+ * 关掉设置面板，并等它真的消失。
+ *
+ * 宿主换主题后会把整个弹窗重挂一遍，右上那颗「关闭」有一段时间根本不在 DOM 里（实测 30 秒都等不到），
+ * 有时候弹窗干脆自己就没了。所以「先点一下再断言消失」是错的：先等它在，在就点；最后只认一件事——
+ * 弹窗确实不在了（真没关掉时这一条会红，不吞失败）。
+ */
 export async function closeSettings(screen: Screen): Promise<void> {
-  await screen.getByRole('button', '关闭').tap()
-  await expect(screen.getByRole('button', '关闭')).toBeHidden()
+  const close = screen.getByRole('button', '关闭')
+  try {
+    await expect(close).toBeVisible({ timeout: 10_000 })
+    await close.tap()
+  } catch {
+    /* 已经关掉、或者重挂期间按钮不在：交给下面的断言判 */
+  }
+  await expect(close).toBeHidden({ timeout: 15_000 })
 }
 
 /** 主题三档：界面上的按钮文案 ↔ `<html data-ds-theme-source>` 的取值。 */
@@ -135,7 +190,14 @@ export type ThemeSource = keyof typeof THEME_LABELS
  * 面板得开着（调用方负责开）。
  */
 export async function setTheme(screen: Screen, browser: Browser, source: ThemeSource): Promise<void> {
-  await screen.getByRole('button', THEME_LABELS[source]).tap()
+  const name = THEME_LABELS[source]
+  // 外观方块被宿主收进「通用」分区行里，而设置弹窗会停在上次用过的分区：方块不在当前分区时先点回「通用设置」。
+  // 旧宿主没有这个分区按钮，点不到就跳过，仍然按原样找方块。
+  if ((await screen.getByRole('button', name).count()) === 0) {
+    const general = screen.getByRole('button', '通用设置')
+    if ((await general.count()) > 0) await general.tap()
+  }
+  await screen.getByRole('button', name).tap()
   await expect(browser.locator('html')).toHaveAttribute('data-ds-theme-source', source)
 }
 
@@ -212,6 +274,26 @@ export async function waitForModelRequest(
     if (Date.now() > deadline) throw new Error(`等模型请求超时（${String(timeoutMs)}ms）：${base}/__mock/requests`)
     await new Promise((resolve) => { setTimeout(resolve, 250) })
   }
+}
+
+/**
+ * 等这次对话**主轮次**的请求。
+ *
+ * 宿主除了主对话，还会为会话标题单独发一次请求，而标题请求把首条用户消息**原文**塞在里面
+ * （见宿主的 `frameMessages`：`Generate the session title from this JSON array of human messages`），
+ * 所以按 marker 找请求会先撞上它。那条请求是**故意不带工具**的，看起来就像「会话工具面是空的」。
+ * 场景给标题请求打的 turn 名是 `00-title`，据此排掉。
+ */
+export async function waitForMainTurnRequest(
+  mockUrl: string,
+  marker: string,
+  timeoutMs = 60_000,
+): Promise<MockRequestRow> {
+  return waitForModelRequest(
+    mockUrl,
+    (row) => row.turn !== '00-title' && userTextOf(row).includes(marker),
+    timeoutMs,
+  )
 }
 
 /** 假供应商记录的全部请求，按 seq 升序。 */

@@ -22,7 +22,7 @@ import { type WritethroughCallback, writethroughNoop } from "../../omp/tools/wri
 import writeDescription from "../../omp/prompts/tools/write.md" with { type: "text" };
 import type { ToolSession } from "../../omp/sdk.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
-import { type ArchiveMemberContent, archiveFormatFromPath, parseArchivePathCandidates, readArchiveEntries, writeArchive } from "../../omp/utils/zip.ts";
+import { type ArchiveMemberContent, archiveFormatFromPath, parseArchivePathCandidates, readArchiveEntries, writeArchive } from "../../shared/archive/index.ts";
 import { truncateForPrompt } from "../../omp/tools/approval.ts";
 import { assertEditableFile } from "./auto-generated-guard.ts";
 import { type ConflictEntry, conflictRegionPresent, conflictRegionsEqual, expandContentTokens, getConflictHistory, parseConflictUri, spliceConflict } from "../../omp/tools/conflict-detect.ts";

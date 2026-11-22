@@ -101,21 +101,32 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
   }
 
   it('sanitize 精确匹配串仍存在于对应 md（上游 drift 静默失配报警）', () => {
-    expect(readMd).toContain('Images → {{#if INSPECT_IMAGE_ENABLED}}metadata; call `inspect_image`{{else}}decoded inline{{/if}}.')
-    expect(readMd).toContain("- SHOULD use `read` (not browser) for web content; browser only when `read` can't deliver.\n")
-    expect(load(MD.grep)).toContain('Open-ended multi-round search MUST use {{#if scoutAvailable}}Task + scout,{{else}}Task,{{/if}} not chained calls.')
-    expect(load(MD.grep)).toContain('Searches files/internal URLs')
-    expect(load(MD.glob)).toContain('Globs files, directories, and path-backed internal URLs with fast pattern matching.')
-    expect(load(MD.glob)).toContain('`memory://` glob patterns are supported.')
+    // read.md 换成 18.12.6 逐字版后，sanitize 只剩「剔掉 browser 二选一那句」这一处替换，
+    // 这里钉住它要匹配的原文：上游改了这句就得跟着改，否则会静默失配（探针照旧通过、文案残留）。
+    expect(readMd).toContain('Use `read` for static web; browser only if needed.')
+    // URL 那句**不能**删：本仓 read 真的支持 URL（read.ts 导入 executeReadUrl/fetchReadUrl，
+    // tools/fetch.ts 与 web/ 都在库里）。删过一次，是因为只 grep 了 'http://' 字面量，
+    // 没看 import 就判了「未移植」。这条断言就是防那次误判复发。
+    expect(readMd).toContain('URLs: reader text/markdown, :raw original HTML')
+    // BINARY_VIEWS 整段由 {{#if}} 关掉（我们没移植 read-binary，它依赖 ida 子系统）。
+    expect(readMd).toContain('{{#if BINARY_VIEWS}}')
+    // grep 走 18.12.6 逐字文案后不再需要任何替换：find/Task/scout 段落全在
+    // {{#if}} 里，DSH 不传变量即整段消失。所以这里不再钉 grep 的替换串，
+    // 改由 search-prompt.spec.ts 钉「渲染后没有 find/Task 残留」。
+    // glob 只改 internal URL 的 scheme 举例（local:// 与 omp:// 在 DSH 不存在）。
+    expect(load(MD.glob)).toContain(
+      'Glob files/dirs: `;`-separated paths or internal URLs (`local://*.md`, `omp://**/*.md`); default workspace root.',
+    )
     expect(load(MD['ast-grep'])).toContain('Broad cross-subsystem exploration → {{#if scoutAvailable}}Task tool + scout{{else}}Task tool{{/if}} subagent first.')
     expect(load(MD['ast-edit'])).toContain('- Matches are STAGED as a proposal, not applied: finalize by writing a one-sentence reason to `xd://resolve` (apply) or `xd://reject` (discard).')
   })
 
   it('全 md 渲染后无 {{ 残留，且应剔除的 OMP 提法不出现', () => {
     const cases: Array<{ md?: string; text?: string; sanitize: (t: string) => string; vars?: OmpPromptVars; forbidden: string[] }> = [
-      { md: MD.read, sanitize: sanitizeReadPrompt, forbidden: ['{{', 'decoded inline', 'not browser'] },
-      { md: MD.grep, sanitize: sanitizeGrepPrompt, forbidden: ['{{', 'files/internal URLs', 'scout'] },
-      { md: MD.glob, sanitize: sanitizeGlobPrompt, forbidden: ['{{', 'memory://'] },
+      { md: MD.read, sanitize: sanitizeReadPrompt, forbidden: ['{{', 'browser only if needed', 'Binary views'] },
+      { md: MD.grep, sanitize: sanitizeGrepPrompt, forbidden: ['{{', 'scout', '`find`'] },
+      // scheme 举例必须被改写掉：DSH 没有 local://（内部协议已删）与 omp://。
+      { md: MD.glob, sanitize: sanitizeGlobPrompt, forbidden: ['{{', 'local://', 'omp://'] },
       { md: MD['ast-grep'], sanitize: sanitizeAstGrepPrompt, forbidden: ['{{', 'scout'] },
       { md: MD['ast-edit'], sanitize: sanitizeAstEditPrompt, forbidden: ['{{', 'xd://resolve'] },
       { md: MD.write, sanitize: sanitizeWritePrompt, forbidden: ['{{'] },
@@ -130,6 +141,13 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
       const out = renderOmpPrompt(sanitize(text ?? load(md ?? '')), vars ?? {})
       for (const f of forbidden) expect(out, `${label} 残留 "${f}"`).not.toContain(f)
     }
+  })
+
+  it('read 保留 URL / PDF / notebook 三条承诺（都实测可用）', () => {
+    const out = renderOmpPrompt(sanitizeReadPrompt(readMd), { IS_HL_MODE: false })
+    expect(out).toContain('URLs: reader text/markdown, :raw original HTML')
+    expect(out).toContain('PDF/documents: extracted text')
+    expect(out).toContain('notebooks: editable cells')
   })
 
   it('read 两种 editMode 变量下均无 {{ 残留', () => {

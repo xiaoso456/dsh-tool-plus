@@ -103,6 +103,10 @@ export function registerAstGrep(ctx: Context, getConfig: () => RuntimeConfig): (
         type: 'string',
         description: 'file, directory, glob, or internal URL to search; semicolon-delimited list',
       } as any,
+      lang: {
+        type: 'string',
+        description: 'language override, e.g. cpp for ambiguous .h files',
+      } as any,
       skip: { type: 'number', description: 'matches to skip' },
     },
     output: {
@@ -133,6 +137,7 @@ export function registerAstGrep(ctx: Context, getConfig: () => RuntimeConfig): (
         {
           pat: String(args.pat ?? ''),
           ...(args.path !== undefined ? { path: String(args.path) } : {}),
+          ...(args.lang !== undefined ? { lang: String(args.lang) } : {}),
           ...(args.skip !== undefined ? { skip: Number(args.skip) } : {}),
         },
         exec.signal,
@@ -143,7 +148,7 @@ export function registerAstGrep(ctx: Context, getConfig: () => RuntimeConfig): (
       card: 'generic',
       title: `AST Grep ${String(args.pat ?? '')}`,
       kind: 'execute',
-      rawInput: JSON.stringify({ pat: args.pat, path: args.path, skip: args.skip }),
+      rawInput: JSON.stringify({ pat: args.pat, path: args.path, lang: args.lang, skip: args.skip }),
     }),
     presentResult: (_args: any, result: any) => {
       if ((result as any)?.isError) return undefined

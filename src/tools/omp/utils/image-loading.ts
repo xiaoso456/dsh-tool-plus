@@ -13,6 +13,7 @@
  * under DSH the shared bun-shim resolves `Bun.Image` onto host-provided sharp.
  */
 import * as fs from "node:fs/promises";
+import { rasterizeSvg } from "@oh-my-pi/pi-natives";
 import type { ImageContent, Model } from "@oh-my-pi/pi-ai";
 import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@oh-my-pi/pi-utils";
 import { resolveReadPath } from "../tools/path-utils";
@@ -49,6 +50,9 @@ export function webpExclusionForModel(model: Pick<Model, "provider" | "api"> | u
 }
 
 export const MAX_IMAGE_INPUT_BYTES = 20 * 1024 * 1024;
+
+/** Longest edge used when rasterizing an SVG for the model (same bound as OMP 18.12.6). */
+const SVG_IMAGE_MAX_EDGE_PX = 2048;
 export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;
 
 export interface LoadImageInputOptions {
@@ -127,17 +131,42 @@ export async function loadImageInput(options: LoadImageInputOptions): Promise<Lo
 		throw new ImageInputTooLargeError(inputBuffer.byteLength, maxBytes);
 	}
 
-	let outputData = Buffer.from(inputBuffer).toBase64();
-	let outputMimeType = mimeType;
-	let outputBytes = inputBuffer.byteLength;
+	return finishImageInput({
+		resolvedPath,
+		bytes: inputBuffer,
+		mimeType,
+		label: "Read image file",
+		autoResize: options.autoResize,
+		excludeWebP: options.excludeWebP,
+		resize: options.resize,
+	});
+}
+
+/**
+ * Shared tail of both loaders: encode the accepted bytes as base64, optionally
+ * re-encode through {@link resizeImage}, and compose the model-facing note.
+ * `label` is what the note leads with ("Read image file" / "Read SVG file").
+ */
+async function finishImageInput(input: {
+	resolvedPath: string;
+	bytes: Uint8Array;
+	mimeType: string;
+	label: string;
+	autoResize: boolean;
+	excludeWebP?: boolean;
+	resize?: ImageResizeOptions;
+}): Promise<LoadedImageInput> {
+	let outputData = Buffer.from(input.bytes).toBase64();
+	let outputMimeType = input.mimeType;
+	let outputBytes = input.bytes.byteLength;
 	let dimensionNote: string | undefined;
 
-	const shouldReencodeWebP = options.excludeWebP === true && mimeType === "image/webp";
-	if (options.autoResize || shouldReencodeWebP) {
+	const shouldReencodeWebP = input.excludeWebP === true && input.mimeType === "image/webp";
+	if (input.autoResize || shouldReencodeWebP) {
 		try {
 			const resized = await resizeImage(
-				{ type: "image", data: outputData, mimeType },
-				{ ...options.resize, excludeWebP: options.excludeWebP },
+				{ type: "image", data: outputData, mimeType: input.mimeType },
+				{ ...input.resize, excludeWebP: input.excludeWebP },
 			);
 			outputData = resized.data;
 			outputMimeType = resized.mimeType;
@@ -148,17 +177,59 @@ export async function loadImageInput(options: LoadImageInputOptions): Promise<Lo
 		}
 	}
 
-	let textNote = `Read image file [${outputMimeType}]`;
+	let textNote = `${input.label} [${outputMimeType}]`;
 	if (dimensionNote) {
 		textNote += `\n${dimensionNote}`;
 	}
 
 	return {
-		resolvedPath,
+		resolvedPath: input.resolvedPath,
 		mimeType: outputMimeType,
 		data: outputData,
 		textNote,
 		dimensionNote,
 		bytes: outputBytes,
 	};
+}
+
+/**
+ * Load an SVG/SVGZ by rasterizing it to PNG first (OMP 18.12.6 `:img` selector).
+ *
+ * SVG is text, so a plain read returns the markup; `:img` is the explicit "show
+ * me the picture" request. Returns null for any other extension so the caller can
+ * keep its "only .svg/.svgz" error path.
+ */
+export async function loadSvgImageInput(options: LoadImageInputOptions): Promise<LoadedImageInput | null> {
+	const maxBytes = options.maxBytes ?? MAX_IMAGE_INPUT_BYTES;
+	const resolvedPath = options.resolvedPath ?? resolveReadPath(options.path, options.cwd);
+	const extension = resolvedPath.slice(resolvedPath.lastIndexOf(".")).toLowerCase();
+	if (extension !== ".svg" && extension !== ".svgz") return null;
+
+	const stat = await Bun.file(resolvedPath).stat();
+	if (stat.size > maxBytes) {
+		throw new ImageInputTooLargeError(stat.size, maxBytes);
+	}
+
+	const source = await fs.readFile(resolvedPath);
+	if (source.byteLength > maxBytes) {
+		throw new ImageInputTooLargeError(source.byteLength, maxBytes);
+	}
+
+	let png: Uint8Array;
+	try {
+		png = await rasterizeSvg(source, SVG_IMAGE_MAX_EDGE_PX, SVG_IMAGE_MAX_EDGE_PX);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Could not rasterize SVG: ${message}`);
+	}
+
+	return finishImageInput({
+		resolvedPath,
+		bytes: png,
+		mimeType: "image/png",
+		label: "Read SVG file",
+		autoResize: options.autoResize,
+		excludeWebP: options.excludeWebP,
+		resize: options.resize,
+	});
 }

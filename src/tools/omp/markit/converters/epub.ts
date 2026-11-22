@@ -1,7 +1,7 @@
 // Adapted from markit-ai (MIT). See ../NOTICE.
 import { XMLParser } from "@oh-my-pi/pi-utils/xml";
 import { createTurndown, normalizeTablesHtml } from "../../utils/turndown";
-import { unzip, unzipText } from "../../utils/zip";
+import { unzip, unzipText } from "../../../shared/archive/index.ts";
 import type { ConversionResult, Converter, StreamInfo } from "../types";
 
 const EXTENSIONS = [".epub"];
@@ -52,7 +52,7 @@ export class EpubConverter implements Converter {
 	}
 
 	async convert(input: Buffer, _streamInfo: StreamInfo): Promise<ConversionResult> {
-		const entries = unzip(input);
+		const entries = await unzip(input);
 		const parser = new XMLParser({
 			ignoreAttributes: false,
 			attributeNamePrefix: "@_",

@@ -12,7 +12,7 @@
 
 import { test } from '@e2e-dev/web'
 import { expect, type Screen } from 'e2e'
-import { expectNoPageErrors, openReady, openSettings, sendPrompt, toolNamesOf, userTextOf, waitForModelRequest } from './support/dsh-web'
+import { expectNoPageErrors, openReady, openSettings, sendPrompt, toolNamesOf, waitForMainTurnRequest } from './support/dsh-web'
 
 /** 开关的无障碍名（`src/client/locales.ts` 的 `astGrepEnabled`）。 */
 const AST_GREP_TOGGLE = '启用 ast_grep'
@@ -56,7 +56,7 @@ test('设置页关掉 ast_grep 会当轮改变会话工具面', async ({ app, sc
   const ask = async (stage: string): Promise<string[]> => {
     const marker = `E2E-TOGGLE-${stage}-${String(Date.now())}`
     await sendPrompt(screen, marker)
-    const row = await waitForModelRequest(mockUrl, (candidate) => userTextOf(candidate).includes(marker))
+    const row = await waitForMainTurnRequest(mockUrl, marker)
     return toolNamesOf(row)
   }
 

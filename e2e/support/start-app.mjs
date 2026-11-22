@@ -152,6 +152,15 @@ const options = parseArgs(process.argv.slice(2))
 const SCRATCH = path.join(RUNTIME_ROOT, 'scratch')
 fs.rmSync(SCRATCH, { recursive: true, force: true })
 fs.mkdirSync(SCRATCH, { recursive: true })
+
+/**
+ * 会话目录同样**每轮清空**，理由比夹具更硬：隔离 home 是复用的，而陈旧会话会把界面搞脏。
+ * 上一轮被强杀的会话里可能还挂着没跑完的轮次，宿主启动/打开时会去续它——凭据里记的还是**上一轮的假供应商地址**
+ * （端口每轮都变），于是它一边失败重试一边占着会话；侧栏越积越多，作曲区与设置弹窗时快时慢。
+ * 症状是随机的：某轮找「浅色」找不到、某轮发送键一直禁用、某轮设置弹窗 5 秒没出关闭键。
+ * 会话是这轮的消耗品，跟夹具一样没有跨轮价值。
+ */
+fs.rmSync(path.join(E2E_HOME, 'sessions'), { recursive: true, force: true })
 linkSharedStore()
 
 /**

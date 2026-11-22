@@ -21,7 +21,9 @@ import * as fs from 'node:fs'
 import * as fsp from 'fs/promises'
 import * as path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
-import { gzipSync } from 'node:zlib'
+import { spawn as nodeSpawn } from 'node:child_process'
+import { Readable } from 'node:stream'
+import { crc32 as nodeCrc32, gzipSync } from 'node:zlib'
 // json5 is kept external (neverBundle) so Node's ESM CJS default-interop
 // applies; rolldown's default-interop for inlined CJS yields undefined.
 import JSON5 from 'json5'
@@ -104,9 +106,16 @@ export class BunFileShim {
   }
 
   /** Bun extension: stat the file (patched Node implementation). */
-  async stat(): Promise<{ mtimeMs: number; size: number; isDirectory(): boolean }> {
+  // Bun's stat() hands back an fs.Stats-compatible view, so callers legitimately
+  // reach for isFile() as well (pi-utils' read-json does). Keep both predicates.
+  async stat(): Promise<{ mtimeMs: number; size: number; isFile(): boolean; isDirectory(): boolean }> {
     const st = await fsp.stat(this.path)
-    return { mtimeMs: st.mtimeMs, size: st.size, isDirectory: () => st.isDirectory() }
+    return {
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+      isFile: () => st.isFile(),
+      isDirectory: () => st.isDirectory(),
+    }
   }
 
   /** Bun extension: delete the file. */
@@ -379,10 +388,7 @@ function xxHash64Core(bytes: Uint8Array, seed: bigint | undefined): bigint {
  * offset basis).
  */
 function bunHash(data: string | ArrayBufferView | ArrayBuffer, seed?: number | bigint): number {
-  let bytes: Uint8Array
-  if (typeof data === 'string') bytes = new TextEncoder().encode(data)
-  else if (data instanceof ArrayBuffer) bytes = new Uint8Array(data)
-  else bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  const bytes = hashInputBytes(data)
   let h = seedToBasis(seed)
   for (const b of bytes) {
     h ^= b
@@ -396,6 +402,32 @@ function seedToBasis(seed: number | bigint | undefined): number {
   if (seed === undefined) return 0x811c9dc5
   if (typeof seed === 'bigint') return Number(BigInt.asUintN(32, seed)) >>> 0
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 0x811c9dc5
+}
+
+/** Coerce a `Bun.hash*` input (string | ArrayBuffer | view) to bytes. */
+function hashInputBytes(data: string | ArrayBufferView | ArrayBuffer): Uint8Array {
+  if (typeof data === 'string') return new TextEncoder().encode(data)
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+}
+
+/**
+ * `Bun.hash.crc32(bytes, seed?)` — CRC-32 (IEEE 802.3, reflected), chainable.
+ *
+ * Load-bearing for the archive layer: pi-utils routes every ZIP/CAB payload
+ * checksum through it (`@oh-my-pi/pi-utils` src/ar/checksums.ts:13 —
+ * `crc32(bytes, seed) => Bun.hash.crc32(bytes, seed) >>> 0`), so without the
+ * shim every archive write dies with "Bun.hash.crc32 is not a function".
+ *
+ * `node:zlib` ships the identical algorithm (Node 20.15 / 22.2+, and our
+ * `engines.node` floor is far above that) with the same seed contract: passing
+ * the previous final CRC continues the stream exactly like Bun's. Verified that
+ * `crc32("9", crc32("12345678")) === crc32("123456789") === 0xCBF43926`, so this
+ * delegates to the native path instead of reimplementing a JS table.
+ */
+function bunHashCrc32(data: string | ArrayBufferView | ArrayBuffer, seed?: number): number {
+  const initial = seed === undefined ? 0 : Math.trunc(seed) >>> 0
+  return nodeCrc32(hashInputBytes(data), initial) >>> 0
 }
 
 // Bun.stringWidth — east-asian width approximation (Bun's unicode width)
@@ -847,6 +879,7 @@ export interface BunShimSurface {
   sleep(ms: number): Promise<void>
   randomUUIDv7(): string
   stringWidth(s: string): number
+  spawn: typeof bunSpawn
   Glob: typeof GlobShim
   Archive: { write: typeof archiveWrite }
   FileSink: typeof FileSinkShim
@@ -862,6 +895,50 @@ export interface BunShimSurface {
   version: string
   hash: ((input: string | ArrayBuffer | Uint8Array, seed?: number | bigint) => number) & {
     xxHash64(data: string | ArrayBuffer | Uint8Array, seed?: bigint): bigint
+    crc32(data: string | ArrayBuffer | Uint8Array, seed?: number): number
+  }
+}
+
+/**
+ * Narrow `Bun.spawn` over `node:child_process`.
+ *
+ * Only the shape verbatim OMP code actually uses is provided: piped stdout/stderr
+ * as web streams (its helpers read them with `getReader()`), `exited` as a promise
+ * of the exit code, and `kill()`. Bun also exposes `stdin`, `ref`/`unref` and
+ * `resourceUsage`; nothing here needs them, and inventing them would be untested
+ * surface.
+ */
+function bunSpawn(
+  argv: readonly string[],
+  options: { cwd?: string; env?: Record<string, string | undefined>; stdout?: 'pipe'; stderr?: 'pipe' } = {},
+): {
+  pid: number | undefined
+  stdout: ReadableStream<Uint8Array> | null
+  stderr: ReadableStream<Uint8Array> | null
+  exited: Promise<number>
+  kill(signal?: NodeJS.Signals): boolean
+} {
+  const [command, ...args] = argv
+  if (command === undefined) throw new Error('Bun.spawn: argv must not be empty')
+  const child = nodeSpawn(command, args, {
+    cwd: options.cwd,
+    env: options.env as NodeJS.ProcessEnv | undefined,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  // Resolve on close (not exit) so every byte already written to the pipes has
+  // been delivered before the caller awaits the streams and the exit code together.
+  const exited = new Promise<number>((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', code => resolve(code ?? 0))
+  })
+  // A caller that only reads the streams must not trip an unhandled rejection.
+  exited.catch(() => undefined)
+  return {
+    pid: child.pid,
+    stdout: child.stdout ? (Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>) : null,
+    stderr: child.stderr ? (Readable.toWeb(child.stderr) as ReadableStream<Uint8Array>) : null,
+    exited,
+    kill: (signal?: NodeJS.Signals) => child.kill(signal),
   }
 }
 
@@ -871,6 +948,7 @@ export function installBunShim(): void {
   if (g.Bun !== undefined) return
   g.Bun = {
     file: (p: string) => new BunFileShim(p),
+    spawn: bunSpawn,
     write: bunWrite,
     env: process.env,
     which: bunWhich,
@@ -895,4 +973,6 @@ export function installBunShim(): void {
   // xxHash64 lives on the Bun.hash namespace in OMP usage (tui/utils HashChain)
   const bun = g.Bun as unknown as Record<string, unknown>
   ;(bun.hash as unknown as Record<string, unknown>).xxHash64 = bunHashXxHash64
+  // crc32 lives on the Bun.hash namespace in OMP usage (pi-utils archive checksums)
+  ;(bun.hash as unknown as Record<string, unknown>).crc32 = bunHashCrc32
 }

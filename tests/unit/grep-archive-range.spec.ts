@@ -13,7 +13,7 @@ import * as path from 'node:path'
 import { Settings } from '../../src/tools/omp/config/settings.ts'
 import { getDefault } from '../../src/tools/omp/config/settings-schema.ts'
 import { GrepTool } from '../../src/tools/omp/tools/grep.ts'
-import { zip } from '../../src/tools/omp/utils/zip.ts'
+import { zip } from '../../src/tools/shared/archive/index.ts'
 
 const tmpDirs: string[] = []
 function tmpDir(): string {
@@ -34,7 +34,7 @@ describe('grep 归档行区间（T13-9）', () => {
   it('`zip:data/numbers.txt:22-24` 只返回 22-24 行匹配', async () => {
     const dir = tmpDir()
     const lines = Array.from({ length: 30 }, (_, i) => `line-${i + 1}`)
-    const bytes = zip({ 'data/numbers.txt': new TextEncoder().encode(lines.join('\n')) })
+    const bytes = await zip({ 'data/numbers.txt': new TextEncoder().encode(lines.join('\n')) })
     const zipPath = path.join(dir, 'zip-demo.zip')
     fs.writeFileSync(zipPath, bytes)
 

@@ -89,29 +89,27 @@ describe('S-13：editFuzzyThreshold 显式 0/负值不得被 coercion 吞掉', (
   })
 })
 
-describe('S-14c：patch 模式最终描述与 schema（patch: string）一致', () => {
-  it('不含 JSON {path, edits} 教程，也不含 schema 不存在的参数名', async () => {
+describe('patch 模式描述与 schema 一致（2026-11-22 反转 A 方案：收 {path, edits}）', () => {
+  it('描述逐字保留 OMP 的 {path, edits} 教程（不再运行期改写）', async () => {
     const mod = await importAdapter()
     const desc = mod.EDIT_MODE_DESCRIPTIONS?.patch
     expect(desc, 'adapter 应导出 EDIT_MODE_DESCRIPTIONS（sanitize 管线真值）').toBeTypeOf('string')
-    // 旧 <parameters>：`// Input is { path: string, edits: Entry[] }. …` + `type Entry = …`
-    expect(desc).not.toMatch(/\{\s*path\s*:\s*string/)
-    expect(desc).not.toMatch(/type Entry\b/)
-    expect(desc).not.toMatch(/Entry\[\]/)
-    expect(desc).not.toMatch(/op:\s*"(create|delete|update)"/)
-    expect(desc).not.toMatch(/rename:\s*string/)
-    // schema 参数名已与 OMP 对齐为 `path`，不再暴露 file_path
+    // 这三样是 OMP patch.md 的 <parameters> 块原文，schema 已与它一致，所以必须保留。
+    expect(desc).toMatch(/\{\s*path\s*:\s*string,\s*edits\s*:\s*Entry\[\]/)
+    expect(desc).toMatch(/type Entry\b/)
+    expect(desc).toMatch(/op:\s*"(create|delete|update)"/)
+    expect(desc).toMatch(/rename:\s*string/)
+    // schema 参数名是 `path`，不暴露 file_path
     expect(desc).not.toContain('`file_path`')
   })
 
-  it('含 unified-diff/apply_patch 信封说明与 @@ hunk 语法', async () => {
+  it('保留 hunk 语法与 apply_patch 的切换建议（上游原文都有）', async () => {
     const mod = await importAdapter()
     const desc = mod.EDIT_MODE_DESCRIPTIONS?.patch
-    expect(desc, 'adapter 应导出 EDIT_MODE_DESCRIPTIONS（sanitize 管线真值）').toBeTypeOf('string')
-    expect(desc).toContain('*** Begin Patch')
-    expect(desc).toContain('`patch`')
-    expect(desc).toContain('`path`')
     expect(desc).toContain('@@')
+    // 上游 patch.md 把 `*** Begin Patch` 信封归给 apply_patch，本模式只讲 JSON 条目；
+    // 我们不再额外塞「建/删/改名请切 apply_patch」那句（patch 自己已支持）。
+    expect(desc).not.toContain('Creating, deleting or renaming files is not available in patch mode')
   })
 })
 
@@ -123,8 +121,8 @@ describe('A-8 后继：patch 模式执行前接 resolveEditPath（与 replace �
     fs.writeFileSync(real, 'Q1 revenue: 1000\nQ2 revenue: 2000\n')
 
     const out = await executeEditTool(execFor(dir), {} as never, {
-      file_path: 'quarterly-report-draft.txt',
-      patch: '@@\n Q1 revenue: 1000\n-Q2 revenue: 2000\n+Q2 revenue: 2100\n',
+      path: 'quarterly-report-draft.txt',
+      edits: [{ op: 'update', diff: '@@\n Q1 revenue: 1000\n-Q2 revenue: 2000\n+Q2 revenue: 2100\n' }],
     }, null as never)
 
     expect(out.text.replace(/\\/g, '/')).toContain('sub/quarterly-report-draft.txt')
@@ -136,8 +134,8 @@ describe('A-8 后继：patch 模式执行前接 resolveEditPath（与 replace �
   it('无近邻：仍报 File not found（纠错不得凭空建文件）', async () => {
     const dir = tmpDir()
     await expect(executeEditTool(execFor(dir), {} as never, {
-      file_path: 'missing-file.txt',
-      patch: '@@\n-x\n+y\n',
+      path: 'missing-file.txt',
+      edits: [{ op: 'update', diff: '@@\n-x\n+y\n' }],
     }, null as never)).rejects.toThrow(/File not found/i)
   })
 })

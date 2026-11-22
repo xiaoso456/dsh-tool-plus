@@ -18,6 +18,8 @@ import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { gzipSync } from 'node:zlib'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { executeReadTool, registerRead, renderReadOutput } from '../../src/tools/read/adapter/index.ts'
 import { resolveProbeResult } from '../../src/tools/shared/win-path-fixes.ts'
 import { FETCH_PROVIDER_ORDER, isCsrHtmlShell, renderHtmlToText } from '../../src/tools/omp/tools/fetch.ts'
@@ -289,6 +291,8 @@ async function startUrlServer(): Promise<number> {
 afterAll(() => {
   urlServer?.close()
   urlServer = undefined
+  htmlServer?.close()
+  htmlServer = undefined
 })
 
 /** 只有 bridge 开关的 ctx（URL 图片路径用）。 */
@@ -321,7 +325,43 @@ describe('URL 图片读取（拍板#22 端到端）', () => {
     expect(out.text).toContain('Fetched image content (image/png)')
     expect(out.text).toContain('Method: image-metadata')
   })
+
+  it('HTML 页面：native 后端转 markdown（正文 + frontmatter title）', async () => {
+    htmlPort = htmlPort || await startHtmlServer()
+    const out = await executeReadTool(execFor(process.cwd()), {} as never, { path: `http://127.0.0.1:${htmlPort}/doc.html` }, ctxForBridge(true))
+    expect(out.text).toContain('Method: native')
+    expect(out.text).toContain('# Hello URL')
+    expect(out.text).toContain('reader quality gate')
+  })
+
+  it('HTML 页面 `:raw`：返回原 HTML 而非 markdown', async () => {
+    htmlPort = htmlPort || await startHtmlServer()
+    const out = await executeReadTool(execFor(process.cwd()), {} as never, { path: `http://127.0.0.1:${htmlPort}/doc.html:raw` }, ctxForBridge(true))
+    expect(out.text).toContain('Method: raw')
+    expect(out.text).toContain('<article>')
+    expect(out.text).not.toContain('# Hello URL')
+  })
 })
+
+/** HTML 页面夹具：正文够长以通过 reader 的质量门（>100 非空白字符）。 */
+let htmlServer: http.Server | undefined
+let htmlPort = 0
+const HTML_PAGE = [
+  '<!doctype html><html><head><title>Doc</title></head><body><article>',
+  '<h1>Hello URL</h1>',
+  '<p>' + 'This paragraph exists so the reader quality gate accepts the page. '.repeat(6) + '</p>',
+  '<p>Second para with more words to pass the gate.</p>',
+  '</article></body></html>',
+].join('')
+
+async function startHtmlServer(): Promise<number> {
+  htmlServer = http.createServer((_req, res) => {
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.end(HTML_PAGE)
+  })
+  await new Promise<void>(resolve => htmlServer!.listen(0, '127.0.0.1', () => resolve()))
+  return (htmlServer.address() as { port: number }).port
+}
 
 /* -------------------------------------------------------------------------- */
 /* fetch 链的浏览器路由（不启动浏览器的部分）                                     */
@@ -428,5 +468,400 @@ describe('CSR shell routing (auto order, browser sits last)', () => {
     expect(result.ok).toBe(true)
     expect(result.method).toBe('native')
     expect(result.content).toContain('meta-description: The whole body')
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* read JSON/JSONL 查询（P1：OMP 18.12.6 read-json 移植）                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * jq 来自 vendored brush 的 Rust 内置（`pi-builtins/src/jq.rs`，jaq 3.1.1），
+ * 随插件自己的 shell 一起提供，不是外部可执行文件——所以这里不做可用性探测：
+ * 谁把这个内置拆了，read 的 JSON 能力就真的坏了，测试应当直接红。
+ */
+
+describe('read JSON/JSONL 查询', () => {
+  const readJson = async (dir: string, p: string) =>
+    executeReadTool(execForCwd(dir), {} as never, { path: p }, null as never)
+
+  it('q 投影出字符串时按 jq 默认加引号', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ name: 'a' }, { name: 'b' }]))
+    const out = await readJson(dir, 'data.json?q=.[].name')
+    expect(out.text).toBe('"a"\n"b"')
+  })
+
+  it('raw=true 输出不带引号的原始字符串', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ name: 'a' }, { name: 'b' }]))
+    const out = await readJson(dir, 'data.json?q=.[].name&raw=true')
+    expect(out.text).toBe('a\nb')
+  })
+
+  it('compact=true 每个值压成一行', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ name: 'a' }, { name: 'b' }]))
+    const out = await readJson(dir, 'data.json?q=.[]&compact=true')
+    expect(out.text).toBe('{"name":"a"}\n{"name":"b"}')
+  })
+
+  it('不带 compact 时按 jaq 缩进排版', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ name: 'a' }]))
+    const out = await readJson(dir, 'data.json?q=.[]')
+    expect(out.text).toBe('{\n  "name": "a"\n}')
+  })
+
+  it('limit 截断并给出可续读的下一页提示', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([1, 2, 3, 4, 5]))
+    const out = await readJson(dir, 'data.json?q=.[]&limit=2')
+    expect(out.text).toContain('1')
+    expect(out.text).toContain('2')
+    expect(out.text).toContain('offset=2')
+    expect(out.text).toContain('to continue')
+  })
+
+  it('过滤器里的 & 需转义成 %26，转义后仍原样传给 jq', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ tag: 'a&b' }, { tag: 'plain' }]))
+    const out = await readJson(dir, 'data.json?q=.[]%7Cselect(.tag%3D%3D%22a%26b%22)')
+    expect(out.text).toContain('a&b')
+    expect(out.text).not.toContain('plain')
+  })
+
+  it('过滤器里的 + 不被当空格解码', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), JSON.stringify([{ tag: 'a+b' }, { tag: 'a b' }]))
+    const out = await readJson(dir, 'data.json?q=.[]|select(.tag=="a+b")')
+    expect(out.text).toContain('a+b')
+    expect(out.text).not.toContain('a b')
+  })
+
+  it('JSONL 逐行 select', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'rows.jsonl'), '{"n":1}\n{"n":2}\n{"n":3}\n')
+    const out = await readJson(dir, 'rows.jsonl?q=select(.n>1)')
+    expect(out.text).toContain('"n": 2')
+    expect(out.text).toContain('"n": 3')
+    expect(out.text).not.toContain('"n": 1')
+  })
+
+  it('ndjson 同样被识别为 JSON 源', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'rows.ndjson'), '{"n":7}\n')
+    const out = await readJson(dir, 'rows.ndjson?q=.n')
+    expect(out.text).toContain('7')
+  })
+
+  it('过滤器语法错误时抛错并带出 jq 的 stderr', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'data.json'), '[]')
+    await expect(readJson(dir, 'data.json?q=.[|')).rejects.toThrow(/jq|JSON/i)
+  })
+
+  // 关键回归守卫：没有 ?q= 的普通 .json 必须还是原样文本读，不能被 JSON 分派抢走。
+  it('不带 ?q= 的 .json 仍按普通文本读取', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'plain.json'), '{\n  "a": 1\n}\n')
+    const out = await readJson(dir, 'plain.json')
+    expect(out.text).toContain('"a": 1')
+    expect(out.text).toMatch(/\d+[:|]/)
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* read tail 选择器 `:-N`（OMP 18.12.6 新增能力）                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 尾巴读是 18.12.6 才有的能力：v17.3.5 的 ParsedSelector 里没有 tail，
+ * 老代码把 `:-10` 当畸形选择器，实测报 `Path 'n.txt:-5' not found`。
+ * 这里的判据是「末尾 N 行、且不能漏出更早的行」，用零填充行名避免
+ * `row-1` 命中 `row-10` 这种子串假阳性。
+ */
+describe('read tail 选择器', () => {
+  const writeRows = (dir: string, n = 100): string => {
+    const p = path.join(dir, 'n.txt')
+    fs.writeFileSync(p, Array.from({ length: n }, (_, i) => `row-${String(i + 1).padStart(3, '0')}`).join('\n') + '\n')
+    return p
+  }
+
+  it(':-N 读文件末尾 N 行，且不含更早的行', async () => {
+    const dir = tmpDir()
+    writeRows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:-5' }, null as never)
+    for (const n of [96, 97, 98, 99, 100]) expect(out.text).toContain(`row-${String(n).padStart(3, '0')}`)
+    // 非 raw 的单范围读固定带 1 行前置上下文（4.6 节），所以 row-095 应当出现，
+    // 更早的 row-094 不能出现。逐字边界由下面的 :raw 用例钉住。
+    expect(out.text).toContain('row-095')
+    expect(out.text).not.toContain('row-094')
+  })
+
+  it(':-N 不会再被当成字面路径（旧行为是 Path not found）', async () => {
+    const dir = tmpDir()
+    writeRows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:-5' }, null as never)
+    expect(out.text).not.toContain('not found')
+    expect(out.text).toContain('row-100')
+  })
+
+  it(':-N 与 :raw 组合时返回逐字内容，不带行号前缀', async () => {
+    const dir = tmpDir()
+    writeRows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:-5:raw' }, null as never)
+    expect(out.text).toContain('row-100')
+    expect(out.text).not.toContain('row-095')
+    // raw 输出不该带 `96|` 这类行号前缀
+    expect(out.text).not.toMatch(/^\d+\|row-/m)
+  })
+
+  it(':-N 的 N 大于文件行数时退化为整文件', async () => {
+    const dir = tmpDir()
+    writeRows(dir, 3)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:-100' }, null as never)
+    expect(out.text).toContain('row-001')
+    expect(out.text).toContain('row-003')
+  })
+
+  it('普通行范围选择器不受影响', async () => {
+    const dir = tmpDir()
+    writeRows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:1-2' }, null as never)
+    expect(out.text).toContain('row-001')
+    expect(out.text).toContain('row-002')
+    expect(out.text).not.toContain('row-050')
+  })
+
+  it('字面文件名叫 n.txt:-5 时仍然优先读真文件', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'n.txt:-5'), 'literal file wins\n')
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:-5' }, null as never)
+    expect(out.text).toContain('literal file wins')
+  })
+})
+
+
+/* -------------------------------------------------------------------------- */
+/* 裸数字与逗号列表的语义（18.12.6 read.md 逐条写明）                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * read.md 第 5 行把四种语义写得很细，此前只验了部分：
+ * - `:50` 或 `:50-` 从 50 行起到文件尾（单独出现的裸数字是「往后」）；
+ * - 逗号列表里的裸数字是「那一行」（`:19,59` 只取两行）；
+ * - `:raw` 旁边的裸数字是「那一行」（`:17:raw`），而 `:17-:raw` 仍是往后。
+ *
+ * 这四条原先有两条是错的（`:19,59` 塌成 19 到文件尾、`:17:raw` 塌成 17 到文件尾），
+ * 根因是本地 parseLineRanges 丢掉了上游的 BareLineMode（`pinBare`）。
+ */
+describe('行选择器：裸数字与逗号列表语义', () => {
+  /** 100 行、row-001..row-100 的夹具（本地定义，不依赖别的 describe 里的闭包）。 */
+  const rows = (dir: string): string => {
+    const p = path.join(dir, 'n.txt')
+    fs.writeFileSync(p, Array.from({ length: 100 }, (_, i) => `row-${String(i + 1).padStart(3, '0')}`).join('\n') + '\n')
+    return p
+  }
+  it('单独裸数字从该行到文件尾', async () => {
+    const dir = tmpDir()
+    rows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:95' }, null as never)
+    expect(out.text).toContain('row-095')
+    expect(out.text).toContain('row-100')
+    expect(out.text).not.toContain('row-050')
+  })
+
+  it('逗号列表里的裸数字各取一行（:19,59 只取两行）', async () => {
+    const dir = tmpDir()
+    rows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:19,59' }, null as never)
+    expect(out.text).toContain('row-019')
+    expect(out.text).toContain('row-059')
+    expect(out.text).not.toContain('row-020')
+    expect(out.text).not.toContain('row-060')
+  })
+
+  it(':raw 旁边的裸数字只取那一行（:17:raw）', async () => {
+    const dir = tmpDir()
+    rows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:17:raw' }, null as never)
+    expect(out.text.trim()).toBe('row-017')
+  })
+
+  it(':17-:raw 仍是往后到文件尾', async () => {
+    const dir = tmpDir()
+    rows(dir)
+    const out = await executeReadTool(execForCwd(dir), {} as never, { path: 'n.txt:97-:raw' }, null as never)
+    expect(out.text).toContain('row-097')
+    expect(out.text).toContain('row-100')
+    expect(out.text).not.toContain('row-095')
+  })
+})
+
+
+/* -------------------------------------------------------------------------- */
+/* read 的 :img 选择器（OMP 18.12.6：把 SVG/SVGZ 栅格化成图片）                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 18.12.6 的 read.md 里写明：SVG/SVGZ 默认按文本返回，`:img` 才栅格化成图片，
+ * `:raw` 取原件；而栅格图片（PNG/JPEG）不需要 `:img`，带了要报错。
+ *
+ * 硬判据是 attachment mock 里的 magic 校验：它按声明的 mediaType 反查字节头，
+ * 不一致就抛 IMAGE_TYPE_MISMATCH。所以「`:img` 能提交成功」等价于
+ * 「rasterizeSvg 真的产出了合法 PNG」，不是「返回了点什么」。
+ */
+describe('read :img 选择器', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>'
+
+  it('SVG 默认按文本读（不栅格化）', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'pic.svg'), SVG)
+    const out = await executeReadTool(execFor(dir), {} as never, { path: 'pic.svg' }, ctxFor({}))
+    expect(out.text).toContain('<svg')
+    expect(out.image).toBeFalsy()
+  })
+
+  it(':img 把 SVG 栅格化成 PNG 并提交', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'pic.svg'), SVG)
+    const attachments = mockAttachments()
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'pic.svg:img' },
+      ctxFor({ attachments: attachments.service, llm: visionLlm }),
+    )
+    expect(out.image).toBeTruthy()
+    expect(attachments.saved).toHaveLength(1)
+    // mock 只在字节头与声明一致时才接受，所以「提交成功」本身就是硬证据：
+    // rasterizeSvg 产出了合法 PNG 字节。mediaType 不写死，因为 autoResize 会把
+    // 这张 16x16 的小图重编码成体积更小的 WebP（既有的 resize 策略，不是 bug）。
+    expect(['image/png', 'image/webp']).toContain(attachments.saved[0]!.mediaType)
+  })
+
+  it(':img 支持 .svgz（gzip 压缩的 SVG）', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'pic.svgz'), gzipSync(Buffer.from(SVG)))
+    const attachments = mockAttachments()
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'pic.svgz:img' },
+      ctxFor({ attachments: attachments.service, llm: visionLlm }),
+    )
+    expect(out.image).toBeTruthy()
+    expect(['image/png', 'image/webp']).toContain(attachments.saved[0]!.mediaType)
+  })
+
+  it('对栅格图片用 :img 会明确报错', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'pic.png'), PNG_BYTES)
+    await expect(
+      executeReadTool(execFor(dir), {} as never, { path: 'pic.png:img' }, ctxFor({})),
+    ).rejects.toThrow(/only rasterizes \.svg and \.svgz/)
+  })
+})
+
+
+/* -------------------------------------------------------------------------- */
+/* read 视频（OMP 18.12.6）：裸读预览网格，选择器取单帧                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 18.12.6 的 read.md 写明：视频需要 ffmpeg/ffprobe，裸路径给预览网格，
+ * 选择器取单帧。这里用真 ffmpeg 生成一段 2 秒 64x48 的测试视频再读，
+ * 不做 mock：真正的风险在参数拼装与进程交互上，mock 掉就测不到。
+ *
+ * ffmpeg/ffprobe 是**外部二进制**（不像 jq 是我们 shell 的内置），
+ * 所以没装的机器上跳过，红绿反映真实环境。
+ */
+describe('read 视频', () => {
+  const hasMediaTools = (() => {
+    try {
+      return (
+        spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0 &&
+        spawnSync('ffprobe', ['-version'], { stdio: 'ignore' }).status === 0
+      )
+    } catch {
+      return false
+    }
+  })()
+
+  const makeClip = (dir: string): string => {
+    const out = path.join(dir, 'clip.mp4')
+    execFileSync('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', 'testsrc=size=64x48:rate=10:duration=2',
+      '-pix_fmt', 'yuv420p', out,
+    ])
+    return out
+  }
+
+  it.skipIf(!hasMediaTools)('裸读返回预览网格并提交图片', async () => {
+    const dir = tmpDir()
+    makeClip(dir)
+    const attachments = mockAttachments()
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'clip.mp4' },
+      ctxFor({ attachments: attachments.service, llm: visionLlm }),
+    )
+    expect(out.text).toContain('Video preview grid: clip.mp4')
+    expect(out.image).toBeTruthy()
+    expect(attachments.saved).toHaveLength(1)
+  })
+
+  it.skipIf(!hasMediaTools)('帧号选择器取单帧', async () => {
+    const dir = tmpDir()
+    makeClip(dir)
+    const attachments = mockAttachments()
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'clip.mp4:5' },
+      ctxFor({ attachments: attachments.service, llm: visionLlm }),
+    )
+    expect(out.text).toContain('Video frame: clip.mp4 (frame 5)')
+    expect(out.text).toContain('Duration')
+    expect(out.image).toBeTruthy()
+  })
+
+  it.skipIf(!hasMediaTools)('时间戳选择器取单帧', async () => {
+    const dir = tmpDir()
+    makeClip(dir)
+    const attachments = mockAttachments()
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'clip.mp4:1s' },
+      ctxFor({ attachments: attachments.service, llm: visionLlm }),
+    )
+    expect(out.text).toContain('Video frame: clip.mp4 @ 1s')
+    expect(out.image).toBeTruthy()
+  })
+
+  it.skipIf(!hasMediaTools)('纯文本模型拿到不支持说明，不提交图片', async () => {
+    const dir = tmpDir()
+    makeClip(dir)
+    const attachments = mockAttachments()
+    const textOnly = { resolveModelInfo: async () => ({ inputModalities: ['text'] }) }
+    const out = await executeReadTool(
+      execFor(dir),
+      {} as never,
+      { path: 'clip.mp4' },
+      {
+        get: (k: string) => (k === 'attachments' ? attachments.service : k === 'llm' ? textOnly : undefined),
+        fs: {},
+        emit: () => undefined,
+      } as never,
+    )
+    // DSH 只有一条「模型能不能看图」的判据（attachment bridge 的 routeImageSupport），
+    // 所以纯文本模型读视频与读 PNG 得到同一种说明：不提交图片，也不假装给了预览。
+    expect(out.text).toContain('does not accept image input')
+    expect(out.image).toBeFalsy()
+    expect(attachments.saved).toHaveLength(0)
   })
 })

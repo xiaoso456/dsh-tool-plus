@@ -24,6 +24,7 @@ import {
   screenshotTraceTab,
   sendPrompt,
   setTheme,
+  waitForTurnEnd,
 } from './support/dsh-web'
 
 test('插件的工具卡片在亮色与暗色下都渲染得出来', { tags: ['theme'] }, async ({ app, screen, browser }) => {
@@ -45,6 +46,8 @@ test('插件的工具卡片在亮色与暗色下都渲染得出来', { tags: ['t
 
       // 剧本走完 = 卡片（bash / write / read / edit / grep / glob / AST 两件）都渲染过了。
       await expect(screen.getByText('MOCK_E2E_FINAL')).toBeVisible({ timeout: 120_000 })
+      // 收尾文本先到、流后收：不等它禁用的发送键回到空闲就换会话，下一轮会点空。
+      await waitForTurnEnd(screen)
       // 文件名用 ASCII：非 ASCII 标签会被产物命名规则折成一串下划线，图就没法按名字分辨了。
       // 拉高视口再拍：框架不做整页截图，长转录只能靠这一招看全。
       await screenshotTallPage(app, browser, theme === 'dark' ? 'cards-dark' : 'cards-light')

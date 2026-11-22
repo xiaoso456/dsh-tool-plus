@@ -8,9 +8,11 @@ import { prompt, untilAborted } from "@oh-my-pi/pi-utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../../omp/edit/file-snapshot-store.ts";
 import astGrepDescription from "../prompts/tools/ast-grep.md" with { type: "text" };
 import { isScoutSpawnable } from "../../omp/task/spawn-policy.ts";
+import { ensureGrammar, missingGrammarsNote, rerunWithGrammars } from "../../omp/utils/grammars.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
 import type { ToolSession } from "../sdk";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "../../omp/tools/fetch.ts";
+import { isRawSelector } from "../../omp/tools/read-selector.ts";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
 import { formatMatchLine } from "./match-line-format";
@@ -25,6 +27,7 @@ const astGrepSchema = type({
 	"path?": type("string").describe(
 		'file, directory, glob, or internal URL to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
 	),
+	"lang?": type("string").describe("language override, e.g. cpp for ambiguous .h files"),
 	"skip?": type("number").describe("matches to skip"),
 });
 
@@ -57,7 +60,14 @@ function retainAstFindMatch(matches: AstFindMatch[], capacity: number, candidate
 
 async function runMultiTargetAstGrep(
 	targets: Array<{ basePath: string; glob?: string }>,
-	options: { patterns: string[]; commonBasePath: string; skip: number; limit: number; signal?: AbortSignal },
+	options: {
+		patterns: string[];
+		commonBasePath: string;
+		lang?: string;
+		skip: number;
+		limit: number;
+		signal?: AbortSignal;
+	},
 ): Promise<{
 	matches: AstFindMatch[];
 	totalMatches: number;
@@ -65,10 +75,12 @@ async function runMultiTargetAstGrep(
 	filesSearched: number;
 	limitReached: boolean;
 	parseErrors?: string[];
+	missingGrammars?: string[];
 }> {
 	const retainedMatches: AstFindMatch[] = [];
 	const retainedCapacity = options.skip + options.limit + 1;
 	const parseErrors: string[] = [];
+	const missingGrammars = new Set<string>();
 	let totalMatches = 0;
 	let filesWithMatches = 0;
 	let filesSearched = 0;
@@ -76,6 +88,7 @@ async function runMultiTargetAstGrep(
 	for (const target of targets) {
 		const targetResult = await astGrep({
 			patterns: options.patterns,
+			lang: options.lang,
 			path: target.basePath,
 			glob: target.glob,
 			offset: 0,
@@ -88,6 +101,7 @@ async function runMultiTargetAstGrep(
 		filesSearched += targetResult.filesSearched;
 		limitReached = limitReached || targetResult.limitReached;
 		if (targetResult.parseErrors) parseErrors.push(...targetResult.parseErrors);
+		for (const language of targetResult.missingGrammars ?? []) missingGrammars.add(language);
 		for (const match of targetResult.matches) {
 			const absolute = path.resolve(target.basePath, match.path);
 			const rebased = path.relative(options.commonBasePath, absolute).replace(/\\/g, "/");
@@ -104,6 +118,7 @@ async function runMultiTargetAstGrep(
 		filesSearched,
 		limitReached: limitReached || visible.length > options.limit,
 		parseErrors: parseErrors.length > 0 ? parseErrors : undefined,
+		missingGrammars: missingGrammars.size > 0 ? [...missingGrammars] : undefined,
 	};
 }
 
@@ -204,7 +219,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 					if (!target) return undefined;
 					const materialized = await materializeReadUrlToFile(
 						this.session,
-						{ path: target.path, raw: target.raw },
+						{ path: target.path, raw: isRawSelector(target.sel) },
 						signal,
 					);
 					return { sourcePath: materialized.path, immutable: true };
@@ -213,22 +228,28 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			const { searchPath: resolvedSearchPath, scopePath, isDirectory, multiTargets, globFilter } = scope;
 
 			const DEFAULT_AST_LIMIT = 50;
-			const result = multiTargets
-				? await runMultiTargetAstGrep(multiTargets, {
-						patterns,
-						commonBasePath: resolvedSearchPath,
-						skip,
-						limit: DEFAULT_AST_LIMIT,
-						signal,
-					})
-				: await astGrep({
-						patterns,
-						path: resolvedSearchPath,
-						glob: globFilter,
-						offset: skip,
-						includeMeta: true,
-						signal,
-					});
+			if (params.lang) await ensureGrammar({ lang: params.lang });
+			const result = await rerunWithGrammars(() =>
+				multiTargets
+					? runMultiTargetAstGrep(multiTargets, {
+							patterns,
+							lang: params.lang,
+							commonBasePath: resolvedSearchPath,
+							skip,
+							limit: DEFAULT_AST_LIMIT,
+							signal,
+						})
+					: astGrep({
+							patterns,
+							lang: params.lang,
+							path: resolvedSearchPath,
+							glob: globFilter,
+							offset: skip,
+							includeMeta: true,
+							signal,
+						}),
+			);
+			const grammarNote = result.missingGrammars?.length ? missingGrammarsNote(result.missingGrammars) : undefined;
 
 			const normalizedParseErrors = (result.parseErrors ?? []).map(error => {
 				const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
@@ -270,9 +291,13 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				const parseMessage = cappedParseErrors.length
 					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
 					: "";
+				const grammarMessage = grammarNote ? `\n${grammarNote}` : "";
 				// Zero matches is useless even with parse issues: the follow-up
 				// call has already corrected course by the time compaction runs.
-				return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
+				return toolResult(baseDetails)
+					.text(`${noMatchMessage}${parseMessage}${grammarMessage}`)
+					.useless()
+					.done();
 			}
 
 			const useHashLines = resolveFileDisplayMode(this.session).hashLines;
@@ -369,6 +394,9 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			}
 			if (cappedParseErrors.length) {
 				outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
+			}
+			if (grammarNote) {
+				outputLines.push("", grammarNote);
 			}
 
 			return toolResult(details).text(outputLines.join("\n")).done();

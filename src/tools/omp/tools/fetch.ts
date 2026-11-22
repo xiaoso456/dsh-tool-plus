@@ -21,14 +21,15 @@ import {
 } from "../../shared/image-bridge.ts";
 import { CONVERTIBLE_EXTENSIONS } from "../utils/markit";
 import { ensureTool } from "../utils/tools-manager";
-import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../utils/zip";
+import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../../shared/archive/index.ts";
 import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "../web/parallel";
 import type { RenderResult, SpecialHandler } from "../web/scrapers/types";
 import { finalizeOutput, loadPage, looksLikeHtml, MAX_BYTES, MAX_OUTPUT_CHARS } from "../web/scrapers/types";
 import { convertWithMarkit, fetchBinary } from "../web/scrapers/utils";
 import { applyListLimit } from "./list-limit";
 import { type OutputMeta } from "./output-meta";
-import { isReadableUrlPath, type LineRange, parseLineRanges } from "./path-utils";
+import { isReadableUrlPath, type LineRange, parseLineRanges, parseTailCount } from "./path-utils";
+import type { ParsedSelector } from "./read-selector";
 import { formatBytes } from "./render-utils";
 import { listTables, looksLikeSqlite, renderTableList } from "./sqlite-reader";
 import { ToolAbortError, ToolError } from "./tool-errors";
@@ -147,28 +148,34 @@ function normalizeUrl(url: string): string {
 // like `host:port`, add a trailing slash before the selector (e.g. `https://example.com/:80`
 // to read line 80 of the document at `https://example.com/`).
 
+/** A readable external URL split from its trailing read selector. */
 export interface ParsedReadUrlTarget {
 	path: string;
-	raw: boolean;
-	offset?: number;
-	limit?: number;
-	/** Populated only when the selector carries 2+ ranges. Single-range stays on offset/limit. */
-	ranges?: readonly LineRange[];
+	sel: ParsedSelector;
 }
 
-/** Recognize a single selector token (`raw` or one/many line ranges). */
+/** Recognize a single selector token (`raw`, a line-range list, or `:-N`). */
 function isUrlSelectorToken(token: string): boolean {
-	if (token.toLowerCase() === "raw") return true;
+	const lower = token.toLowerCase();
+	if (lower === "raw") return true;
 	try {
-		return parseLineRanges(token) !== null;
+		if (parseLineRanges(token) !== null) return true;
+		return parseTailCount(token) !== null;
 	} catch {
-		// `parseLineRanges` throws `ToolError` for malformed ranges (e.g. `5+0`). Only treat the
-		// token as a selector when it parses cleanly so URL ports like `:80` keep flowing
-		// through to the URL path.
+		// `parseLineRanges`/`parseTailCount` throw `ToolError` for malformed selectors (e.g.
+		// `5+0`, `-0`). Only treat the token as a selector when it parses cleanly so URL
+		// ports like `:80` keep flowing through to the URL path.
 		return false;
 	}
 }
 
+/**
+ * Split a URL from its trailing read selector, mirroring OMP 18.12.6
+ * `fetch.ts::parseReadUrlTarget`: the result carries the SAME {@link ParsedSelector}
+ * the file path uses, so `read` applies `lines`/`tail` through one shared code path
+ * (`buildInMemorySelectorResult`). `raw` is decided up front and pinned into the
+ * selector, and a bare `N` beside `:raw` means that one line (not "N onward").
+ */
 export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null {
 	const repaired = repairCollapsedScheme(readPath);
 	const embedded = tryExtractEmbeddedUrlSelector(repaired);
@@ -177,38 +184,36 @@ export function parseReadUrlTarget(readPath: string): ParsedReadUrlTarget | null
 		return null;
 	}
 
-	let raw = false;
-	let ranges: readonly LineRange[] | undefined;
-	for (const sel of embedded?.sels ?? []) {
-		if (sel.toLowerCase() === "raw") {
-			raw = true;
-			continue;
-		}
-		if (ranges !== undefined) {
-			// Two range groups on the same URL (`…:5-10:20-30`) — combine with commas instead.
+	const tokens = embedded?.sels ?? [];
+	const raw = tokens.some(token => token.toLowerCase() === "raw");
+	let ranges: [LineRange, ...LineRange[]] | undefined;
+	let tail: number | undefined;
+	for (const token of tokens) {
+		if (token.toLowerCase() === "raw") continue;
+		if (ranges !== undefined || tail !== undefined) {
+			// Two selector groups on the same URL (`…:5-10:20-30`) — combine with commas instead.
 			throw new ToolError(
 				`URL selector has multiple range groups; combine them with commas (e.g. \`:5-10,20-30\`).`,
 			);
 		}
-		const parsed = parseLineRanges(sel);
-		if (parsed === null) {
+		ranges = parseLineRanges(token, raw ? "single" : "onward") ?? undefined;
+		if (ranges !== undefined) continue;
+		const count = parseTailCount(token);
+		if (count === null) {
 			// Shouldn't happen — isUrlSelectorToken vetted it. Belt-and-suspenders.
-			throw new ToolError(`Invalid URL line selector: ${sel}`);
+			throw new ToolError(`Invalid URL line selector: ${token}`);
 		}
-		ranges = parsed;
+		tail = count;
 	}
 
-	if (!ranges || ranges.length === 0) return { path: urlPath, raw };
-	if (ranges.length === 1) {
-		const r = ranges[0];
-		return {
-			path: urlPath,
-			raw,
-			offset: r.startLine,
-			limit: r.endLine !== undefined ? r.endLine - r.startLine + 1 : undefined,
-		};
-	}
-	return { path: urlPath, raw, ranges };
+	const sel: ParsedSelector = ranges
+		? { kind: "lines", ranges, raw }
+		: tail !== undefined
+			? { kind: "tail", count: tail, raw }
+			: raw
+				? { kind: "raw" }
+				: { kind: "none" };
+	return { path: urlPath, sel };
 }
 
 /**

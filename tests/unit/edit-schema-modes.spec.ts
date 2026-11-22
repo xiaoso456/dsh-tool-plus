@@ -12,7 +12,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/config/settings.ts'
-import { executeEditTool, registerEdit } from '../../src/tools/edit/adapter/index.ts'
+import { EDIT_MODE_DESCRIPTIONS, executeEditTool, registerEdit } from '../../src/tools/edit/adapter/index.ts'
 
 const tmpDirs: string[] = []
 function tmpDir(): string {
@@ -52,12 +52,18 @@ describe('edit schema 按模式暴露', () => {
     expect(schema.properties.input).toBeUndefined()
   })
 
-  it('patch：只暴露 path / patch，两者必填', () => {
+  it('patch：只暴露 path / edits，两者必填（OMP 18.12.6 形状）', () => {
     const schema = schemaFor('patch')
-    expect(Object.keys(schema.properties).sort()).toEqual(['patch', 'path'])
-    expect([...schema.required].sort()).toEqual(['patch', 'path'])
+    expect(Object.keys(schema.properties).sort()).toEqual(['edits', 'path'])
+    expect([...schema.required].sort()).toEqual(['edits', 'path'])
     expect(schema.properties.old_string).toBeUndefined()
     expect(schema.properties.input).toBeUndefined()
+    expect(schema.properties.patch, '旧 patch: string 别名已按 A 方案删除').toBeUndefined()
+    expect(schema.properties.edits.type).toBe('array')
+    // 条目形状守护：op/rename/diff（不是 replace 的 oldText/newText）
+    const entry = schema.properties.edits.items
+    expect(Object.keys(entry.properties).sort()).toEqual(['diff', 'op', 'rename'])
+    expect(entry.properties.op.enum).toEqual(['update', 'create', 'delete'])
   })
 
   it('hashline / apply_patch：只暴露必填 input', () => {
@@ -100,5 +106,19 @@ describe('单条 replace 的 new_string 守卫', () => {
       null,
     )
     expect(fs.readFileSync(file, 'utf8')).toBe(' world\n')
+  })
+})
+
+
+describe('replace 提示词里的 shell 指令与实际环境一致', () => {
+  const replaceDesc = () => (EDIT_MODE_DESCRIPTIONS as Record<string, string>).replace ?? ''
+
+  // 18.12.6 的 replace.md 在命令表里教 `sed -E -i`；我们原来是 `sd`。
+  // 实测本 shell 里没有 `sd`（command -v 为空），`sed -E -i` 可用（brush 的 uutils sed）。
+  // 这条守卫钉住文案不许再退回一个跑不通的命令。
+  it('教的是 sed -E -i，不是不存在的 sd', () => {
+    const text = replaceDesc()
+    expect(text).toContain("`sed -E -i 's/pattern/replacement/g' file`")
+    expect(text).not.toContain("`sd 'pattern'")
   })
 })

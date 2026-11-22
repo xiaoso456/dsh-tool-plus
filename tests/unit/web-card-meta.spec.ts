@@ -972,7 +972,7 @@ describe('web card metadata', () => {
         const out = await executeEditTool(
           execFor(dir),
           {} as never,
-          { file_path: file, patch: '@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma' },
+          { file_path: file, edits: [{ op: 'update', diff: '@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma' }] },
           null,
         )
         expect(pathSet(out)).toEqual(['a.ts'])

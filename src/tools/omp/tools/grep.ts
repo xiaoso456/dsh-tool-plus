@@ -20,9 +20,10 @@ import grepDescription from "../../grep/adapter/prompts/tools/grep.md" with { ty
 import { DEFAULT_MAX_COLUMN, type TruncationResult, truncateHead, truncateLine } from "../../omp/session/streaming-output.ts";
 import { isScoutSpawnable } from "../../omp/task/spawn-policy.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
-import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../../omp/utils/zip.ts";
+import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../../shared/archive/index.ts";
 import type { ToolSession } from "../../omp/sdk.ts";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "../../omp/tools/fetch.ts";
+import { isRawSelector } from "../../omp/tools/read-selector.ts";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "../../omp/tools/grouped-file-output.ts";
 import { formatMatchLine } from "./match-line-format";
@@ -107,8 +108,9 @@ interface GrepPathSpec {
  * Mirror of read's `parseSel` selector grammar (`read.ts`) so `grep` accepts
  * exactly the internal-URL selectors `read` accepts: a single chunk that is a
  * line range, `raw`, or `conflicts`; or a two-chunk compound of exactly one `raw`
- * plus one line range. Everything else (`:-10`, `:1-1:1-2`, `:conflicts:1-1`,
- * `:raw:conflicts`) is rejected.
+ * plus one line range. Everything else (`:1-1:1-2`, `:conflicts:1-1`,
+ * `:raw:conflicts`) is rejected, and so is the `:-N` tail added in OMP 18.12.6:
+ * a tail is a property of the source, which `grep` never reads whole.
  *
  * This mirrors the *accepted set* of `parseSel`; `read` rejects the same shapes
  * caller-side when a peeled internal-URL selector parses as `none`, so neither
@@ -160,7 +162,7 @@ async function parsePathSpecs(rawEntries: readonly string[], cwd: string): Promi
 			const parsed = parseLineRanges(split.sel);
 			if (!parsed) {
 				throw new ToolError(
-					`path entry "${entry}" — only line-range selectors like ":50-100" are supported (no ":raw"/":conflicts")`,
+					`path entry "${entry}" — only line-range selectors like ":50-100" are supported (no ":raw"/":conflicts"; the ":-N" tail is read-only)`,
 				);
 			}
 			if (hasGlobPathChars(split.path)) {
@@ -941,7 +943,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				if (!target) return undefined;
 				const materialized = await materializeReadUrlToFile(
 					this.session,
-					{ path: target.path, raw: target.raw },
+					{ path: target.path, raw: isRawSelector(target.sel) },
 					signal,
 				);
 				materializedExternalPaths.set(rawPath, materialized.path);
@@ -992,6 +994,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				let searchPath: string;
 				let scopePath: string;
 				let globFilter: string | undefined;
+				let bareGlob = false;
 				let isDirectory: boolean;
 				let multiTargets: ResolvedSearchTarget[] | undefined;
 				let exactFilePaths: string[] | undefined;
@@ -1018,6 +1021,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					exactFilePaths = scope.exactFilePaths;
 					missingPaths = scope.missingPaths;
 					globFilter = scope.globFilter;
+					bareGlob = scope.bareGlob;
 					for (const immutablePath of scope.immutableSourcePaths) {
 						immutableSourcePaths.add(immutablePath);
 					}
@@ -1181,6 +1185,10 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 									pattern: normalizedPattern,
 									path: searchPath,
 									glob: globFilter,
+									// `*.ts` matches at any depth; `dir/*.ts` only `dir`'s direct
+									// children. Without this the native default (`recursive: true`)
+									// widened an anchored glob over subdirectories too.
+									recursive: bareGlob,
 									ignoreCase,
 									multiline: effectiveMultiline,
 									hidden: true,

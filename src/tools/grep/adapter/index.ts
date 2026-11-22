@@ -17,6 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { AgentToolResult } from '@oh-my-pi/pi-agent-core'
 import type { RuntimeConfig } from '../../../config/settings.ts'
+import { ensureArtifactsDir } from '../../shared/artifacts.ts'
 import { renderOmpPrompt, sanitizeGrepPrompt } from '../../shared/omp-prompt.ts'
 import { Settings } from '../../omp/config/settings.ts'
 import { getDefault } from '../../omp/config/settings-schema.ts'
@@ -34,7 +35,17 @@ export type { ToolSession } from '../../omp/sdk.ts'
 function createToolSession(exec: any, cfg: RuntimeConfig): ToolSession {
   const cwd: string = exec?.agent?.session?.header?.cwd ?? process.cwd()
   const settings = new Settings(cfg, getDefault)
-  return { cwd, settings, hasEditTool: true }
+  const sessionId: string = exec?.agent?.session?.id ?? 'anonymous'
+  return {
+    cwd,
+    settings,
+    hasEditTool: true,
+    // URL 目标要先把抓取结果落成文件再搜（OMP 引擎的 materializeReadUrlContent）。
+    // 上游按会话给目录（会话日志去掉 .jsonl），DSH 插件拿不到日志路径，用会话 id
+    // 复刻同样的性质：每会话一个目录、互不共享。目录拿不到时引擎会给出
+    // 「cannot materialize read artifacts」而不是抛 IO 异常。
+    getArtifactsDir: () => ensureArtifactsDir(sessionId),
+  }
 }
 
 /** Extract the text content of an OMP AgentToolResult (throws on isError). */

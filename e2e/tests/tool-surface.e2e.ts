@@ -23,6 +23,7 @@ import {
   sendPrompt,
   toolNamesOf,
   userTextOf,
+  waitForMainTurnRequest,
   waitForModelRequest,
 } from './support/dsh-web'
 
@@ -50,7 +51,8 @@ test('会话工具面是本插件的，整轮剧本能在真宿主里跑完', { 
     `${nonce} 端到端验收：按剧本把 tool-plus 的工具依次跑一遍，这是渲染验证，不要自由发挥。`,
   )
 
-  const first = await waitForModelRequest(mockUrl, (row) => userTextOf(row).includes(nonce))
+  // 标题请求也带首条消息原文，别拿它当主轮次（那条请求故意不带工具）。
+  const first = await waitForMainTurnRequest(mockUrl, nonce)
   const tools = toolNamesOf(first)
   expect(PLUGIN_TOOLS.filter((name) => !tools.includes(name))).toEqual([])
   expect(tools.filter((name) => HOST_TOOLS_MUST_BE_ABSENT.includes(name))).toEqual([])

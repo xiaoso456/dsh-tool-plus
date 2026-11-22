@@ -16,8 +16,12 @@ const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 // `-` in parseLineRangeChunk. Keep this fragment and LINE_RANGE_CHUNK_RE in sync.
 const RANGE_CHUNK_SRC = String.raw`L?\d+(?:(?:[-+]|\.\.)L?\d+|-|\.\.)?`;
 const RANGE_LIST_SRC = `${RANGE_CHUNK_SRC}(?:,${RANGE_CHUNK_SRC})*`;
-const FILE_LINE_RANGE_RE = new RegExp(`^(?:${RANGE_LIST_SRC}|raw|conflicts)$`, "i");
-const FILE_LINE_RANGE_ONLY_RE = new RegExp(`^${RANGE_LIST_SRC}$`, "i");
+// Tail selector (":-N") reads the last N lines (OMP 18.12.6). Kept separate from
+// RANGE_CHUNK_SRC because a leading `-` is not a line range: nothing can be
+// resolved until the source's line count is known.
+const TAIL_CHUNK_SRC = String.raw`-\d+`;
+const FILE_LINE_RANGE_RE = new RegExp(`^(?:${RANGE_LIST_SRC}|${TAIL_CHUNK_SRC}|raw|conflicts|img)$`, "i");
+const FILE_LINE_RANGE_ONLY_RE = new RegExp(`^(?:${RANGE_LIST_SRC}|${TAIL_CHUNK_SRC})$`, "i");
 const FILE_RAW_ONLY_RE = /^raw$/i;
 // Permissive selector chunk for internal URLs — accepts well-formed selectors
 // plus common malformed shapes (e.g. `:-N`) so the read tool peels the entire
@@ -210,7 +214,11 @@ export interface LineRange {
 const LINE_RANGE_CHUNK_RE = /^L?(\d+)(?:(\.\.|[-+])L?(\d+)?)?$/i;
 
 /** Parse a single `N`, `N-M`, `N-`, `N+K`, or `..`-aliased (`N..M`, `N..`) chunk. Throws via {@link ToolError} on invalid bounds. */
-export function parseLineRangeChunk(sel: string): LineRange | null {
+/** What a bare `N` selects in a one-chunk list: lines `N` onward (`:50`), or the single line `N`. */
+export type BareLineMode = "onward" | "single"
+
+/** `pinBare` makes a separator-less `N` the single line `N` instead of "from `N` onward". */
+export function parseLineRangeChunk(sel: string, pinBare = false): LineRange | null {
 	const lineMatch = LINE_RANGE_CHUNK_RE.exec(sel);
 	if (!lineMatch) return null;
 	const rawStart = Number.parseInt(lineMatch[1]!, 10);
@@ -234,6 +242,8 @@ export function parseLineRangeChunk(sel: string): LineRange | null {
 			}
 			rawEnd = rhs;
 		}
+	} else if (pinBare) {
+		rawEnd = rawStart;
 	}
 	return { startLine: rawStart, endLine: rawEnd };
 }
@@ -243,11 +253,14 @@ export function parseLineRangeChunk(sel: string): LineRange | null {
  * the ranges in ascending order with overlapping/adjacent ranges merged so
  * downstream consumers can stream the file in a single forward pass per range.
  */
-export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null {
+export function parseLineRanges(sel: string, bare: BareLineMode = "onward"): [LineRange, ...LineRange[]] | null {
 	const chunks = sel.split(",");
+	// A lone `:50` means "from line 50" unless `bare` pins it. Inside a comma list,
+	// a bare number is that one line; otherwise `:19,59` collapses to "from 19 through EOF".
+	const pinBare = bare === "single" || chunks.length > 1;
 	const parsed: LineRange[] = [];
 	for (const chunk of chunks) {
-		const range = parseLineRangeChunk(chunk);
+		const range = parseLineRangeChunk(chunk, pinBare);
 		if (!range) return null;
 		parsed.push(range);
 	}
@@ -270,6 +283,26 @@ export function parseLineRanges(sel: string): [LineRange, ...LineRange[]] | null
 		merged.push(current);
 	}
 	return merged as [LineRange, ...LineRange[]];
+}
+
+/** `:-N` tail selector: anchored parse of the count. */
+/** `^-(\d+)$`: the capture group is the count, without the leading minus. */
+const TAIL_SELECTOR_RE = /^-(\d+)$/;
+
+/**
+ * Parse a `:-N` tail selector into N. Returns `null` when the chunk is not a
+ * tail selector; throws for `-0` (a count of zero is meaningless).
+ *
+ * Ported verbatim from OMP 18.12.6 `path-utils.ts::parseTailCount`. Callers use
+ * it where a bare `-N` chunk may appear beside line ranges (`fetch.ts` URL
+ * selectors), so `-N` must not be confused with a malformed range.
+ */
+export function parseTailCount(sel: string): number | null {
+	const match = TAIL_SELECTOR_RE.exec(sel);
+	if (!match) return null;
+	const count = Number.parseInt(match[1]!, 10);
+	if (count < 1) throw new ToolError("Tail selector -0 is invalid; use :-N with N >= 1 to read the last N lines.");
+	return count;
 }
 
 /**
@@ -1364,6 +1397,8 @@ export interface ToolScopeResolution {
 	searchPath: string;
 	scopePath: string;
 	globFilter: string | undefined;
+	/** True when the glob carries no directory prefix (`*.ts*`), so it matches at any depth. */
+	bareGlob: boolean;
 	isDirectory: boolean;
 	multiTargets?: ResolvedSearchTarget[];
 	exactFilePaths?: string[];
@@ -1379,6 +1414,16 @@ export interface ToolScopeResolution {
  *  4. derive a single search base path / glob, or a multi-target list,
  *  5. stat the resolved base path so callers can branch on directory vs file scope.
  */
+/**
+ * Whether a search glob is "bare": `*.ts` has no directory prefix, so the native
+ * search widens it to an any-depth pattern and matches everywhere below. A glob
+ * like `dir/*.ts` stays anchored to `dir`, and a URL base already scopes itself.
+ * Same rule as OMP 18.12.6.
+ */
+function isBareSearchGlob(raw: string, parsed: { glob?: string; basePath: string }): boolean {
+	return Boolean(parsed.glob) && ((!raw.includes("/") && !raw.includes("\\")) || parsed.basePath.endsWith("://"));
+}
+
 export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<ToolScopeResolution> {
 	const { rawPaths: inputs, cwd, internalUrlAction } = opts;
 	const normalizedRawPaths = inputs.map(normalizePathLikeInput);
@@ -1473,12 +1518,17 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 	let searchPath: string;
 	let scopePath: string;
 	let globFilter: string | undefined;
+	// A bare glob recurses; a directory-anchored one does not (see isBareSearchGlob).
+	// Multi-target scopes carry per-target globs relative to their own base, so the
+	// single `recursive` flag the native search takes stays false there.
+	let bareGlob = false;
 	let multiTargets: ResolvedSearchTarget[] | undefined;
 	let exactFilePaths: string[] | undefined;
 	if (effectivePaths.length === 1) {
 		const parsedPath = await parseSearchPathPreferringLiteral(effectivePaths[0] ?? ".", cwd);
 		searchPath = resolveToCwd(parsedPath.basePath, cwd);
 		globFilter = parsedPath.glob;
+		bareGlob = isBareSearchGlob(effectivePaths[0] ?? ".", parsedPath);
 		scopePath = formatPathRelativeToCwd(searchPath, cwd);
 	} else {
 		const multiSearchPath = await resolveExplicitSearchPaths(
@@ -1515,6 +1565,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		searchPath,
 		scopePath,
 		globFilter,
+		bareGlob,
 		isDirectory,
 		multiTargets,
 		exactFilePaths,

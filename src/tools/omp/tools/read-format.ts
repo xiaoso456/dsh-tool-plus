@@ -20,7 +20,8 @@ import {
 import { buildLineEntriesWithBlockContext, type LineEntry, lineEntriesToPlainText } from "../../omp/utils/block-context.ts";
 import { resolveFileDisplayMode } from "../../omp/utils/file-display-mode.ts";
 import { formatPathRelativeToCwd, type LineRange } from "../../omp/tools/path-utils.ts";
-import type { ReadToolDetails } from "./read";
+import type { ReadToolDetails, ReadTruncationStats } from "./read";
+import { isRawSelector, type ParsedSelector, resolveTailSelector, selToOffsetLimit } from "./read-selector.ts";
 import { formatBytes, shortenPath } from "../../omp/tools/render-utils.ts";
 import { ToolError } from "../../omp/tools/tool-errors.ts";
 import { toolResult } from "../../omp/tools/tool-result.ts";
@@ -282,21 +283,63 @@ function expandRangeWithContext(
 	};
 }
 
+/** Options shared by the in-memory (non-disk) renderers. Named to match OMP 18.12.6. */
+export interface InMemoryTextOptions {
+	details?: ReadToolDetails;
+	sourcePath?: string;
+	sourceUrl?: string;
+	sourceInternal?: string;
+	entityLabel: string;
+	ignoreResultLimits?: boolean;
+	raw?: boolean;
+	immutable?: boolean;
+}
+
+/** Drop the duplicated output text from a truncation result (see `ReadTruncationStats`). */
+export function toReadTruncationStats(result: TruncationResult): ReadTruncationStats {
+	const { content: _content, ...stats } = result;
+	return stats;
+}
+
+/** Lines `splitAddressableFileLines` would address: a terminal newline closes the last line. */
+function countSplitLines(text: string): number {
+	if (text.length === 0) return 0;
+	return countTextLines(text) - (text.endsWith("\n") ? 1 : 0);
+}
+
+/** Raw reads keep the addressable empty line of an empty source, as disk reads do. */
+function countRawLines(text: string): number {
+	return text.length === 0 ? 1 : countSplitLines(text);
+}
+
+/**
+ * Render any read selector against in-memory text, resolving `:-N` against the
+ * text's own line count first (OMP 18.12.6 does the same via `resolveTailSelector`).
+ */
+export async function buildInMemorySelectorResult(
+	session: ToolSession,
+	text: string,
+	parsed: ParsedSelector,
+	options: Omit<InMemoryTextOptions, "raw">,
+): Promise<AgentToolResult<ReadToolDetails>> {
+	const raw = isRawSelector(parsed);
+	const sel =
+		parsed.kind === "tail"
+			? resolveTailSelector(parsed, raw ? countRawLines(text) : countSplitLines(text))
+			: parsed;
+	if (sel.kind === "lines" && sel.ranges.length > 1) {
+		return buildInMemoryMultiRangeResult(session, text, sel.ranges, { ...options, raw });
+	}
+	const { offset, limit } = selToOffsetLimit(sel);
+	return buildInMemoryTextResult(session, text, offset, limit, { ...options, raw });
+}
+
 export function buildInMemoryTextResult(
 	session: ToolSession,
 	text: string,
 	offset: number | undefined,
 	limit: number | undefined,
-	options: {
-		details?: ReadToolDetails;
-		sourcePath?: string;
-		sourceUrl?: string;
-		sourceInternal?: string;
-		entityLabel: string;
-		ignoreResultLimits?: boolean;
-		raw?: boolean;
-		immutable?: boolean;
-	},
+	options: InMemoryTextOptions,
 ): AgentToolResult<ReadToolDetails> {
 	const displayMode = resolveFileDisplayMode(session, { raw: options.raw, immutable: options.immutable });
 	const details = options.details ?? {};
@@ -485,15 +528,7 @@ export function buildInMemoryMultiRangeResult(
 	session: ToolSession,
 	text: string,
 	ranges: readonly LineRange[],
-	options: {
-		details?: ReadToolDetails;
-		sourcePath?: string;
-		sourceUrl?: string;
-		sourceInternal?: string;
-		entityLabel: string;
-		raw?: boolean;
-		immutable?: boolean;
-	},
+	options: InMemoryTextOptions,
 ): AgentToolResult<ReadToolDetails> {
 	const displayMode = resolveFileDisplayMode(session, { raw: options.raw, immutable: options.immutable });
 	const details = options.details ?? {};

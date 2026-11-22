@@ -39,33 +39,72 @@ export function renderOmpPrompt(text: string, vars: OmpPromptVars): string {
 
 
 
-/** grep.md：internal URLs 提法 + scout 句剔除。 */
+/**
+ * grep.md：无需改写。
+ *
+ * 18.12.6 的文案里 `find`、`eagerDelegation`、`scoutAvailable` 三段都在
+ * {{#if}} 里，DSH 不传这些变量（strict:false → falsy），渲染时自动消失；
+ * 剩下的每一句都对得上我们的实现：native 层 Rust→PCRE2（lookbehind 实测生效，
+ * 内置 Rust regex 做不到）、`skip` 分页、file-only 选择器、跨行 `\n`、
+ * 裸 glob 任意深度 vs 目录锚定（本轮刚修）。
+ *
+ * `URL` 那句是真的：grep 搜 http 目标时，引擎把抓取结果写进
+ * `getArtifactsDir()` 再搜（`materializeReadUrlContent`）。DSH 没有 host 侧
+ * artifact 存储，原先把这里判成「不支持」并收窄文案；后来在 grep 的 session
+ * facade 上接了 `src/tools/shared/artifacts.ts`（tmpdir，与 bash spill 同法），
+ * 实测 http 页面能搜出命中（matchCount=1）、无命中报 No matches，文案随之恢复逐字。
+ */
 export function sanitizeGrepPrompt(text: string): string {
-  return text
-    .replace(/files\/internal URLs/, 'files')
-    .replace(/`path`: known files, directories, globs, internal URLs; roots `;`-separated\./, '`path`: known files, directories, globs; roots `;`-separated.')
-    .replace(/Open-ended multi-round search MUST use \{\{#if scoutAvailable\}\}Task \+ scout,\{\{else\}\}Task,\{\{\/if\}\} not chained calls\./, '')
-    .replace(/\n{3,}/g, '\n\n')
+  return text.trim()
 }
 
-/** glob.md：internal URL/memory:// 提法 + scout avoid 句剔除。 */
+/**
+ * glob.md：只改 internal URL 的 scheme 举例，其余逐字。
+ *
+ * 上游例子用的是 `local://` 与 `omp://`（后者还带任意深度模式），这两个 scheme 在 DSH 都不存在：
+ * `local://` 的内部协议解析已按既有决定整体删除（local-protocol.ts 里 canHandle 恒 false），
+ * `omp://` 是 OMP 宿主自己的命名空间。DSH 能 glob 的是「有落地文件的」internal URL
+ * （glob.ts 在 canHandle 为真且能解析出 backing file 时才展开，否则明确报错），
+ * 所以把这句改写成本仓的事实，能力本身不删也不减。
+ *
+ * `find` / `eagerDelegation` / `scoutAvailable` 段落由 `{{#ifAny}}` 控制，
+ * DSH 不传这些变量（strict:false → falsy），渲染时整段消失。
+ */
 export function sanitizeGlobPrompt(text: string): string {
   return text
-    .replace('Globs files, directories, and path-backed internal URLs with fast pattern matching.', 'Globs files and directories with fast pattern matching.')
-    .replace(/`memory:\/\/` glob patterns are supported\. `ssh:\/\/` has no local path; use `read`\. Other internal URLs accept exact paths only\.\n?/, '')
+    .replace(
+      'Glob files/dirs: `;`-separated paths or internal URLs (`local://*.md`, `omp://**/*.md`); default workspace root.',
+      'Glob files/dirs: `;`-separated paths or path-backed internal URLs; default workspace root.',
+    )
     .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
-/** read.md：browser 提法剔除 + 图片句改为 DSH 实际行为（拍板#22 附件提交）+ internal URIs 段删除（{{#if}} 由 renderer 处理）。 */
+/**
+ * read.md：只剔除 DSH 没有的「read 与 browser 二选一」那一处，其余逐字。
+ *
+ * 18.12.6 的 read.md 全部条件段都走 {{#if}}：
+ * - {{#if IS_HL_MODE}} 由 editMode 决定（既有的两种文案）；
+ * - {{#if BINARY_VIEWS}} 整行不渲染，我们没移植 read-binary（它依赖 ida 子系统），
+ *   用上游自己的开关关掉，不是私自删条目。
+ *
+ * 唯一剔除的是「read 与 browser 二选一」：DSH 没有 browser 工具。URL 那句留着，
+ * 因为本仓**真的支持**（`read.ts` 导入 `executeReadUrl` / `fetchReadUrl`，
+ * `tools/fetch.ts` 与 `web/` 子系统都在库里）。实测：非 raw 走 native 后端输出
+ * 带 frontmatter 的 markdown（`Method: native`），`:raw` 返回原 HTML，与文案一致。
+ * 教训：判断「某能力有没有移植」要看 import 与实跑，不能只 grep 字面量——
+ * 抽掉的 URL 分支就是这样误判过一次。
+ *
+ * 其余每一句都已对上实现（本轮补齐后）：:-N 尾巴、范围补 1 前 3 后（:raw 精确）、
+ * :img 栅格化与「栅格图带 :img 报错」、视频 ffmpeg 预览网格与取帧、JSON 查询、
+ * 归档全格式、SQLite、:conflicts、目录子项上限 12。
+ * 所以这里不再改写任何能力描述，只删掉一句关于「本仓没有 browser 工具」的选择建议。
+ */
 export function sanitizeReadPrompt(text: string): string {
   return text
-    .replace(
-      'Images → {{#if INSPECT_IMAGE_ENABLED}}metadata; call `inspect_image`{{else}}decoded inline{{/if}}.',
-      'Images (PNG/JPEG/WebP/GIF) → returned as an image block beside a `<path>` envelope; large images are downscaled before display, and text-only models get a metadata note instead.',
-    )
-    .replace('- SHOULD use `read` (not browser) for web content; browser only when `read` can\'t deliver.\n', '')
-    .replace(/\n- Internal URIs — all schemes take selectors.*?\n  Literal `:`, `?`, `#` → percent-encode \(`%3A`\/`%3F`\/`%23`\)\. Requires POSIX shell \(else `ssh` tool\)\.\n?/s, '\n')
+    .replace('Use `read` for static web; browser only if needed.\n\n', '')
     .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /** ast-edit.md：xd://resolve 预演确认协议已随内部路由删除；DSH 为预览后自动落盘（拍板#14）。 */

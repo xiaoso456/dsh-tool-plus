@@ -56,32 +56,12 @@ import replaceMd from './prompts/tools/replace.md' with { type: 'text' }
 // 原 `hashline/engine/prompt.md` 逐字节相同（CRLF 归一后），因此不再 vendored md。
 import { editDescription } from '../../hashline/native/index.ts'
 
-/**
- * S-14c：patch.md 是 OMP JSON patch 入口的 verbatim 提示词，其 <parameters>
- * 块教模型发 `{ path, edits: Entry[] }` 形状；而 DSH schema（registerEdit）只收
- * `patch: string`（unified-diff 文本 + `path` 定位文件），create/delete/
- * rename 走 `input` 的 `*** Begin Patch` 信封（apply_patch 模式）。此处把该块
- * 重写为与 schema 一致的参数说明，其余段落（hunk/anchor 语法、critical、avoid）
- * 保持 verbatim。sanitize 本体在 shared/omp-prompt.ts（不动）。
- */
-function rewritePatchParametersForSchema(description: string): string {
-  const block = /<parameters>[\s\S]*?<\/parameters>/.exec(description)
-  if (!block) return description
-  return description.replace(
-    block[0],
-    [
-      '<parameters>',
-      '- `path` (string, required): the file to patch.',
-      '- `patch` (string, required): unified diff applied to that file — one or more hunks, each beginning with `@@` (anchor optional); hunk body lines start with a space (context), `+` (add), or `-` (remove); every hunk must contain at least one change.',
-      '- Creating, deleting or renaming files is not available in patch mode: switch editMode to apply_patch and use a Codex `*** Begin Patch` envelope (`*** Add File:`, `*** Delete File:`, `*** Update File:` with `*** Move to:`).',
-      '</parameters>',
-    ].join('\n'),
-  )
-}
 /** OMP 原版按模式渲染的 edit 描述（prompts/tools/*.md verbatim + native hashline 描述）。 */
 export const EDIT_MODE_DESCRIPTIONS = {
   replace: renderOmpPrompt(sanitizeReplacePrompt(replaceMd), {}),
-  patch: rewritePatchParametersForSchema(renderOmpPrompt(sanitizePatchPrompt(patchMd), {})),
+  // 2026-11-22 A 方案反转：patch 模型面就是 OMP 的 `{ path, edits }`，所以提示词
+  // 逐字渲染，不再改写 <parameters> 块（原先那段改写函数已删除）。
+  patch: renderOmpPrompt(sanitizePatchPrompt(patchMd), {}),
   apply_patch: renderOmpPrompt(sanitizeApplyPatchPrompt(applyPatchMd), {}),
   hashline: renderOmpPrompt(sanitizeHashlinePrompt(editDescription('hashline')), {}),
 } as const
@@ -89,14 +69,28 @@ export const EDIT_MODE_DESCRIPTIONS = {
 type EditModeName = keyof typeof EDIT_MODE_DESCRIPTIONS
 
 /**
- * 每种模式只暴露自己那一套参数（A 方案，2026-11-21）：模型不再看到合并表，
- * required 也跟着模式走。edits[] 仍是内部兼容路径，不再出现在 schema 里。
+ * 每种模式只暴露自己那一套参数（A 方案，2026-11-21；2026-11-22 反转 patch 部分）：
+ * required 跟着模式走。patch 与 OMP 18.12.6 一致，收 `{ path, edits: Entry[] }`，
+ * 不再有 `patch: string` 这条内部别名（用户拍板按 A 对齐）。
  */
 function editParametersForMode(mode: EditModeName): Record<string, any> {
   if (mode === 'patch') {
     return {
-      path: { type: 'string', required: true, description: 'Path to the file to edit' },
-      patch: { type: 'string', required: true, description: 'Unified diff patch text to apply' },
+      path: { type: 'string', required: true, description: 'Path to the file to edit; applies to every entry.' },
+      edits: {
+        type: 'array',
+        required: true,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            op: { type: 'string', enum: ['update', 'create', 'delete'], description: 'Operation; defaults to update.' },
+            rename: { type: 'string', description: 'New path for update (moves the file).' },
+            diff: { type: 'string', description: 'Unified hunks for update; full file content for create; omitted for delete.' },
+          },
+        },
+        description: 'One or more edits applied to the path, in order.',
+      },
     }
   }
   if (mode === 'replace') {
@@ -168,6 +162,15 @@ function runPatchEntry(options: {
     allowCreateOverwrite: options.allowCreateOverwrite ?? false,
     writethrough: options.writethrough,
   })
+}
+
+/**
+ * `edits` 这个参数名被两种模式共用：replace 的条目是 `{oldText, newText}`，patch 的
+ * 条目是 `{op?, rename?, diff?}`。两种模式不会同时暴露参数表，但执行层靠形状分派
+ * （registerEdit 的 A 方案），所以这里按「有没有 replace 的字段」判别。
+ */
+function entriesLookLikeReplace(entries: readonly any[]): boolean {
+  return entries.some((entry: any) => entry !== null && typeof entry === 'object' && ('oldText' in entry || 'newText' in entry))
 }
 
 /** DSH edit 工具输出形状（output.schema 镜像）。 */
@@ -312,32 +315,48 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
       throw new Error('path (or file_path) must be a non-empty string')
     }
 
-    // patch mode (unified diff)
-    if (typeof args.patch === 'string' && args.patch.trim().length > 0) {
-      // A-8 后继：执行前与 replace/apply_patch 同款走 resolveEditPath 路径纠错
-      // （refs tools/edit/index.ts:556-560 三模式统一；本模式恒 op:update，
-      // mustExist 恒 true）。无近邻时原样返回，由引擎报 File not found。
-      const targetPath = await resolveEditPath(session, filePath, { mustExist: true, signal })
-      const result = await runPatchEntry({
-        session,
-        path: targetPath,
-        entry: { op: 'update', diff: args.patch },
-        signal,
-        writethrough,
-        allowFuzzy,
-        fuzzyThreshold,
-        // JSON patch mode: `op: "create"` doubles as the documented
-        // full-file overwrite (OMP index.ts patch mode).
-        allowCreateOverwrite: true,
-      })
-      return withEditCard(result, toText(result))
+    // patch mode (OMP 18.12.6 shape: { path, edits: [{ op?, rename?, diff? }] })
+    //
+    // 2026-11-22 反转 A 方案：`patch: string` 这条内部别名一并删除（用户拍板按 A 对齐）。
+    // 条目形状与 apply_patch 共用同一个引擎入口（executePatchSingle），差别只在信封。
+    const patchEntries: any[] | undefined =
+      Array.isArray(args.edits) && args.edits.length > 0 && !entriesLookLikeReplace(args.edits)
+        ? args.edits
+        : undefined
+    if (patchEntries !== undefined) {
+      // 上游 patch 模式是「单文件 + 多条目」：`path` 对所有条目生效。
+      //
+      // mustExist 按条目语义分流：`op: create` 是建新文件，绝不能走「唯一后缀纠错」
+      // （否则会把 dir/new.txt 纠到别的目录同名文件上）；update/delete 必须存在，
+      // 因此保留与 replace 同款的工作区后缀纠错（A-8）。混合调用按「需要存在」处理，
+      // 由引擎报出准确原因。
+      const allCreate = patchEntries.every((e: any) => (e?.op ?? 'update') === 'create')
+      const targetPath = await resolveEditPath(session, filePath, { mustExist: !allCreate, signal })
+      const runs = patchEntries.map((entry: any) => async () =>
+        runPatchEntry({
+          session,
+          path: targetPath,
+          entry,
+          signal,
+          writethrough,
+          allowFuzzy,
+          fuzzyThreshold,
+          // JSON patch 的 `op: "create"` 是文档化的整文件覆盖（与 apply_patch 的
+          // `*** Add File` 严格不覆盖刻意不同）。
+          allowCreateOverwrite: true,
+        }),
+      )
+      const result = await executeSinglePathEntries(targetPath, runs, undefined, undefined, cwd, signal)
+      return toEditToolResult(result, patchEntries.length, undefined)
     }
 
     // replace mode (single or internal multi-segment)
-    // edits[] 不再出现在模型面 schema，但 adapter 仍保留兼容；单条路径必须显式
-    // 给出 new_string，缺失时不能当成空串删除。
+    // `edits` 在 replace 模式是内部批量路径（模型面只暴露 old_string/new_string）；
+    // 单条路径必须显式给出 new_string，缺失时不能当成空串删除。
     const hasEdits = Array.isArray(args.edits) && args.edits.length > 0
     if (hasEdits) {
+      // 走到这里说明条目带 oldText/newText（patch 形状在上面已被形状分派拦走），
+      // 所以下面按 replace 语义校验；混合形状会落到逐条的字段缺失报错上。
       // 内部批量路径同样不能把缺失的 newText 当成空串删除。
       for (const [idx, entry] of args.edits.entries()) {
         if (typeof entry?.oldText !== 'string' || typeof entry?.newText !== 'string') {
@@ -406,10 +425,11 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
 
 /**
  * Register the edit tool. The exposed parameter table follows `editMode`
- * (A 方案); execution still dispatches by argument shape:
+ * (A 方案，patch 于 2026-11-22 起与 OMP 一致收 `{path, edits}`); execution
+ * dispatches by argument shape:
  *  - `input` present → hashline, or apply_patch when it starts with `***`
- *  - `patch` present → unified-diff patch mode
- *  - `edits` present (or old_string) → replace mode
+ *  - `edits` with patch fields (`op`/`diff`/`rename`) → patch mode
+ *  - `edits` with `oldText`/`newText`, or `old_string` → replace mode
  */
 export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () => void {
   // 返回 disposer：editMode 热更新时重注册，同时刷新描述和参数表（见 src/index.ts）。

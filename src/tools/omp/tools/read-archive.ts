@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import type { TextContent } from "@oh-my-pi/pi-ai";
 import type { ToolSession } from "../../omp/sdk.ts";
 import { truncateHead } from "../../omp/session/streaming-output.ts";
-import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../../omp/utils/zip.ts";
+import { type ArchiveReader, formatArchiveEntryLines, openArchive, parseArchivePathCandidates } from "../../shared/archive/index.ts";
 import { applyListLimit } from "../../omp/tools/list-limit.ts";
 import { resolveReadPath } from "../../omp/tools/path-utils.ts";
 import type { ReadToolDetails } from "./read";
