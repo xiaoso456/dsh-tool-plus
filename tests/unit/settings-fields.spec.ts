@@ -266,10 +266,15 @@ describe('grouping sanity', () => {
       'grepCaseDefault',
       'grepGitignoreDefault',
     ])
-    // glob tab 已恢复（2 个默认值开关）
+    // glob tab：2 个默认值开关 + 2 个条数配置（默认值 / 上限）
     const globTab = TOOL_PLUS_TABS.find(t => t.id === 'glob')
     expect(globTab).toBeDefined()
-    expect(globTab!.fields).toEqual(['globGitignoreDefault', 'globHiddenDefault'])
+    expect(globTab!.fields).toEqual([
+      'globGitignoreDefault',
+      'globHiddenDefault',
+      'globLimitDefault',
+      'globLimitMax',
+    ])
     // astGrep/astEdit tab 各有 1 个启用开关
     const astGrepTab = TOOL_PLUS_TABS.find(t => t.id === 'astGrep')
     expect(astGrepTab).toBeDefined()

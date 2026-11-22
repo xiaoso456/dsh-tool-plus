@@ -35,6 +35,9 @@ export const OMP_KEY_TO_FIELD: Record<string, string | undefined> = {
   // grep.*
   'grep.contextBefore': 'grepContextBefore',
   'grep.contextAfter': 'grepContextAfter',
+  // glob.*（DSH 扩展键，上游不存在；glob 的条数上限上游是常量）
+  'glob.limitDefault': 'globLimitDefault',
+  'glob.limitMax': 'globLimitMax',
   // 工具启用开关（ast_grep/ast_edit；glob/grep 不设开关，默认开启）
   'astGrep.enabled': 'astGrepEnabled',
   'astEdit.enabled': 'astEditEnabled',
@@ -102,6 +105,10 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   // DSH 扩展：默认值 = 上游硬编码常量（不配零行为变化）——image-resize.ts:27-44 /
   // image-loading.ts:15（20MiB）；excludeWebp 等价 OMP_NO_WEBP=1 的手动 override。
   'images.excludeWebp': false,
+  // glob 的条数默认值与夹取上限（上游 glob.ts 里是 DEFAULT_LIMIT=200 / MAX_LIMIT=200 两个常量）。
+  // 默认值与上游逐字相同：不配就还是 200/200，行为不变。
+  'glob.limitDefault': 100,
+  'glob.limitMax': 200,
   'images.inputMaxBytes': 20 * 1024 * 1024,
   'images.resizeMaxSide': 1568,
   'images.resizeMaxBytes': 500 * 1024,

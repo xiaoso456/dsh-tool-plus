@@ -74,7 +74,11 @@ export function sanitizeGlobPrompt(text: string): string {
   return text
     .replace(
       'Glob files/dirs: `;`-separated paths or internal URLs (`local://*.md`, `omp://**/*.md`); default workspace root.',
-      'Glob files/dirs: `;`-separated paths or path-backed internal URLs; default workspace root.',
+      // 上游这句承诺 `;` 分隔的路径**或内部 URL**（local://、omp://）。DSH 没有任何 internal-url
+      // provider 注册，两种 scheme 实测都走不通（local:// 报 must be resolved through the proper
+      // protocol handler，omp:// 被当成普通路径报 Path not found: omp:），所以整句 URL 承诺删掉，
+      // 只留路径。模型照着一句不存在的用法试错，比少一句更贵。
+      'Glob files/dirs: `;`-separated paths; default workspace root.',
     )
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -124,14 +128,54 @@ export function sanitizeAstGrepPrompt(text: string): string {
 export function sanitizeWritePrompt(text: string): string {
   return text.trim()
 }
+/**
+ * patch.md：把 <output> 里那三种失败措辞换成引擎**实际**输出的话。
+ *
+ * 实测（2026-11-22，逐条跑出来的原文）：
+ * - 命中多处 → `Found N occurrences ... Add more context lines to disambiguate.`
+ *   （提示词原写 "Found multiple matches"）
+ * - 上下文对不上 → `Could not find a close enough match in <path> ...`（原写 "No match found"）
+ * - diff 体与文件不匹配 → `Failed to find expected lines in <path>: ...`（原写 "Syntax errors in diff format"）
+ * 这是上游提示词与上游引擎自己的漂移（diff.ts 的措辞没同步进 md）。模型按提示词去认错误类型会认不出，
+ * 所以按实际输出改；引擎不动。
+ */
 export function sanitizePatchPrompt(text: string): string {
-  return text.trim()
+  return text
+    .replace(
+      '2. On "Found multiple matches": add context lines, use multiple hunks with separate anchors, or use longer anchor substring',
+      '2. On "Found N occurrences": add context lines, use multiple hunks with separate anchors, or use longer anchor substring',
+    )
+    .replace(
+      '- "Found multiple matches" — anchor/context not unique enough',
+      '- "Found N occurrences" — anchor/context not unique enough',
+    )
+    .replace(
+      '- "No match found" — context lines don\'t exist in file (wrong content or stale read)',
+      '- "Could not find a close enough match" — context lines don\'t exist in file (wrong content or stale read)',
+    )
+    .replace(
+      '- Syntax errors in diff format',
+      '- "Failed to find expected lines" — the diff body does not match the file',
+    )
+    .trim()
 }
 export function sanitizeApplyPatchPrompt(text: string): string {
   return text.trim()
 }
+/**
+ * replace.md：删掉「改前没读过就报错」这句**实现承诺**。
+ *
+ * 实测（2026-11-22）：replace 模式没读过文件也能改成功，把 editEnforceSeenLines 打开也一样
+ * （那个开关只对 hashline 生效）。留着这句会让模型以为有一道守卫在兜底，或者反过来每次都
+ * 多读一遍文件。行为指引（MUST read ... before editing）保留，只删「会报错」这半句。
+ */
 export function sanitizeReplacePrompt(text: string): string {
-  return text.trim()
+  return text
+    .replace(
+      "- MUST read file at least once in conversation before editing. Tool errors on edit before read.",
+      "- MUST read file at least once in conversation before editing.",
+    )
+    .trim()
 }
 export function sanitizeHashlinePrompt(text: string): string {
   return text.trim()

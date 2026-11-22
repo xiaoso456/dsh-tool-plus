@@ -119,20 +119,30 @@ describe('全工具 md × sanitize × 变量矩阵（同类问题全面守卫）
     )
     expect(load(MD['ast-grep'])).toContain('Broad cross-subsystem exploration → {{#if scoutAvailable}}Task tool + scout{{else}}Task tool{{/if}} subagent first.')
     expect(load(MD['ast-edit'])).toContain('- Matches are STAGED as a proposal, not applied: finalize by writing a one-sentence reason to `xd://resolve` (apply) or `xd://reject` (discard).')
+    // patch.md 的 <output> 三种失败措辞要跟着引擎实际输出改（实测见 sanitizePatchPrompt 注释）；
+    // 这三条原文必须存在，上游改字就得跟着改，否则替换静默失配、旧措辞又回到模型眼前。
+    expect(load(MD.patch)).toContain('- "Found multiple matches" — anchor/context not unique enough')
+    expect(load(MD.patch)).toContain('- "No match found" — context lines don\'t exist in file (wrong content or stale read)')
+    expect(load(MD.patch)).toContain('- Syntax errors in diff format')
+    // replace.md「改前没读过就报错」是假承诺（实测不报错），只保留行为指引。
+    expect(load(MD.replace)).toContain('Tool errors on edit before read.')
   })
 
   it('全 md 渲染后无 {{ 残留，且应剔除的 OMP 提法不出现', () => {
     const cases: Array<{ md?: string; text?: string; sanitize: (t: string) => string; vars?: OmpPromptVars; forbidden: string[] }> = [
       { md: MD.read, sanitize: sanitizeReadPrompt, forbidden: ['{{', 'browser only if needed', 'Binary views'] },
       { md: MD.grep, sanitize: sanitizeGrepPrompt, forbidden: ['{{', 'scout', '`find`'] },
-      // scheme 举例必须被改写掉：DSH 没有 local://（内部协议已删）与 omp://。
-      { md: MD.glob, sanitize: sanitizeGlobPrompt, forbidden: ['{{', 'local://', 'omp://'] },
+      // 内部 URL 那句整句删掉：DSH 没注册任何 internal-url provider，local:// 与 omp:// 实测都不可用，
+      // 留着 scheme 举例等于教模型用不存在的用法。
+      { md: MD.glob, sanitize: sanitizeGlobPrompt, forbidden: ['{{', 'local://', 'omp://', 'internal URL'] },
       { md: MD['ast-grep'], sanitize: sanitizeAstGrepPrompt, forbidden: ['{{', 'scout'] },
       { md: MD['ast-edit'], sanitize: sanitizeAstEditPrompt, forbidden: ['{{', 'xd://resolve'] },
       { md: MD.write, sanitize: sanitizeWritePrompt, forbidden: ['{{'] },
-      { md: MD.patch, sanitize: sanitizePatchPrompt, forbidden: ['{{'] },
+      // patch 的旧报错措辞必须被换掉（引擎实际说的是 Found N occurrences / Could not find a close enough match / Failed to find expected lines）。
+      { md: MD.patch, sanitize: sanitizePatchPrompt, forbidden: ['{{', 'Found multiple matches', 'No match found', 'Syntax errors in diff format'] },
       { md: MD['apply-patch'], sanitize: sanitizeApplyPatchPrompt, forbidden: ['{{'] },
-      { md: MD.replace, sanitize: sanitizeReplacePrompt, forbidden: ['{{'] },
+      // replace 的「会报错」半句删掉：实测不做这道校验，留着会让模型误判守卫存在。
+      { md: MD.replace, sanitize: sanitizeReplacePrompt, forbidden: ['{{', 'Tool errors on edit before read'] },
       // hashline：源文本直接取 native `editDescription('hashline')`（与旧 md 逐字节相同，CRLF 归一后）。
       { text: editDescription('hashline'), sanitize: sanitizeHashlinePrompt, forbidden: ['{{'] },
     ]

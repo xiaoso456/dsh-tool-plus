@@ -65,6 +65,8 @@ export type BashPlusLocaleKey =
   | 'grepGitignoreDefault' | 'grepGitignoreDefaultHint'
   | 'globGitignoreDefault' | 'globGitignoreDefaultHint'
   | 'globHiddenDefault' | 'globHiddenDefaultHint'
+  | 'globLimitDefault' | 'globLimitDefaultHint' | 'globLimitDefaultTip'
+  | 'globLimitMax' | 'globLimitMaxHint' | 'globLimitMaxTip'
   | 'astGrepEnabled' | 'astGrepEnabledHint'
   | 'astEditEnabled' | 'astEditEnabledHint'
   | 'optReplace' | 'optPatch' | 'optHashline' | 'optApplyPatch'
@@ -255,8 +257,8 @@ readRenderMarkdown: '渲染 Markdown',
   editEnforceSeenLines: '已见行守卫',
   editEnforceSeenLinesHint: '禁止修改此前读取或搜索从未完整展示过的行。',
   multiEditPreflight: '多条目编辑预检',
-  multiEditPreflightHint: '一次编辑带多个条目时先全部试算，任一条匹配失败就一条都不写，并在报错里列出失败条目。',
-  multiEditPreflightTip: '一次编辑带多个条目时，先在内存里把每一条都试算一遍；任一条匹配失败就一条都不写，报错里列出失败条目。默认关闭，打开后多条目编辑会多花几毫秒。',
+  multiEditPreflightHint: '一次编辑带多个条目时先全部试算，任一条匹配失败就一条都不写，并在报错里列出失败条目。只对 replace 模式生效。',
+  multiEditPreflightTip: '一次编辑带多个条目时，先在内存里把每一条都试算一遍；任一条匹配失败就一条都不写，报错里列出失败条目。只对 replace 模式的多条目编辑生效，patch 模式不走这条预检。默认关闭，打开后多条目编辑会多花几毫秒。',
   detailedMatchFailure: '详细匹配失败提示',
   detailedMatchFailureHint: '匹配失败时，把文件里最接近的整段文本附在报错里（相似度不低于 80%，最多 40 行 / 4KB），可以直接拿它当 old_string 重试。超过上限时只给起始行号。',
   detailedMatchFailureTip: '匹配失败时，把文件里最接近的整段文本附在报错里（相似度不低于 80%，最多 40 行 / 4KB），可以直接拿它当 old_string 重试。只影响报错内容，不改变编辑结果，默认开启。',
@@ -284,6 +286,12 @@ readRenderMarkdown: '渲染 Markdown',
   globGitignoreDefaultHint: '开启（默认）时，.gitignore 里列出的文件/目录会自动跳过，不会出现在结果里；关闭后它们也会被列出。调用时显式传 gitignore 参数会覆盖此默认。',
   globHiddenDefault: '包含隐藏文件（默认）',
   globHiddenDefaultHint: '开启（默认）时以 . 开头的文件/目录（如 .env、.git）也会出现在结果里；关闭后自动跳过。调用时显式传 hidden 参数会覆盖此默认。',
+  globLimitDefault: '单次结果条数（默认）',
+  globLimitDefaultHint: '模型没指定条数时，一次返回多少个文件路径。默认 100，够看清目录结构又不烧 token。调用时显式传条数会覆盖这里。',
+  globLimitDefaultTip: '100 条路径大约 1.5 千到 2 千 token。想一次看更多，把这里的默认值和下面的上限一起调大，只调一个不会生效。',
+  globLimitMax: '单次结果上限',
+  globLimitMaxHint: '一次搜索最多返回多少个文件路径。模型显式要更多时，最多给到这里；超过会被夹取，并在输出里说明夹到了多少，不会静默截断。默认 200。',
+  globLimitMaxTip: '这是硬边界，最高 2000。调大之后还要把默认值一起调大，模型不传参时才会多返回；只管上限的话，模型传大值才有用。',
   astGrepEnabled: '启用 ast_grep',
   astGrepEnabledHint: '启用 ast_grep 工具做结构化 AST 搜索（默认关闭）。',
   astEditEnabled: '启用 ast_edit',
@@ -713,8 +721,8 @@ export const en: Record<BashPlusLocaleKey, string> = {
   editEnforceSeenLines: 'Seen-line guard',
   editEnforceSeenLinesHint: 'Reject edits on lines a previous read or search never displayed in full.',
   multiEditPreflight: 'Multi-entry preflight',
-  multiEditPreflightHint: 'Dry-run every entry of a multi-entry edit first. If any entry fails to match, nothing is written and the error lists the failed entries.',
-  multiEditPreflightTip: 'Dry-run every entry in memory before writing anything. If any entry fails to match, nothing is written and the error lists the failed entries. Off by default; enabling it costs a few milliseconds per multi-entry edit.',
+  multiEditPreflightHint: 'Dry-run every entry of a multi-entry edit first. If any entry fails to match, nothing is written and the error lists the failed entries. Replace mode only.',
+  multiEditPreflightTip: 'Dry-run every entry in memory before writing anything. If any entry fails to match, nothing is written and the error lists the failed entries. Applies to multi-entry replace edits only; patch entries bypass this preflight. Off by default; enabling it costs a few milliseconds per multi-entry edit.',
   detailedMatchFailure: 'Detailed match failures',
   detailedMatchFailureHint: 'When a match fails, include the closest block of file text in the error (at least 80% similar, up to 40 lines / 4KB) so it can be reused as old_string. Over the limit, only the starting line is given.',
   detailedMatchFailureTip: 'When a match fails, include the closest block of file text in the error (at least 80% similar, up to 40 lines / 4KB) so it can be reused as old_string. It only changes the error text, never the edit result. On by default.',
@@ -742,6 +750,12 @@ export const en: Record<BashPlusLocaleKey, string> = {
   globGitignoreDefaultHint: 'When on (default), files and directories listed in .gitignore are skipped and never appear in results; when off, they are listed too. An explicit gitignore argument on the call overrides this default.',
   globHiddenDefault: 'Include hidden files (default)',
   globHiddenDefaultHint: 'When on (default), dot-files and dot-directories (e.g. .env, .git) appear in results; when off, they are skipped. An explicit hidden argument on the call overrides this default.',
+  globLimitDefault: 'Results per call (default)',
+  globLimitDefaultHint: 'How many file paths a single call returns when the model does not ask for a specific count. Default 100, enough to read a directory structure without burning tokens. An explicit count on the call overrides this.',
+  globLimitDefaultTip: '100 paths cost roughly 1.5k to 2k tokens. To see more at once, raise this default and the cap below together; raising only one has no effect.',
+  globLimitMax: 'Results cap per call',
+  globLimitMaxHint: 'The most file paths one search can return. When the model asks for more, this is as far as it goes; anything above is clamped and the output says so instead of truncating silently. Default 200.',
+  globLimitMaxTip: 'This is a hard boundary, at most 2000. Raise it together with the default above so calls without an explicit count also return more; on its own it only affects calls that ask for a big number.',
   astGrepEnabled: 'Enable ast_grep',
   astGrepEnabledHint: 'Enable the ast_grep tool for structural AST search (off by default).',
   astEditEnabled: 'Enable ast_edit',

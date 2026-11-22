@@ -156,6 +156,8 @@ export interface RuntimeConfig {
   grepGitignoreDefault: boolean
   globGitignoreDefault: boolean
   globHiddenDefault: boolean
+  globLimitDefault: number
+  globLimitMax: number
   astGrepEnabled: boolean
   astEditEnabled: boolean
   fetchEnabled: boolean
@@ -272,6 +274,8 @@ export interface Config {
   grepGitignoreDefault?: boolean
   globGitignoreDefault?: boolean
   globHiddenDefault?: boolean
+  globLimitDefault?: number
+  globLimitMax?: number
   astGrepEnabled?: boolean
   astEditEnabled?: boolean
   fetchEnabled?: boolean
@@ -365,6 +369,10 @@ export const Config = z.object({
   grepGitignoreDefault: z.boolean().default(fieldDefault('grepGitignoreDefault', true)).volatile(),
   globGitignoreDefault: z.boolean().default(fieldDefault('globGitignoreDefault', true)).volatile(),
   globHiddenDefault: z.boolean().default(fieldDefault('globHiddenDefault', true)).volatile(),
+  // 数值不做 schema 级 min/max（这个 zod 构建没有 .int()/.min()，全仓数值字段也都是裸 z.number()）；
+  // 真正的夹取在 glob.ts 里：非数字/小于 1 回落到上游常量，超过硬天花板按 2000 处理。
+  globLimitDefault: z.number().default(fieldDefault('globLimitDefault', 100)).volatile(),
+  globLimitMax: z.number().default(fieldDefault('globLimitMax', 200)).volatile(),
   // AST 工具启用开关（OMP settings-schema.ts:3831/3842；astGrep 默认 false）
   astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)).volatile(),
   astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)).volatile(),
@@ -486,6 +494,8 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     grepGitignoreDefault: config.grepGitignoreDefault ?? fieldDefault('grepGitignoreDefault', true),
     globGitignoreDefault: config.globGitignoreDefault ?? fieldDefault('globGitignoreDefault', true),
     globHiddenDefault: config.globHiddenDefault ?? fieldDefault('globHiddenDefault', true),
+    globLimitDefault: config.globLimitDefault ?? fieldDefault('globLimitDefault', 100),
+    globLimitMax: config.globLimitMax ?? fieldDefault('globLimitMax', 200),
     astGrepEnabled: config.astGrepEnabled ?? fieldDefault('astGrepEnabled', false),
     astEditEnabled: config.astEditEnabled ?? fieldDefault('astEditEnabled', true),
     fetchEnabled: config.fetchEnabled ?? fieldDefault('fetchEnabled', true),

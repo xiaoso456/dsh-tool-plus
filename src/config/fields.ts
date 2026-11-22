@@ -212,6 +212,11 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // Glob（glob tab 随搜索默认值开关恢复；此前因无配置项被拍板#19 移除）
   { name: 'globGitignoreDefault', kind: 'boolean', default: true, labelKey: 'globGitignoreDefault', hintKey: 'globGitignoreDefaultHint', group: 'searchDefaults', tool: 'glob' },
   { name: 'globHiddenDefault', kind: 'boolean', default: true, labelKey: 'globHiddenDefault', hintKey: 'globHiddenDefaultHint', group: 'searchDefaults', tool: 'glob' },
+  // 结果条数：默认值与夹取上限分成两个键（用户拍板 2026-11-22）。
+  // 默认 100（比上游 200 更省 token，与 Anthropic 官方 Glob 的 100 条一致），
+  // 上限 200（上游值）：模型不传参拿 100 条，显式要更多时才允许到 200，超过 200 被夹并说明。
+  { name: 'globLimitDefault', kind: 'number', default: 100, labelKey: 'globLimitDefault', hintKey: 'globLimitDefaultHint', tipKey: 'globLimitDefaultTip', group: 'searchDefaults', tool: 'glob' },
+  { name: 'globLimitMax', kind: 'number', default: 200, labelKey: 'globLimitMax', hintKey: 'globLimitMaxHint', tipKey: 'globLimitMaxTip', group: 'searchDefaults', tool: 'glob' },
   // AST 工具启用开关（OMP settings-schema "Available Tools" 组）
   // astGrep.enabled 默认 false（OMP 原版：ast_grep 默认禁用，需手动开启）；
   // astEdit.enabled 默认 true。glob/grep 不设开关，默认开启（用户拍板 2026-08-25）。

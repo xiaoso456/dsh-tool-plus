@@ -124,6 +124,88 @@ describe('glob 默认值配置', () => {
     expect(result.text).not.toContain('secret.txt')
     expect(result.text).toContain('visible.txt')
   })
+
+  /**
+   * 上限 200 是硬编码的（上游同款），超了就夹。夹这件事必须说出来：不然 `limit=1000`
+   * 只拿到 200 条，看起来像"这个仓库一共就 200 个文件"。上游 #13263 就是修这个。
+   */
+  it('limit 超过硬上限时如实说明被夹到 200', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'x\n')
+    const result = await executeGlobTool(execIn(dir), resolveConfig({}), { path: '*', limit: 1000 }, undefined as never)
+    expect(result.text).toContain('Requested limit 1000 clamped to the max of 200')
+  })
+
+  it('limit 不超过上限时不出这条提示', async () => {
+    const dir = tmpDir()
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'x\n')
+    const result = await executeGlobTool(execIn(dir), resolveConfig({}), { path: '*', limit: 50 }, undefined as never)
+    expect(result.text).not.toContain('clamped')
+  })
+})
+
+/**
+ * 条数做成了两个配置键（默认值 + 上限），默认值都是 200，与上游常量一致。
+ * 四条用例只钉行为：默认值生效、超上限被夹且说明、默认值大于上限时按上限、
+ * 上限调大后模型传大值才生效。
+ */
+describe('glob 条数配置', () => {
+  const many = (count: number): string => {
+    const dir = tmpDir()
+    for (let i = 0; i < count; i += 1) fs.writeFileSync(path.join(dir, `f${String(i)}.txt`), 'x\n')
+    return dir
+  }
+
+  it('未传 limit 时使用 globLimitDefault', async () => {
+    const dir = many(10)
+    const result = await executeGlobTool(execIn(dir), resolveConfig({ globLimitDefault: 3 }), { path: '*' }, undefined as never)
+    expect(result.paths).toHaveLength(3)
+  })
+
+  it('传超上限时夹到 globLimitMax，并在输出里说明夹到了多少', async () => {
+    const dir = many(10)
+    const result = await executeGlobTool(execIn(dir), resolveConfig({ globLimitMax: 4 }), { path: '*', limit: 9 }, undefined as never)
+    expect(result.paths).toHaveLength(4)
+    expect(result.text).toContain('Requested limit 9 clamped to the max of 4')
+  })
+
+  it('默认值大于上限时按上限返回，且不冒充"被夹取"', async () => {
+    const dir = many(10)
+    const result = await executeGlobTool(
+      execIn(dir),
+      resolveConfig({ globLimitDefault: 8, globLimitMax: 3 }),
+      { path: '*' },
+      undefined as never,
+    )
+    expect(result.paths).toHaveLength(3)
+    // 默认值在内部已经先夹好，不存在"模型请求了 8 条"这件事，不该报夹取
+    expect(result.text).not.toContain('clamped')
+  })
+
+  it('出厂默认：不传参 100 条，显式要 150 给 150，要 1000 夹到 200 并说明', async () => {
+    const dir = many(210)
+    const dflt = await executeGlobTool(execIn(dir), resolveConfig({}), { path: '*' }, undefined as never)
+    expect(dflt.paths).toHaveLength(100)
+
+    const asked = await executeGlobTool(execIn(dir), resolveConfig({}), { path: '*', limit: 150 }, undefined as never)
+    expect(asked.paths).toHaveLength(150)
+
+    const big = await executeGlobTool(execIn(dir), resolveConfig({}), { path: '*', limit: 1000 }, undefined as never)
+    expect(big.paths).toHaveLength(200)
+    expect(big.text).toContain('Requested limit 1000 clamped to the max of 200')
+  })
+
+  it('上限调大后模型传大值才生效', async () => {
+    const dir = many(10)
+    const result = await executeGlobTool(
+      execIn(dir),
+      resolveConfig({ globLimitMax: 10 }),
+      { path: '*', limit: 10 },
+      undefined as never,
+    )
+    expect(result.paths).toHaveLength(10)
+    expect(result.text).not.toContain('clamped')
+  })
 })
 
 /* -------------------------------------------------------------------------- */

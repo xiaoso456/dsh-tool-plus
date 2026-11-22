@@ -49,6 +49,55 @@ async function setAstGrep(screen: Screen, on: boolean): Promise<void> {
   await expect(close).toBeHidden({ timeout: 10_000 })
 }
 
+/** 保存并关掉设置面板（暂存式表单：不点保存等于没改）。 */
+async function saveAndClose(screen: Screen): Promise<void> {
+  const save = screen.getByRole('button', { name: '保存', exact: true })
+  if (await save.isEnabled()) {
+    await save.tap()
+    await expect.poll(() => save.isEnabled(), { timeout: 15_000, message: '「保存」没有落定' }).toBe(false)
+  }
+  const close = screen.getByRole('button', { name: '关闭', exact: true })
+  await close.tap()
+  await expect(close).toBeHidden({ timeout: 10_000 })
+}
+
+/**
+ * glob 的两个条数配置（默认值 / 上限）必须真的出现在面板上，而且改完能存下来。
+ *
+ * 为什么值得一条 e2e：这两个键是 DSH 自己加的（上游是常量），只靠单测证明"引擎读得到"，
+ * 证明不了"设置页画得出来、存得进 profile"。走一遍 改值 → 保存 → 重开读回 → 还原，
+ * 三步都成立才算接上了。存的是测试 profile 的 `cordis.patch.yml`，启动接线每轮重写它，
+ * 所以中途失败也留不下脏状态。
+ */
+test('glob 的条数配置在设置页可改并持久化', async ({ app, screen, browser }) => {
+  await openReady(app, screen, browser)
+
+  const openGlobTab = async (): Promise<void> => {
+    await openSettings(screen)
+    await screen.getByRole('button', { name: 'Tool Plus', exact: true }).tap()
+    await screen.getByRole('tab', { name: 'Glob', exact: true }).tap()
+  }
+
+  await openGlobTab()
+  const defaultField = screen.getByRole('textbox', '单次结果条数（默认）')
+  const maxField = screen.getByRole('textbox', '单次结果上限')
+  await expect(defaultField).toBeVisible()
+  await expect(maxField).toBeVisible()
+  const original = await maxField.inputValue()
+
+  await maxField.fill('150')
+  await saveAndClose(screen)
+
+  // 重开：值真的落进了 profile，而不只是留在这张草稿表里
+  await openGlobTab()
+  expect(await screen.getByRole('textbox', '单次结果上限').inputValue()).toBe('150')
+  await screen.getByRole('textbox', '单次结果上限').fill(original)
+  await saveAndClose(screen)
+
+  await expectNoPageErrors(browser)
+  await app.screenshot('glob-limit-config')
+})
+
 test('设置页关掉 ast_grep 会当轮改变会话工具面', async ({ app, screen, browser }) => {
   const { mockUrl } = await openReady(app, screen, browser)
 

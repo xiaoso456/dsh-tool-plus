@@ -1881,7 +1881,10 @@ export async function executeReadUrl(
 	let entry = await fetchReadUrl(session, params, signal);
 	const truncation = truncateHead(entry.output, {
 		maxBytes: DEFAULT_MAX_BYTES,
-		maxLines: FETCH_DEFAULT_MAX_LINES,
+		// DSH 偏差（拍板 2026-11-22）：上游这里写死 FETCH_DEFAULT_MAX_LINES（300），本地文件却跟
+		// read.defaultLimit 走。同一个设置键在不同读取路径上给出不同行为说不通，改成跟着它；
+		// 默认值本来就是 300，不配时零行为变化。
+		maxLines: session.settings.get("read.defaultLimit") ?? FETCH_DEFAULT_MAX_LINES,
 	});
 	const needsArtifact = truncation.truncated;
 	if (needsArtifact && !entry.artifactId) {

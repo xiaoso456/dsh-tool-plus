@@ -76,6 +76,18 @@ describe('grep 搜 URL 目标', () => {
     expect(out.matchCount).toBe(0)
     expect(out.text).toContain('No matches found')
   })
+
+  /**
+   * 抓取开关是「不许联网」的总闸，grep 与 ast_grep 搜 URL 走的是同一条物化路径
+   * （`materializeReadUrlToFile`），所以在这里一并拦住；read 侧的同一道门控另有测试。
+   */
+  it('fetchEnabled 关掉后 grep 不收 URL，不许偷偷联网', async () => {
+    port = port || await startServer()
+    await expect(executeGrepTool(exec(), resolveConfig({ fetchEnabled: false }), {
+      pattern: 'needle_here',
+      path: `http://127.0.0.1:${port}/doc.html`,
+    }, undefined as never)).rejects.toThrow(/URL reads are disabled/u)
+  })
 })
 
 describe('artifacts seam', () => {

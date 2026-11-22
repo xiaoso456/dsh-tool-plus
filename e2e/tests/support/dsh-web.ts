@@ -437,10 +437,23 @@ export async function ensureComposerUsable(browser: Browser, screen: Screen): Pr
  * 同一份剧本可能一会儿跑我们的工具、一会儿跑宿主的（老 GUI 驱动踩过这个坑）。已在目标预设上就返回。
  */
 export async function selectPreset(screen: Screen, wanted = TOOL_PLUS_PRESET): Promise<void> {
-  if (await screen.getByRole('button', wanted).count() > 0) return
-  await screen.getByRole('button').filter({ hasText: '模式' }).first().tap()
+  const chip = screen.getByRole('button', wanted)
+  const modeTrigger = screen.getByRole('button').filter({ hasText: '模式' }).first()
+  /**
+   * 会话头是**异步挂载**的：页面一打开 Composers 区可能先出来，而预设芯片与「模式」下拉还没渲染。
+   * 这时候读一次 count 会两个都读到 0，接着去点不存在的按钮，白等 30 秒超时（实测偶发）。
+   * 所以先等「至少出现一个」再判断：芯片出现就说明已经是目标预设，直接返回。
+   */
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    if (await chip.count() > 0) return
+    if (await modeTrigger.count() > 0) break
+    await new Promise((resolve) => { setTimeout(resolve, 250) })
+  }
+  if (await chip.count() > 0) return
+  await modeTrigger.tap()
   await screen.getByRole('menuitem').filter({ hasText: wanted }).first().tap({ timeout: 10_000 })
-  await expect(screen.getByRole('button', wanted)).toBeVisible()
+  await expect(chip).toBeVisible()
 }
 
 /**

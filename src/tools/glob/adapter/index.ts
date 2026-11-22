@@ -114,7 +114,9 @@ export function registerGlob(ctx: Context, getConfig: () => RuntimeConfig): void
       path: { type: 'string', description: 'Glob, file, or directory to search — a single path or a semicolon-delimited list ("src/**/*.ts; test/**/*.ts").' },
       hidden: { type: 'boolean', description: 'Include hidden files (default true).' },
       gitignore: { type: 'boolean', description: 'Respect gitignore (default true). Set false for ignored files such as .env*.', },
-      limit: { type: 'number', description: 'Max results (default 200, max 200).' },
+      // 具体数字不写死：默认值与上限都是可配的（设置页「搜索结果条数」两个键），
+      // 写在描述里会随配置变成假话。被夹取时输出里会明说夹到了多少。
+      limit: { type: 'number', description: 'Max results (default 200; a larger value is clamped to the configured cap and the output says so).' },
     },
     output: {
       schema: {

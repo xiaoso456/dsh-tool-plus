@@ -29,8 +29,20 @@ const findSchema = type({
 
 export type GlobToolInput = typeof findSchema.infer;
 
+// 上游常量：配置键缺失（或宿主没提供设置）时的兜底，值与上游逐字相同。
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 200;
+/**
+ * DSH 偏差：绝对硬上限。上限本身做成了配置键（glob.limitMax），这里是它的天花板，
+ * 防止手滑写个 1000000 把转录顶爆——2000 条路径大约 3 万 token。
+ */
+const ABSOLUTE_LIMIT_CEILING = 2000;
+
+/** 从设置里取条数：非数字、非有限、小于 1 一律回落到兜底值。 */
+function limitFromSettings(value: unknown, fallback: number): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+	return Math.min(ABSOLUTE_LIMIT_CEILING, Math.max(1, Math.floor(value)));
+}
 const DEFAULT_GLOB_TIMEOUT_MS = 5000;
 
 export interface GlobToolDetails {
@@ -222,11 +234,26 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				}
 			}
 
-			const requestedLimit = limit ?? DEFAULT_LIMIT;
+			// DSH 偏差：两个条数上限做成配置键（glob.limitMax / glob.limitDefault），
+			// 默认值与上游常量相同，不配就是上游行为。默认值再被上限夹一次：用户把上限调小、
+			// 却忘了改默认值时，不该出现"每次都按默认值请求、每次都被夹"的隐性浪费。
+			const configuredMax = limitFromSettings(this.session.settings.get("glob.limitMax"), MAX_LIMIT);
+			const configuredDefault = Math.min(
+				limitFromSettings(this.session.settings.get("glob.limitDefault"), DEFAULT_LIMIT),
+				configuredMax,
+			);
+			const requestedLimit = limit ?? configuredDefault;
 			if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
 				throw new ToolError("Limit must be a positive number");
 			}
-			const effectiveLimit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(requestedLimit)));
+			const effectiveLimit = Math.min(configuredMax, Math.max(1, Math.floor(requestedLimit)));
+			// 上游 v18.12.6 的 clampNotice（#13263）：超过上限的 limit 会被静默夹取，
+			// 不说明的话 `limit=1000` 看起来就像"最多只有这么多"。措辞与上游一字不差，
+			// 只是把常量换成了生效的上限（配置过的那个值）。
+			const clampNotice =
+				requestedLimit > configuredMax
+					? `Requested limit ${requestedLimit} clamped to the max of ${configuredMax}`
+					: undefined;
 			const includeHidden = hidden ?? true;
 			const useGitignore = gitignore ?? true;
 			const timeoutMs = DEFAULT_GLOB_TIMEOUT_MS;
@@ -275,6 +302,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				const baseOutput = formatGroupedPaths(limited);
 				const trailingNotes: string[] = [];
 				if (notice) trailingNotes.push(notice);
+				if (clampNotice) trailingNotes.push(clampNotice);
 				if (missingPathsNote) trailingNotes.push(missingPathsNote);
 				const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
 				const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
