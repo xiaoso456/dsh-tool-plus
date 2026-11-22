@@ -5,6 +5,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.0] - 2026-11-22
+
+> 测试版：把 read / grep / glob / edit / write 的能力面按上游 Oh My Pi 18.12.6 重做了一遍，另加两组实验性开关。
+
+### Added
+
+- **read / grep / ast_grep 支持 URL 目标**：含内联行选择器（`:50-80`、`:5`、`:-20`、逗号多段）与 `:raw`。取回的内容先落到本会话的产物目录，再走原有的搜索与路径切片。
+- **read 认识更多文件类型**：归档（zip、tar、7z 等二十余种）、EPUB、PPTX、XLSX、JSON 与 JSONL。JSON 支持 `?q=`、`?raw`、`?compact`、`?offset=`、`?limit=`。
+- **patch 模式与上游对齐**：参数收 `{ path, edits: [{ op, rename, diff }] }`，`op` 可取 `update`（缺省）、`create`、`delete`；同一条目里 `rename` 加 `update` 表示改名。原先的 `patch` 字符串别名删除。
+- **glob 条数可配**：设置页新增「默认条数」与「上限」，默认 100、上限 200（硬顶 2000）。请求超过上限时按上游措辞提示已夹取。
+- **实验性开关**（设置页新增「实验性」tab）：「多条目预检」默认关，写盘前在内存里把所有条目试算一遍，任一失败整体拒绝并列出失败条目；「详细失败提示」默认开，匹配失败时附最接近的整块，可直接当 `old_string` 重试。
+- **写入通道与重试可配**：`writeBackend` 可选 DSH 原子写（默认）或上游原生直写，edit 与 write 共用同一通道；`writeRetryEnabled` 与 `writeRetryCount` 控制重试。
+
+### Changed
+
+- **九份工具提示词与上游逐字节相同**：read、write、grep、glob、ast_grep、ast_edit、replace、patch、apply_patch 的正文与上游 18.12.6 完全一致，差异只剩 sanitize 层删掉的几句，逐条记在进度文档。默认工具面（ast_grep 关闭）合计 5830 字符，约 1458 token。
+- **URL 读取的行数上限改跟 `read.defaultLimit`**：上游写死 300 行，与本地的 read 设置不一致，这里统一。
+- **Windows 下小写字面 `/tmp` 映射到宿主临时目录**，bash 的 workdir、前导 `cd`、失效的 `state.cwd` 同一规则。
+- **edit 的路径参数统一叫 `path`**，并只暴露当前 `editMode` 用得到的参数。
+
+### Fixed
+
+- **会话目录失效时 bash 的报错**：启动 shell 前校验最终 cwd，失效时明确提示改用绝对 `workdir` 或 `cd "<绝对路径>" && ...`，不再注册注定失败的作业。
+- **edit 模糊匹配补齐弯引号归一化**：之前漏掉 `“ ” ‘ ’`、不换行空格与零宽字符，现在复用同一张替换表；纯 ASCII 行另走快路径，归一时间从约 2507ns 降到约 600ns。
+- **提示词里三处与实现不符的说法**：glob 承诺了实际不可用的 internal URL、replace 声称「改前没读过会报错」、patch 的三种失败措辞与引擎实际输出不符，均已改正。
+
+### 说明
+
+- 这批改动只动根包的 JS，原生平台包沿用 `18.12.6-plus.2`。
+
+[对比 0.2.2-beta.0](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.2.2-beta.0...tool-plus-v0.3.0-beta.0)
+
 ## [0.2.2-beta.0] - 2026-11-21
 
 > 测试版：修 Linux / macOS 上插件 bash 找不到工具链的问题。
