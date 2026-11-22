@@ -375,7 +375,7 @@ export const Config = z.object({
   globLimitMax: z.number().default(fieldDefault('globLimitMax', 200)).volatile(),
   // AST 工具启用开关（OMP settings-schema.ts:3831/3842；astGrep 默认 false）
   astGrepEnabled: z.boolean().default(fieldDefault('astGrepEnabled', false)).volatile(),
-  astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', true)).volatile(),
+  astEditEnabled: z.boolean().default(fieldDefault('astEditEnabled', false)).volatile(),
   // File tools — fetch（URL 抓取）与图片（拍板#22：read 图片路径已还原并入）
   fetchEnabled: z.boolean().default(fieldDefault('fetchEnabled', true)).volatile(),
   fetchMaxTimeoutSeconds: z.number().default(fieldDefault('fetchMaxTimeoutSeconds', 0)).volatile(),
@@ -497,7 +497,7 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     globLimitDefault: config.globLimitDefault ?? fieldDefault('globLimitDefault', 100),
     globLimitMax: config.globLimitMax ?? fieldDefault('globLimitMax', 200),
     astGrepEnabled: config.astGrepEnabled ?? fieldDefault('astGrepEnabled', false),
-    astEditEnabled: config.astEditEnabled ?? fieldDefault('astEditEnabled', true),
+    astEditEnabled: config.astEditEnabled ?? fieldDefault('astEditEnabled', false),
     fetchEnabled: config.fetchEnabled ?? fieldDefault('fetchEnabled', true),
     fetchMaxTimeoutSeconds: config.fetchMaxTimeoutSeconds ?? fieldDefault('fetchMaxTimeoutSeconds', 0),
     fetchReader: config.fetchReader ?? fieldDefault('fetchReader', 'auto'),

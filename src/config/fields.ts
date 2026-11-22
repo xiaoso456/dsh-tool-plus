@@ -221,7 +221,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   // astGrep.enabled 默认 false（OMP 原版：ast_grep 默认禁用，需手动开启）；
   // astEdit.enabled 默认 true。glob/grep 不设开关，默认开启（用户拍板 2026-08-25）。
   { name: 'astGrepEnabled', kind: 'boolean', default: false, labelKey: 'astGrepEnabled', hintKey: 'astGrepEnabledHint', group: 'ast', tool: 'astGrep' },
-  { name: 'astEditEnabled', kind: 'boolean', default: true, labelKey: 'astEditEnabled', hintKey: 'astEditEnabledHint', group: 'ast', tool: 'astEdit' },
+  { name: 'astEditEnabled', kind: 'boolean', default: false, labelKey: 'astEditEnabled', hintKey: 'astEditEnabledHint', group: 'ast', tool: 'astEdit' },
 
   // 实验性 tab：默认关闭为主，打开后才启用对应实验实现（文档见 docs/experimental/）。
   // 例外：detailedMatchFailure 只往报错里补信息、不改结果，默认开启；

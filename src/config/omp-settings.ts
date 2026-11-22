@@ -96,9 +96,12 @@ export const OMP_DEFAULTS: Record<string, unknown> = {
   'tools.outputMaxColumns': 768,
   // 工具启用开关默认值兜底（仅 ast 族有开关；glob/grep 按拍板无开关恒注册）
   // astGrep.enabled 默认 false（OMP 原版 settings-schema.ts:3831：ast_grep 默认禁用，
-  // 需用户在设置面板开启）；astEdit.enabled 默认 true（settings-schema.ts:3842）。
+  // 需用户在设置面板开启）。astEdit.enabled 上游默认 true（settings-schema.ts:3842），
+  // 这里改成 false 属于本地偏离，见下一行注释。
   'astGrep.enabled': false,
-  'astEdit.enabled': true,
+  // 本地偏离上游：ast_edit 历史使用率极低（2026-11-22 实测 909 个会话 17.4 万次调用里
+  // 只用了 21 次），默认关掉可省下约 271 token/会话，要用的在设置页打开。
+  'astEdit.enabled': false,
   // images.*（OMP settings-schema.ts:838-858：autoResize 默认 true，blockImages 默认 false）
   'images.autoResize': true,
   'images.blockImages': false,

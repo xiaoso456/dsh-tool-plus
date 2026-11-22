@@ -20,6 +20,7 @@
 
 ### Changed
 
+- **ast_edit 改成默认关闭**：上游默认开启，但实测 909 个会话、17.4 万次工具调用里只用了 21 次（1.5% 的会话碰过），却让每个会话多付约 271 token 的工具描述。要用的在设置页「ast_edit」组打开，跟 ast_grep 的默认值就此一致。
 - **九份工具提示词与上游逐字节相同**：read、write、grep、glob、ast_grep、ast_edit、replace、patch、apply_patch 的正文与上游 18.12.6 完全一致，差异只剩 sanitize 层删掉的几句，逐条记在进度文档。默认工具面（ast_grep 关闭）合计 5830 字符，约 1458 token。
 - **URL 读取的行数上限改跟 `read.defaultLimit`**：上游写死 300 行，与本地的 read 设置不一致，这里统一。
 - **Windows 下小写字面 `/tmp` 映射到宿主临时目录**，bash 的 workdir、前导 `cd`、失效的 `state.cwd` 同一规则。

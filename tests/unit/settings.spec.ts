@@ -64,11 +64,11 @@ describe('resolveConfig', () => {
     expect(DEFAULT_OUTPUT_TRUNCATE.lines).toEqual({ mode: 'middle', headLines: 50, tailLines: 100 })
   })
 
-  it('AST tool toggles default to OMP parity (ast_grep off, ast_edit on)', () => {
+  it('AST tool toggles default to off (ast_grep 跟上游，ast_edit 为本地偏离)', () => {
     const cfg = resolveConfig({})
-    // OMP settings-schema.ts:3831 astGrep.enabled default false; :3842 astEdit.enabled default true.
+    // 上游 OMP 里 astEdit.enabled 默认 true（settings-schema.ts:3842）；这里按实测使用率改成 false。
     expect(cfg.astGrepEnabled).toBe(false)
-    expect(cfg.astEditEnabled).toBe(true)
+    expect(cfg.astEditEnabled).toBe(false)
     // Explicit overrides win.
     expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astGrepEnabled).toBe(true)
     expect(resolveConfig({ astGrepEnabled: true, astEditEnabled: false }).astEditEnabled).toBe(false)

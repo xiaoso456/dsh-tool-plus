@@ -74,8 +74,10 @@ export function mockProfilePatch(
   return `# 由 tests/support/harness 生成，请勿手改：端到端测试专用的假供应商接线。
 ${preset}${chat}- id: tool-plus
   config:
-    # ast_grep 默认关闭（OMP isToolActive 语义），这里显式打开以便端到端覆盖它。
+    # ast_grep 与 ast_edit 默认关闭（前者随 OMP，后者是本地偏离），
+    # 这里都显式打开，好让端到端覆盖这两个工具。
     astGrepEnabled: true
+    astEditEnabled: true
 
 - id: llm-pi-ai
   name: '@deepseek-ai/dsh-llm-pi-ai'
