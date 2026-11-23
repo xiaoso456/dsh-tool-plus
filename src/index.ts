@@ -28,6 +28,7 @@ import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { defaultInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
+import { TOOL_SECTION_ORDERS } from './tool-section-orders.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { readNativeStatus } from './tools/shared/native-status.ts'
 import { normalizeWindowsUnixTmpPath } from './tools/shared/windows-tmp-path.ts'
@@ -211,7 +212,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     disposeBashSurface = [
       ctx.systemPrompt.section({
         name: 'tool:bash',
-        order: 105,
+        order: TOOL_SECTION_ORDERS.bash,
         text: bashSystemPromptText(cfg),
       }),
     ]
@@ -417,27 +418,27 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.systemPrompt.section({
     name: 'tool:read',
-    order: 100,
+    order: TOOL_SECTION_ORDERS.read,
     text: 'Use the read tool — not shell cat/head/tail — to inspect files. `path` accepts an inline selector: :N (single line), :N-M (range), :N+K (K lines from N), :N- (to EOF), comma multi-range, :raw (verbatim). Archive members use "archive.zip:inner/path".',
   })
   ctx.systemPrompt.section({
     name: 'tool:write',
-    order: 101,
+    order: TOOL_SECTION_ORDERS.write,
     text: 'Use the write tool to create or overwrite files. Parent directories are created. Shebang files auto chmod +x. Hashline patches ([PATH#HASH] headers) and conflict:// URIs are handled.',
   })
   ctx.systemPrompt.section({
     name: 'tool:edit',
-    order: 102,
+    order: TOOL_SECTION_ORDERS.edit,
     text: 'Use the edit tool — not shell sed — for literal replacements. `old_string` must appear exactly once by default; use `replace_all:true` for multiple occurrences. Unified `patch` is supported. Fuzzy matching helps with whitespace differences.',
   })
   ctx.systemPrompt.section({
     name: 'tool:grep',
-    order: 104,
+    order: TOOL_SECTION_ORDERS.grep,
     text: 'Use the grep tool — not shell grep/rg — to search file contents. Returns path\\nLine N: text grouped output. Use `glob` for file discovery.',
   })
   ctx.systemPrompt.section({
     name: 'tool:glob',
-    order: 103,
+    order: TOOL_SECTION_ORDERS.glob,
     text: 'Use the glob tool — not shell find/fd — to find files by pattern. Pattern with no "/" matches basenames at any depth. Results are files only, mtime-sorted.',
   })
 }

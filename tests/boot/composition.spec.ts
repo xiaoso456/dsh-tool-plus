@@ -26,6 +26,7 @@ import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as BashPlus from '../../src/index.ts'
+import { TOOL_SECTION_ORDERS } from '../../src/tool-section-orders.ts'
 import { getShellConfig } from '../../src/tools/bash/bash-executor.ts'
 
 const bashAvailable = ((): boolean => {
@@ -155,7 +156,35 @@ describeBash('bash-plus composition', () => {
   it('registers the tool:bash system prompt section', () => {
     // A duplicate registration in the same layer throws, which proves the
     // plugin's section is already present.
-    expect(() => ctx.systemPrompt.section({ name: 'tool:bash', order: 105, text: 'dup' })).toThrow()
+    expect(() => ctx.systemPrompt.section({
+      name: 'tool:bash',
+      order: TOOL_SECTION_ORDERS.bash,
+      text: 'dup',
+    })).toThrow()
+  })
+
+  it('keeps tool guidance in the official prompt order', async () => {
+    // The numbers live in src/tool-section-orders.ts and are pinned to the
+    // host's allocation table by tests/unit/tool-section-orders.spec.ts; this
+    // checks the assembled order against the anchors the host adds in PTC /
+    // plan mode.
+    const sp = ctx.systemPrompt
+    sp.section({ name: 'probe:plan-policy', order: sp.getSectionOrder('PLAN_POLICY'), text: '' })
+    sp.section({ name: 'probe:ptc-only', order: sp.getSectionOrder('PTC_ONLY'), text: '' })
+    sp.section({ name: 'probe:file-reference', order: sp.getSectionOrder('FILE_REFERENCE'), text: '' })
+
+    const names = (await sp.assemble()).sections.map(section => section.name)
+    const at = (name: string): number => names.indexOf(name)
+    // dsh's own ptc.spec.ts: the run_code-only rule is worthless after the
+    // guidance it qualifies; plan mode and file references come before tools too.
+    for (const anchor of ['probe:plan-policy', 'probe:ptc-only', 'probe:file-reference']) {
+      expect(at(anchor)).toBeGreaterThanOrEqual(0)
+      for (const tool of ['tool:bash', 'tool:read', 'tool:write', 'tool:edit', 'tool:glob', 'tool:grep']) {
+        expect(at(tool)).toBeGreaterThan(at(anchor))
+      }
+    }
+    // The shell leads the per-tool guidance (official allocation, TOOL_BASH 1000).
+    expect(at('tool:bash')).toBeLessThan(at('tool:read'))
   })
 
   it('executes a command and returns the exit marker contract', async () => {
