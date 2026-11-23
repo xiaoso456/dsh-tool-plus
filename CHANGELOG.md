@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.1] - 2026-11-23
+
+> 测试版：修提示词段顺序，标准与 PTC 两个预设都回到官方顺序。
+
+### Fixed
+
+- **工具用法段的提示词顺序**：六段（bash、read、write、edit、glob、grep）原先沿用 dsh 0.1.x 的序号 `100–105`，上游改成集中分配表后，它们在 PTC 下排到了「`run_code` 是唯一可直调工具」之前，plan 策略（500）与文件引用（900）也被越过；bash 还落在逐工具指导的末尾。现按官方位置落到 `TOOL_BASH 1000 → TOOL_GREP 1500`：模式规则在前、bash 回到首位，标准与 PTC 同时修正。数值集中在 `src/tool-section-orders.ts`，另有单测钉在宿主分配表上，上游改号会在测试里先红。
+
 ## [0.3.0-beta.0] - 2026-11-22
 
 > 测试版：把 read / grep / glob / edit / write 的能力面按上游 Oh My Pi 18.12.6 重做了一遍，另加两组实验性开关。
