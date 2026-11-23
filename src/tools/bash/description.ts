@@ -51,7 +51,7 @@ const PER_CALL = 'The bash tool runs a command in a shell; the session working d
 const AUTO_BACKGROUND = 'Commands exceeding the auto-background threshold are moved to the background automatically. '
 
 /** 输出与后台的说明，两种配置共用。 */
-const TAIL = 'Non-zero exits are reported as `[exit code: N]`. Long output is minimized and/or truncated to head+tail; '
+const TAIL = 'Long output is minimized and/or truncated to head+tail; '
   + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
   + 're-read elided ranges with the read tool using :N-M selectors on that path. '
   + 'Set `run_in_background: true` for long-running commands: the call returns a job id immediately; '
