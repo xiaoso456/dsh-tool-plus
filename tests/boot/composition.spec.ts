@@ -147,6 +147,9 @@ describeBash('bash-plus composition', () => {
     expect(properties).toHaveProperty('command')
     expect(properties).toHaveProperty('async')
     expect(properties).toHaveProperty('timeout')
+    expect(properties).toHaveProperty('cwd')
+    expect(properties).not.toHaveProperty('workdir')
+    expect(properties).not.toHaveProperty('env')
     expect(properties).not.toHaveProperty('timeoutMs')
     expect((properties.description as { required?: boolean }).required).not.toBe(true)
   })
@@ -212,15 +215,6 @@ describeBash('bash-plus composition', () => {
     expect(dir).toBeTruthy()
     const second = await call(ctx, 'bash', { command: 'pwd', description: 'show cwd' }, agent)
     expect(textOf(second)).toContain(dir!)
-  })
-
-  it('passes command-scoped env variables', async () => {
-    const result = await call(ctx, 'bash', {
-      command: 'echo "$BOOT_TEST_VAR"',
-      description: 'echo env',
-      env: { BOOT_TEST_VAR: 'boot-scoped' },
-    }, agent)
-    expect(textOf(result)).toContain('boot-scoped')
   })
 
   it('does not intercept shell commands by default (interceptorEnabled defaults to false)', async () => {

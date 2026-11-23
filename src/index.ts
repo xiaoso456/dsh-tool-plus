@@ -54,7 +54,6 @@ export const inject = ['tools', 'systemPrompt', 'shellEnv', 'fs']
 
 export { Config } from './config/settings.ts'
 
-const BASH_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const ANONYMOUS_SESSION = 'anonymous'
 
 function abortError(): HarnessError {
@@ -82,11 +81,6 @@ function optionalDescription(value: unknown): string | undefined {
   const trimmed = value.trim()
   return trimmed.length === 0 ? undefined : trimmed
 }
-function normalizeBashEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
-  if (env === undefined || Object.keys(env).length === 0) return undefined
-  for (const key of Object.keys(env)) if (!BASH_ENV_NAME_PATTERN.test(key)) throw new Error(`Invalid bash env name: ${key}`)
-  return env
-}
 function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTimeMs: number, timeoutMs: number | undefined, requestedTimeoutMs?: number): BashForegroundOutput {
   return {
     kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.timedOut ?? false, aborted: false, ...timeoutDetails(timeoutMs, requestedTimeoutMs), wallTimeMs,
@@ -110,7 +104,7 @@ function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTi
 function presentBashCall(args: BashToolArgs): GenericCallView | TerminalCallView {
   const description = optionalDescription(args.description)
   if (args.async === true) return { card: 'generic', title: args.command, kind: 'execute', rawInput: args.command, content: [{ type: 'text', text: description ?? '' }] }
-  return { card: 'terminal', title: args.command, ...description !== undefined ? { description } : {}, ...args.workdir !== undefined ? { cwd: args.workdir } : {} }
+  return { card: 'terminal', title: args.command, ...description !== undefined ? { description } : {}, ...args.cwd !== undefined ? { cwd: args.cwd } : {} }
 }
 function presentBashResult(args: unknown, result: ToolResult): ToolResultView | undefined {
   const block = result.content.length === 1 ? result.content[0] : undefined
@@ -232,8 +226,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       command: { type: 'string', required: true, description: 'The bash command to execute.' },
       description: { type: 'string', description: 'Optional one-line description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".' },
       timeout: { type: 'number', description: 'Timeout in seconds; 0 disables the command deadline; nonzero values are clamped to the configured range.' },
-      workdir: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against the session cwd.' },
-      env: { type: 'object', additionalProperties: true, description: 'Extra environment variables for this command only (not persisted in the session).' },
+      cwd: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against the session cwd.' },
       ...cfg.enableRunInBackground ? { async: { type: 'boolean' as const, description: 'Run the command as a background job and return its job id immediately (collect with job_output, stop with job_kill). The timeout still applies; pass timeout: 0 for watchers and long-running jobs.' } } : {},
     },
     output: {
@@ -253,11 +246,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       const sessionId = exec.agent?.session.id ?? ANONYMOUS_SESSION
       const state = sessionStateFor(sessionId, exec.agent?.session.header.cwd)
       let command = args.command
-      const commandEnv = normalizeBashEnv(args.env)
-      let workdir = args.workdir
-      if (workdir === undefined) {
+      let requestedCwd = args.cwd
+      if (requestedCwd === undefined) {
         const cd = extractCdWorkdir(command)
-        if (cd !== null) { workdir = cd.workdir; command = cd.command }
+        if (cd !== null) { requestedCwd = cd.workdir; command = cd.command }
       }
       // Upstream bash.ts resolves an explicit cwd through `resolveToCwd`
       // (path-utils): MSYS drive aliases (`/d/…`), stray `:` prefixes, and `~`
@@ -266,21 +258,21 @@ export function apply(ctx: Context, config: Config = {}): void {
       // (the last successful cd target, deleted or renamed) would otherwise
       // surface as the shell's cryptic "Failed to set cwd". The check also runs
       // before jobs.start, so a dead cwd never registers a doomed background
-      // job. The explicit-workdir messages stay unchanged for compatibility.
+      // job. The explicit-cwd messages stay unchanged for compatibility.
       // The base cwd is normalized too: a legacy session may still carry a
       // logical `/tmp/...` from an older shell snapshot. Native paths are
       // unaffected, so this is a no-op for every normal session.
       const baseCwd = normalizeWindowsUnixTmpPath(state.cwd)
-      const commandCwd = workdir === undefined ? baseCwd : resolveToCwd(workdir, baseCwd)
-      const cwdLabel = workdir === undefined ? 'Session working directory' : 'Working directory'
+      const commandCwd = requestedCwd === undefined ? baseCwd : resolveToCwd(requestedCwd, baseCwd)
+      const cwdLabel = requestedCwd === undefined ? 'Session working directory' : 'Working directory'
       let cwdStat: fs.Stats
       try {
         cwdStat = await fs.promises.stat(commandCwd)
       } catch {
-        if (workdir === undefined) {
+        if (requestedCwd === undefined) {
           throw new Error(
             `Session working directory does not exist: ${commandCwd}. `
-            + 'It may have been deleted or renamed. Pass an absolute workdir, '
+            + 'It may have been deleted or renamed. Pass an absolute cwd, '
             + 'or start the command with `cd "<absolute path>" && ...`.',
           )
         }
@@ -315,7 +307,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         runtimeLogger().warn('bash: shellEnv unavailable, running without the managed DSH_* variables', { sessionId })
       }
       const dshEnv = shellEnv === undefined ? {} : shellEnv.collect(exec)
-      const env = { ...dshEnv, ...commandEnv }
+      const env = dshEnv
       const jobs = ctx.get('jobs')
       // Owned-job access is fenced by the owner's SESSION id (0.1.7): the job's
       // owner is `exec.agent.id`, and every registry read/kill/wait/list is

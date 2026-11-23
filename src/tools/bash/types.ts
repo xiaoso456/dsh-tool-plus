@@ -67,8 +67,8 @@ export interface BashToolArgs {
   description?: string
   /** Deadline in seconds (OMP semantics): 0 disables, omitted means the configured default. */
   timeout?: number
-  workdir?: string
-  env?: Record<string, string>
+  /** Working directory for this call (OMP `cwd`); relative paths resolve against the session cwd. */
+  cwd?: string
   /** Explicit background execution (OMP `async`). */
   async?: boolean
 }

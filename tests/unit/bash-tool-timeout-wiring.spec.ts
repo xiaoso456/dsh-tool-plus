@@ -252,7 +252,7 @@ describe('cd workdir wiring (S-16)', () => {
   it('expands ~ in an explicit workdir argument', async () => {
     h = await harness({ autoBackgroundMs: 0 })
     recorded.length = 0
-    await call(h.ctx, { command: 'pwd', description: 'explicit home', workdir: '~' }, h.agent)
+    await call(h.ctx, { command: 'pwd', description: 'explicit home', cwd: '~' }, h.agent)
     expect(recorded[0]!.command).toBe('pwd')
     expect(recorded[0]!.options?.cwd).toBe(os.homedir())
   })
@@ -300,7 +300,7 @@ describe('cd workdir MSYS path forms (S-16b)', () => {
 
   it('converts an MSYS path in an explicit workdir argument', async () => {
     h = await harness({ autoBackgroundMs: 0 })
-    await call(h.ctx, { command: 'pwd', description: 'msys workdir', workdir: '/d/code' }, h.agent)
+    await call(h.ctx, { command: 'pwd', description: 'msys cwd', cwd: '/d/code' }, h.agent)
     expect(recorded[0]!.options?.cwd).toBe(process.platform === 'win32' ? 'D:\\code' : '/d/code')
   })
 
@@ -339,7 +339,7 @@ describe('cd workdir MSYS path forms (S-16b)', () => {
     h = await harness({ autoBackgroundMs: 0 })
     const result = await call(
       h.ctx,
-      { command: 'pwd', description: 'file workdir', workdir: 'package.json' },
+      { command: 'pwd', description: 'file cwd', cwd: 'package.json' },
       h.agent,
     )
     expect(result.isError).toBe(true)
@@ -417,7 +417,7 @@ describe('session cwd validation (S-16c)', () => {
     h = await harness({ autoBackgroundMs: 0 }, dead)
     nextWorkingDirs.push(live)
 
-    const first = await call(h.ctx, { command: 'pwd', description: 'recover', workdir: live }, h.agent)
+    const first = await call(h.ctx, { command: 'pwd', description: 'recover', cwd: live }, h.agent)
     expect(first.isError).toBe(false)
     expect(recorded[0]!.options?.cwd).toBe(live)
 
@@ -434,7 +434,7 @@ describe('session cwd validation (S-16c)', () => {
 
     const result = await call(
       h.ctx,
-      { command: 'pwd', description: 'tmp workdir', workdir: '/tmp/' + path.basename(target) },
+      { command: 'pwd', description: 'tmp cwd', cwd: '/tmp/' + path.basename(target) },
       h.agent,
     )
     expect(result.isError).toBe(false)

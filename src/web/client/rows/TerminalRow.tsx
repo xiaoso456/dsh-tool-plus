@@ -81,7 +81,7 @@ function TerminalCard(props: RowProps & { title: string }) {
     : typeof foreground?.exitCode === 'number'
       ? foreground.exitCode
       : typeof status.exitCode === 'number' ? status.exitCode : undefined
-  const workdir = argText(args, 'workdir') ?? foreground?.workingDir ?? sessionCwd
+  const requestedCwd = argText(args, 'cwd') ?? foreground?.workingDir ?? sessionCwd
   // The head states the intent *and* the command: a description alone left the
   // reader expanding the card to learn what actually ran.
   const summary = bashCardSummary(
@@ -93,7 +93,7 @@ function TerminalCard(props: RowProps & { title: string }) {
     <ToolCardShell t={t} state={state} title={title} tool={toolName} summary={summary} inspect={inspect}>
       <TerminalBlock
         command={command}
-        cwd={workdir}
+        cwd={requestedCwd}
         home={home}
         output={status.output}
         exitCode={exitCode}

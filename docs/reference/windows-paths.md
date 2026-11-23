@@ -99,7 +99,7 @@ patterns::expand_pattern
 
 ### 4.1 `/tmp`：shell 与内置工具统一映射
 
-`/tmp` 是唯一被单独改写的 `/` 根。shell 的 `translate_unix_tmp_path` 已经把它映射到 Windows 临时目录；插件内置工具（read/write/edit/grep/glob/ast_edit/ast_grep，以及 bash 的 `workdir` 和前导 `cd`）现在走同一套规则，避免 `bash` 写 `%TEMP%`、read 却去 `C:\tmp` 找。
+`/tmp` 是唯一被单独改写的 `/` 根。shell 的 `translate_unix_tmp_path` 已经把它映射到 Windows 临时目录；插件内置工具（read/write/edit/grep/glob/ast_edit/ast_grep，以及 bash 的 `cwd` 和前导 `cd`）现在走同一套规则，避免 `bash` 写 `%TEMP%`、read 却去 `C:\tmp` 找。
 
 临时目录的取值顺序与 Rust `env::temp_dir()` 一致：`TMP` → `TEMP` → 操作系统默认。只有字面小写 `/tmp` 根会映射，且先按 POSIX 语义折叠 `.`/`..`：
 

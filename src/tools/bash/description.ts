@@ -48,7 +48,7 @@ const PERSISTENT = 'The bash tool runs commands in one persistent shell: the ses
 
 /** 非持久时的第一句：只有工作目录跟随 cd。 */
 const PER_CALL = 'The bash tool runs a command in a shell; the session working directory follows `cd` across calls, but other shell state '
-  + '(`export`-ed variables, aliases, shell functions) does not persist between calls — pass `workdir` to run elsewhere. '
+  + '(`export`-ed variables, aliases, shell functions) does not persist between calls — pass `cwd` to run elsewhere. '
 
 /** 自动后台那一段（只有开着时才成立）。 */
 const AUTO_BACKGROUND = 'Commands exceeding the auto-background threshold are moved to the background automatically. '
