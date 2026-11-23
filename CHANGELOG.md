@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.2] - 2026-11-23
+
+> 测试版：bash 工具描述去重，行为无变化。
+
+### Changed
+
+- **bash 工具描述删掉重复的 `[exit code: N]` 说明**：这句与 `tool:bash` 系统提示段重复，现在只留在系统提示里（官方 `dsh-tool-bash` 同样只在提示段讲 marker）；非零退出的 marker 渲染与检查要求不变。
+
 ## [0.3.0-beta.1] - 2026-11-23
 
 > 测试版：修提示词段顺序，标准与 PTC 两个预设都回到官方顺序。
