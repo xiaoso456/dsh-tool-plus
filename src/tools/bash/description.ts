@@ -61,7 +61,7 @@ const TAIL = 'Long output is minimized and/or truncated to head+tail; '
 /** 显式后台的说明，只在设置页允许模型主动转后台时成立（schema 同时才会带 `async`）。 */
 const EXPLICIT_ASYNC = 'Set `async: true` for long-running commands: the call returns a job id immediately; '
   + 'the result is delivered automatically when it finishes — do not poll for it. '
-  + 'The timeout still applies; pass `timeout: 0` for watchers and long-running jobs. '
+  + 'The deadline still applies to background jobs; pass `timeout: 0` to disable it for watchers and long-running jobs. '
 
 /**
  * 工具描述（模型看到的 schema description）。
