@@ -1,5 +1,5 @@
 /**
- * bash 的工具描述与系统提示段落：**由当前配置决定**，不再是写死的一段话。
+ * bash 的工具描述：**由当前配置决定**，不再是写死的一段话。
  *
  * 为什么必须随配置变（issue #4）：持久性取决于两条路径的选择——
  * - autoBackgroundMs > 0（默认）：每条命令都登记成作业，作业在独立 Shell（键里带 :async: 与 jobId）里跑完即删，
@@ -13,11 +13,10 @@
  * @module @xiaoso/dsh-tool-plus/tools/bash/description
  */
 
-import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type { RuntimeConfig } from '../../config/settings.ts'
 import { formatTimeoutSeconds } from './timeout-meta.ts'
 
-/** 描述里与持久性有关的两个事实。 */
+/** 描述里与持久性有关的三个事实。 */
 export interface BashDescriptionFacts {
   /**
    * 每次调用是否可能换一个 Shell（= 不能承诺变量保持）。
@@ -33,7 +32,7 @@ export interface BashDescriptionFacts {
 /**
  * 从运行时配置取出描述需要的事实。
  * @param cfg - 解析后的运行时配置。
- * @returns 两个事实。
+ * @returns 三个事实。
  */
 export function bashDescriptionFacts(cfg: RuntimeConfig): BashDescriptionFacts {
   return {
@@ -49,15 +48,27 @@ const PERSISTENT = 'The bash tool runs commands in one persistent shell: the ses
 
 /** 非持久时的第一句：只有工作目录跟随 cd。 */
 const PER_CALL = 'The bash tool runs a command in a shell; the session working directory follows `cd` across calls, but other shell state '
-  + '(`export`-ed variables, aliases, shell functions) does not persist between calls — pass `cwd` to run elsewhere. '
+  + '(`export`-ed variables, aliases, shell functions) does not persist between calls. '
 
-/** 自动后台那一段（只有开着时才成立）。 */
-const AUTO_BACKGROUND = 'Commands exceeding the auto-background threshold are moved to the background automatically. '
+/** 命令形态：两种 shell 配置下都成立，接在持久性说明之后。 */
+const COMMAND_STYLE = 'One fact command/pipeline; dependencies use `&&`. '
+
+/**
+ * 自动后台的说明（只有开着时才成立）。
+ * 阈值、死线前 1s 转后台、job cap 都按实际行为写；
+ * "结果自动送达 / NEVER poll" 与 OMP 的 bash.md 保持一致。
+ * @param cfg - 解析后的运行时配置。
+ * @returns 与当前配置相符的说明段落。
+ */
+function autoBackgroundGuidance(cfg: RuntimeConfig): string {
+  const thresholdSeconds = formatTimeoutSeconds(cfg.autoBackgroundMs / 1000)
+  return `Calls still running after ${thresholdSeconds}s (or 1s before the deadline, if sooner) usually move to a background job `
+    + 'and keep running under the same deadline (if any), unless the background-job cap is reached; '
+    + 'the result arrives automatically as a follow-up message. NEVER poll. '
+}
 
 /** 输出说明，两种配置共用。 */
-const TAIL = 'Long output is minimized and/or truncated to head+tail; '
-  + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
-  + 're-read elided ranges with the read tool using :N-M selectors on that path. '
+const TAIL = 'No `head`/`tail`/redirection; output trunc by default, full result saved to a log file whose path is printed with the result. '
 
 /**
  * 显式后台的说明，只在设置页允许模型主动转后台时成立（schema 同时才会带 `async`）。
@@ -67,14 +78,12 @@ const TAIL = 'Long output is minimized and/or truncated to head+tail; '
  * @returns 与当前配置相符的说明段落。
  */
 function explicitAsyncGuidance(cfg: RuntimeConfig): string {
-  const prefix = 'Set `async: true` for long-running commands: the call returns a job id immediately; '
-    + 'the result is delivered automatically when it finishes — do not poll for it. '
   if (cfg.defaultTimeoutMs === 0) {
-    return prefix + 'No deadline applies by default; pass `timeout: <seconds>` to set one. '
+    return '`async` defers finite results. No deadline applies by default; pass `timeout: <seconds>` to set one. '
   }
   const defaultSeconds = Math.max(1_000, Math.min(cfg.defaultTimeoutMs, cfg.maxTimeoutMs)) / 1000
-  return prefix + `The deadline still applies to background jobs (default ${formatTimeoutSeconds(defaultSeconds)}s); `
-    + 'pass `timeout: 0` to disable it for watchers and long-running jobs. '
+  return `\`async\` defers finite results but keeps the deadline (default ${formatTimeoutSeconds(defaultSeconds)}s); `
+    + '`timeout: 0` for watchers and long jobs. '
 }
 
 /**
@@ -84,28 +93,10 @@ function explicitAsyncGuidance(cfg: RuntimeConfig): string {
  */
 export function bashToolDescription(cfg: RuntimeConfig): string {
   const facts = bashDescriptionFacts(cfg)
-  return 'Execute a bash command and return its output. '
-    + (facts.perCallShell ? PER_CALL : PERSISTENT)
+  return (facts.perCallShell ? PER_CALL : PERSISTENT)
+    + COMMAND_STYLE
     + TAIL
     + (facts.explicitAsync ? explicitAsyncGuidance(cfg) : '')
-    + (facts.autoBackground ? AUTO_BACKGROUND : '')
-    + 'Current harness environment facts are exposed through managed $' + DSH_ENV_PREFIX + '* variables; inspect them when needed.'
+    + (facts.autoBackground ? autoBackgroundGuidance(cfg) : '')
 }
 
-/** 系统提示里那一节的后半段（退出码提醒）。 */
-const EXIT_HINT = 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.'
-
-/**
- * 系统提示里的 tool:bash 段落。
- * @param cfg - 解析后的运行时配置。
- * @returns 当前配置下为真的段落文本。
- */
-export function bashSystemPromptText(cfg: RuntimeConfig): string {
-  const facts = bashDescriptionFacts(cfg)
-  return (facts.perCallShell ? PER_CALL : PERSISTENT)
-    + (facts.autoBackground
-      ? 'Long-running commands are moved to the background automatically (the call returns a job id; the result is delivered '
-        + 'automatically when it finishes — do not poll for it). '
-      : '')
-    + EXIT_HINT
-}

@@ -28,7 +28,7 @@ import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
 import { formatTimeoutClampNotice, timeoutDetails } from './tools/bash/timeout-meta.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { defaultInitScriptPath } from './tools/bash/init-script.ts'
-import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
+import { bashToolDescription } from './tools/bash/description.ts'
 import { TOOL_SECTION_ORDERS } from './tool-section-orders.ts'
 import { installBrowserProbeRpc } from './host/browser-probe-rpc.ts'
 import { readNativeStatus } from './tools/shared/native-status.ts'
@@ -232,7 +232,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       ctx.systemPrompt.section({
         name: 'tool:bash',
         order: TOOL_SECTION_ORDERS.bash,
-        text: bashSystemPromptText(cfg),
+        text: 'MUST use specialized tool over shell equivalent:\n`bash`: real binaries/short fact pipelines (counts, frequencies, set differences, checksums), NEVER specialized-tool work or paging/moving/trimming fetchable bytes.',
       }),
     ]
     disposeBashSurface.push(ctx.tools.register(defineTool({
@@ -440,26 +440,26 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:read',
     order: TOOL_SECTION_ORDERS.read,
-    text: 'Use the read tool — not shell cat/head/tail — to inspect files. `path` accepts an inline selector: :N (single line), :N-M (range), :N+K (K lines from N), :N- (to EOF), comma multi-range, :raw (verbatim). Archive members use "archive.zip:inner/path". Never open guessed files; use ranges, not whole files.',
+    text: 'File/directory reads: `read` (directory lists entries).',
   })
   ctx.systemPrompt.section({
     name: 'tool:write',
     order: TOOL_SECTION_ORDERS.write,
-    text: 'Use the write tool to create or overwrite files. Parent directories are created. Shebang files auto chmod +x. Hashline patches ([PATH#HASH] headers) and conflict:// URIs are handled.',
+    text: 'Create/overwrite: `write`.',
   })
   ctx.systemPrompt.section({
     name: 'tool:edit',
     order: TOOL_SECTION_ORDERS.edit,
-    text: 'Use the edit tool — not shell `sed`|`perl`|`python` — for literal replacements. `old_string` must appear exactly once by default; use `replace_all:true` for multiple occurrences. Unified `patch` is supported. Fuzzy matching helps with whitespace differences.',
+    text: 'Surgical edits: `edit`.\n\n<critical>\nNEVER use `sed`|`perl`|`python` via `bash` to issue individual edits; MUST use `edit`.\n</critical>',
   })
   ctx.systemPrompt.section({
     name: 'tool:grep',
     order: TOOL_SECTION_ORDERS.grep,
-    text: 'Use the grep tool — not shell grep/rg/awk — to search file contents. Returns path\\nLine N: text grouped output. Use `glob` for file discovery.',
+    text: 'Regex/target search: `grep`, NEVER shell `grep`/`rg`/`awk`.',
   })
   ctx.systemPrompt.section({
     name: 'tool:glob',
     order: TOOL_SECTION_ORDERS.glob,
-    text: 'Use the glob tool — not shell find/fd or `ls **/*.ext` — to find files by pattern. Pattern with no "/" matches basenames at any depth. Results are files only, mtime-sorted.',
+    text: 'File structure/names: `glob`, NEVER `ls **/*.ext`/`fd`.',
   })
 }

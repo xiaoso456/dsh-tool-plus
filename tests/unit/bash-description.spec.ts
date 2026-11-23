@@ -1,12 +1,12 @@
 /**
- * bash 的工具描述与系统提示段落必须跟着配置走：只有真的走同一个持久 shell 时才能承诺变量保持。
+ * bash 的工具描述必须跟着配置走：只有真的走同一个持久 shell 时才能承诺变量保持。
  *
  * 背景（issue #4）：自动后台开着时，每次调用都会新建一个 Shell（作业独立的 :async: 键），
  * export/别名/函数都不跨调用保留；只有 autoBackgroundMs=0 且没开 bash -c 包裹时才是真持久。
  * 描述写死一句"状态跨调用保持"就等于对默认配置说假话。
  */
 import { describe, expect, it } from 'vitest'
-import { bashSystemPromptText, bashToolDescription } from '../../src/tools/bash/description.ts'
+import { bashToolDescription } from '../../src/tools/bash/description.ts'
 import { resolveConfig } from '../../src/config/settings.ts'
 
 const cfg = (over: Record<string, unknown> = {}) => resolveConfig({ autoBackgroundMs: 60_000, ...over })
@@ -29,16 +29,9 @@ describe('bash 描述随配置分支', () => {
     expect(text).toContain('does not persist between calls')
   })
 
-  it('系统提示段落用同一套分支', () => {
-    expect(bashSystemPromptText(cfg())).toContain('does not persist between calls')
-    expect(bashSystemPromptText(cfg({ autoBackgroundMs: 0 }))).toContain('carry over between calls')
-    expect(bashSystemPromptText(cfg({ autoBackgroundMs: 0, useShellCommandWrapper: true })))
-      .toContain('does not persist between calls')
-  })
-
   it('广告的是 OMP 形状的 async / timeout 参数面', () => {
     const text = bashToolDescription(cfg())
-    expect(text).toContain('`async: true`')
+    expect(text).toContain('`async` defers finite results')
     expect(text).toContain('`timeout: 0`')
     expect(text).not.toContain('run_in_background')
   })
@@ -51,7 +44,7 @@ describe('bash 描述随配置分支', () => {
 
   it('设置页关掉 enableRunInBackground 后，描述不再提 async（schema 里也没有该参数）', () => {
     const text = bashToolDescription(cfg({ enableRunInBackground: false }))
-    expect(text).not.toContain('`async: true`')
+    expect(text).not.toContain('`async`')
     expect(text).not.toContain('job id')
     expect(text).not.toContain('`timeout: 0`')
   })
