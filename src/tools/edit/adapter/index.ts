@@ -68,6 +68,21 @@ export const EDIT_MODE_DESCRIPTIONS = {
 
 type EditModeName = keyof typeof EDIT_MODE_DESCRIPTIONS
 
+/** `replace` 描述末尾的 ast_edit 交叉引用；AST 工具关闭时不能推荐它。 */
+const AST_EDIT_HINT = '; `ast_edit` for structure-aware codemods'
+
+/**
+ * 按当前 AST 开关给 replace 描述去掉不存在的 ast_edit 推荐。
+ * @param mode - 当前 editMode。
+ * @param astEditEnabled - ast_edit 是否已注册。
+ * @returns 当前配置下可用的 edit 描述。
+ */
+function editDescriptionForMode(mode: EditModeName, astEditEnabled: boolean): string {
+  const description = EDIT_MODE_DESCRIPTIONS[mode] ?? EDIT_MODE_DESCRIPTIONS.replace
+  if (mode !== 'replace' || astEditEnabled) return description
+  return description.replace(AST_EDIT_HINT, '')
+}
+
 /**
  * 每种模式只暴露自己那一套参数（A 方案，2026-11-21；2026-11-22 反转 patch 部分）：
  * required 跟着模式走。patch 与 OMP 18.12.6 一致，收 `{ path, edits: Entry[] }`，
@@ -432,14 +447,15 @@ export async function executeEditTool(exec: any, cfg: RuntimeConfig, args: any, 
  *  - `edits` with `oldText`/`newText`, or `old_string` → replace mode
  */
 export function registerEdit(ctx: Context, getConfig: () => RuntimeConfig): () => void {
-  // 返回 disposer：editMode 热更新时重注册，同时刷新描述和参数表（见 src/index.ts）。
-  const editMode = (getConfig().editMode ?? 'replace') as EditModeName
+  // 返回 disposer：editMode/astEditEnabled 热更新时重注册，同时刷新描述和参数表（见 src/index.ts）。
+  const cfg = getConfig()
+  const editMode = (cfg.editMode ?? 'replace') as EditModeName
   return ctx.tools.register(defineTool({
     name: 'edit',
     // "是什么模式，就给什么描述"（用户拍板 2026-08-25）：按配置 editMode
     // 选 OMP 原版模式提示词（replace/patch/apply_patch/hashline 四份 md）。
-    // DSH 描述和参数表都是静态的，配置变更由 index.ts 重注册刷新。
-    description: EDIT_MODE_DESCRIPTIONS[editMode] ?? EDIT_MODE_DESCRIPTIONS.replace,
+    // 描述和参数表都按当前配置生成，配置变更由 index.ts 重注册刷新。
+    description: editDescriptionForMode(editMode, cfg.astEditEnabled),
     parameters: editParametersForMode(editMode),
     output: {
       schema: {

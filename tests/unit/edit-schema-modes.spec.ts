@@ -28,7 +28,7 @@ function execFor(cwd: string): any {
   return { agent: { session: { header: { cwd } } }, signal: undefined }
 }
 
-function schemaFor(mode: 'replace' | 'patch' | 'hashline' | 'apply_patch'): any {
+function definitionFor(overrides: Record<string, unknown> = {}): any {
   let definition: any
   const ctx = {
     tools: {
@@ -38,8 +38,12 @@ function schemaFor(mode: 'replace' | 'patch' | 'hashline' | 'apply_patch'): any 
       },
     },
   } as any
-  registerEdit(ctx, () => resolveConfig({ editMode: mode }))
-  return definition.parameters
+  registerEdit(ctx, () => resolveConfig({ editMode: 'replace', ...overrides }))
+  return definition
+}
+
+function schemaFor(mode: 'replace' | 'patch' | 'hashline' | 'apply_patch'): any {
+  return definitionFor({ editMode: mode }).parameters
 }
 
 describe('edit schema 按模式暴露', () => {
@@ -109,6 +113,19 @@ describe('单条 replace 的 new_string 守卫', () => {
   })
 })
 
+
+describe('replace 提示词与 ast_edit 开关', () => {
+  it('ast_edit 关闭时不推荐不存在的 ast_edit', () => {
+    const definition = definitionFor({ astEditEnabled: false })
+    expect(definition.description).toContain('Use Replace when content identifies location.')
+    expect(definition.description).not.toContain('`ast_edit`')
+  })
+
+  it('ast_edit 开启时保留 OMP 的 ast_edit 推荐', () => {
+    const definition = definitionFor({ astEditEnabled: true })
+    expect(definition.description).toContain('`ast_edit` for structure-aware codemods')
+  })
+})
 
 describe('replace 提示词里的 shell 指令与实际环境一致', () => {
   const replaceDesc = () => (EDIT_MODE_DESCRIPTIONS as Record<string, string>).replace ?? ''
