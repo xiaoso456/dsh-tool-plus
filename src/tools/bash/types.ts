@@ -21,13 +21,13 @@ export interface MinimizerConfig {
  * defaults inside `apply`; {@link ResolvedConfig} is the fully-defaulted form.
  */
 export interface Config {
-  /** Expose `run_in_background` (default true); disabled calls are also rejected. */
+  /** Expose `async` (default true); disabled calls are also rejected. */
   enableRunInBackground?: boolean
   /** Foreground commands exceeding this wall time are moved to the background (0 = never). */
   autoBackgroundMs?: number
-  /** Deadline applied when the model omits `timeoutMs`. */
+  /** Deadline applied when the model omits `timeout` (milliseconds, config-side). */
   defaultTimeoutMs?: number
-  /** Upper clamp for explicit timeouts; `timeoutMs: 0` disables the deadline. */
+  /** Upper clamp for explicit timeouts (milliseconds, config-side); `timeout: 0` disables the deadline. */
   maxTimeoutMs?: number
   /** Tail budget for live previews and background-job output reads. */
   outputMaxBytes?: number
@@ -63,11 +63,14 @@ export type ResolvedConfig = Required<Config>
 /** Parsed tool arguments; execute validates value constraints absent from ParameterSchemaSpec. */
 export interface BashToolArgs {
   command: string
-  description: string
-  timeoutMs?: number
+  /** Optional one-line intent shown in the UI; absent is valid. */
+  description?: string
+  /** Deadline in seconds (OMP semantics): 0 disables, omitted means the configured default. */
+  timeout?: number
   workdir?: string
   env?: Record<string, string>
-  run_in_background?: boolean
+  /** Explicit background execution (OMP `async`). */
+  async?: boolean
 }
 
 /** Minimizer facts surfaced with a foreground result. */
@@ -101,8 +104,12 @@ export interface BashForegroundOutput {
   exitCode: number | null
   timedOut: boolean
   aborted: boolean
-  /** The effective deadline in ms (null when the deadline was disabled). */
-  timeoutMs: number | null
+  /** The effective deadline in seconds (OMP `details.timeoutSeconds`); absent when disabled. */
+  timeoutSeconds?: number
+  /** The deadline the caller asked for, when clamping changed it (OMP `requestedTimeoutSeconds`). */
+  requestedTimeoutSeconds?: number
+  /** True when the deadline was disabled (`timeout: 0`, OMP `timeoutDisabled`). */
+  timeoutDisabled?: boolean
   /** Wall-clock duration of the run. */
   wallTimeMs: number
   /** The shell's working directory after the command (persists across calls). */

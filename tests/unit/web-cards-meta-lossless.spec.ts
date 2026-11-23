@@ -119,7 +119,7 @@ const PROBES: MetaProbe[] = [
     // 接线本身由本文件末尾的源码锁守住。
     presentationMeta: (_args, value) => bashCardMeta(value),
     good: [
-      { args: {}, value: { kind: 'foreground', exitCode: 0, timedOut: false, aborted: false, timeoutMs: null, wallTimeMs: 7 } },
+      { args: {}, value: { kind: 'foreground', exitCode: 0, timedOut: false, aborted: false, timeoutDisabled: true, wallTimeMs: 7 } },
       { args: {}, value: { kind: 'foreground', exitCode: 1, timedOut: false, aborted: false, workingDir: '/w' } },
       { args: {}, value: { kind: 'background', jobId: 'bash-2' } },
     ],

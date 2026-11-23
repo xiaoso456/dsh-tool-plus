@@ -150,38 +150,45 @@ describe('timeout policy wiring (S-4)', () => {
     if (h) await h.dispose()
   })
 
-  it('passes timeoutMs: 0 through to the executor (true disable, not undefined)', async () => {
+  it('passes timeout: 0 through to the executor (true disable, not undefined)', async () => {
     h = await harness({ autoBackgroundMs: 0 })
-    const result = await call(h.ctx, { command: 'echo hi', description: 'no deadline', timeoutMs: 0 }, h.agent)
+    const result = await call(h.ctx, { command: 'echo hi', description: 'no deadline', timeout: 0 }, h.agent)
     expect(result.isError).toBe(false)
     expect(recorded).toHaveLength(1)
     expect(recorded[0]!.options?.timeout).toBe(0)
   })
 
-  it('keeps the default deadline when timeoutMs is omitted', async () => {
+  it('converts timeout seconds to the executor milliseconds', async () => {
+    h = await harness({ autoBackgroundMs: 0 })
+    recorded.length = 0
+    await call(h.ctx, { command: 'echo hi', description: 'twelve seconds', timeout: 12 }, h.agent)
+    expect(recorded[0]!.options?.timeout).toBe(12_000)
+  })
+
+  it('keeps the default deadline when timeout is omitted', async () => {
     h = await harness({ autoBackgroundMs: 0, defaultTimeoutMs: 2_000 })
     recorded.length = 0
     await call(h.ctx, { command: 'echo hi', description: 'default deadline' }, h.agent)
     expect(recorded[0]!.options?.timeout).toBe(2_000)
   })
 
-  it('background jobs without timeoutMs run without a deadline (timeoutMs: 0, not the foreground default)', async () => {
+  it('background jobs inherit the default deadline unless timeout: 0 (OMP async semantics)', async () => {
     h = await harness({ autoBackgroundMs: 0, defaultTimeoutMs: 2_000 })
     const result = await call(
       h.ctx,
-      { command: 'echo bg', description: 'bg no deadline', run_in_background: true },
+      { command: 'echo bg', description: 'bg default', async: true },
       h.agent,
     )
     expect(result.isError).toBe(false)
-    expect(recorded[0]!.options?.timeout).toBe(0)
+    expect(recorded[0]!.options?.timeout).toBe(2_000)
   })
 
-  it('background jobs with an explicit timeoutMs keep it', async () => {
+  it('background jobs with an explicit timeout keep it', async () => {
     h = await harness({ autoBackgroundMs: 0 })
     recorded.length = 0
     await call(
       h.ctx,
-      { command: 'echo bg', description: 'bg explicit', run_in_background: true, timeoutMs: 5_000 },
+      { command: 'echo bg', description: 'bg explicit', async: true, timeout: 5 },
       h.agent,
     )
     expect(recorded[0]!.options?.timeout).toBe(5_000)
@@ -190,14 +197,14 @@ describe('timeout policy wiring (S-4)', () => {
   it('floors after capping: maxTimeoutMs below 1s still yields at least the 1s floor', async () => {
     h = await harness({ autoBackgroundMs: 0, maxTimeoutMs: 500 })
     recorded.length = 0
-    await call(h.ctx, { command: 'echo hi', description: 'capped', timeoutMs: 60_000 }, h.agent)
+    await call(h.ctx, { command: 'echo hi', description: 'capped', timeout: 60 }, h.agent)
     expect(recorded[0]!.options?.timeout).toBe(1_000)
   })
 
-  it('auto-background wait with timeoutMs: 0 uses the full autoBackgroundMs window (no instant backgrounding)', async () => {
+  it('auto-background wait with timeout: 0 uses the full autoBackgroundMs window (no instant backgrounding)', async () => {
     h = await harness({ autoBackgroundMs: 1_000 })
     recorded.length = 0
-    const result = await call(h.ctx, { command: 'echo fast', description: 'quick', timeoutMs: 0 }, h.agent)
+    const result = await call(h.ctx, { command: 'echo fast', description: 'quick', timeout: 0 }, h.agent)
     expect(result.isError).toBe(false)
     expect(textOf(result)).not.toContain('Backgrounded as job')
     expect(textOf(result)).toContain('mock-output:echo fast')

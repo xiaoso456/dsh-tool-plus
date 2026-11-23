@@ -13,7 +13,7 @@
  *  - grep（§4.5）：`{kind:'search', shape:'matches', files, truncated, total}`，解析
  *    `# dir/` + `## file.ts` 分组头与 `*N│line` 代码帧，context 行与 `…` 不算 matches，
  *    超 64 KiB 丢尾部 group 并置 truncated。
- *  - bash：终态卡片无法推导的运行态（`timeoutMs: 0` 合法、超时无 exitCode、
+ *  - bash：终态卡片无法推导的运行态（`timeoutDisabled` 合法、超时无 exitCode、
  *    自动后台化不是已完成的命令）必须作为数据随行。
  *  - ast_edit（§4.3）：`{kind:'ast_edit', preview, files, replacements, applied}`。
  *  - edit（§4.2）：`{kind:'edit', diffs:[{path, oldText, newText}]}`，数据来自引擎已算好的
@@ -167,7 +167,7 @@ function foreground(overrides: Record<string, unknown> = {}): Record<string, unk
     exitCode: 0,
     timedOut: false,
     aborted: false,
-    timeoutMs: 3_600_000,
+    timeoutSeconds: 3600,
     wallTimeMs: 12,
     output: { text: 'ok\n', truncated: false },
     ...overrides,
@@ -613,8 +613,8 @@ describe('web card metadata', () => {
         expect(bashCardMeta(foreground({ exitCode: 127 }))).toMatchObject({ exitCode: 127 })
       })
 
-      it('keeps a deadline-disabled call (timeoutMs: 0) a valid card', () => {
-        const meta = bashCardMeta(foreground({ timeoutMs: 0 }))
+      it('keeps a deadline-disabled call (timeoutDisabled) a valid card', () => {
+        const meta = bashCardMeta(foreground({ timeoutDisabled: true }))
         expect(meta).not.toBeNull()
         expect(narrowTerminalCardMeta(meta)).toEqual(meta)
       })
@@ -639,7 +639,7 @@ describe('web card metadata', () => {
 
     describe('bash card metadata — background', () => {
       it('reports a managed job hand-off from either source', () => {
-        // `run_in_background: true` and the auto-background window return the same arm.
+        // `async: true` and the auto-background window return the same arm.
         expect(bashCardMeta({ kind: 'background', jobId: 'bash-7' }))
           .toEqual({ kind: 'terminal', mode: 'background', jobId: 'bash-7' })
       })

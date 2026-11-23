@@ -41,7 +41,7 @@ describe('checkBashInterception', () => {
   it('default rules target dsh tool names', () => {
     const tools = [...new Set(DEFAULT_BASH_INTERCEPTOR_RULES.map(rule => rule.tool))]
     // A-2：规则表对齐上游 10 条（含 echo/printf 重定向 → write），hub 3 条映射为
-    // tool:"bash" 的 run_in_background 引导（second-impl-audit.md A-2 终局）。
+    // tool:"bash" 的 async 引导（second-impl-audit.md A-2 终局）。
     expect(tools.sort()).toEqual(['bash', 'edit', 'glob', 'grep', 'read', 'write'])
   })
 })
@@ -131,7 +131,7 @@ describe('renderBashResult', () => {
       exitCode: 3,
       timedOut: false,
       aborted: false,
-      timeoutMs: 5000,
+      timeoutSeconds: 5,
       wallTimeMs: 1234,
       output: { text: 'boom\n', truncated: false },
     }
@@ -149,7 +149,7 @@ describe('renderBashResult', () => {
       exitCode: 0,
       timedOut: false,
       aborted: false,
-      timeoutMs: null,
+      timeoutDisabled: true,
       wallTimeMs: 10,
       output: { text: '', truncated: false },
     }
@@ -162,7 +162,7 @@ describe('renderBashResult', () => {
       exitCode: 0,
       timedOut: false,
       aborted: false,
-      timeoutMs: null,
+      timeoutDisabled: true,
       wallTimeMs: 10,
       rmSafeInjectionFailed: true,
       output: { text: 'ok\n', truncated: false },
@@ -177,7 +177,7 @@ describe('renderBashResult', () => {
       exitCode: null,
       timedOut: true,
       aborted: false,
-      timeoutMs: 1000,
+      timeoutSeconds: 1,
       wallTimeMs: 1005,
       output: {
         text: 'partial',
@@ -192,7 +192,7 @@ describe('renderBashResult', () => {
       },
     }
     const text = renderBashResult(value)
-    expect(text).toContain('[timed out after 1000ms]')
+    expect(text).toContain('[Command timed out after 1 seconds]')
     // Middle-elision ranges reconstructed by the shared OMP algorithm:
     // keptLines = outputLines - 1 = 80 → head 1-40, tail 175-214.
     expect(text).toContain('Showing lines 1-40 and 175-214 of 214')
@@ -206,7 +206,7 @@ describe('renderBashResult', () => {
       exitCode: 0,
       timedOut: false,
       aborted: false,
-      timeoutMs: null,
+      timeoutDisabled: true,
       wallTimeMs: 5,
       output: { text: 'partial', truncated: true },
     }
@@ -222,7 +222,7 @@ describe('renderBashResult', () => {
       exitCode: 0,
       timedOut: false,
       aborted: false,
-      timeoutMs: null,
+      timeoutDisabled: true,
       wallTimeMs: 5,
       output: { text: 'ok', truncated: false, spillPath: 'tmp/mirror.log' },
     }
@@ -236,7 +236,7 @@ describe('renderBashResult', () => {
       exitCode: 0,
       timedOut: false,
       aborted: false,
-      timeoutMs: null,
+      timeoutDisabled: true,
       wallTimeMs: 5,
       minimized: { filter: 'git', inputBytes: 12_345, outputBytes: 42 },
       output: { text: 'minimized', truncated: false, originalSpillPath: 'tmp/original.log' },

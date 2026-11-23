@@ -11,6 +11,7 @@
 
 import { parseExitStatus } from '@deepseek-ai/dsh-shell'
 import { outputMeta } from '../omp/tools/output-meta.ts'
+import { formatTimeoutSeconds } from './timeout-meta.ts'
 import type { BashForegroundOutput, CollectedOutput } from './types.ts'
 
 /** Format a byte count for human-readable display. */
@@ -105,7 +106,9 @@ export function renderBashResult(value: BashForegroundOutput): string {
 
   const markers: string[] = []
   if (value.timedOut) {
-    markers.push(`[timed out after ${value.timeoutMs ?? '?'}ms]`)
+    markers.push(value.timeoutDisabled === true
+      ? '[Command timed out]'
+      : `[Command timed out after ${formatTimeoutSeconds(value.timeoutSeconds)} seconds]`)
   } else if (value.exitCode !== 0) {
     markers.push(`[exit code: ${value.exitCode}]`)
   }

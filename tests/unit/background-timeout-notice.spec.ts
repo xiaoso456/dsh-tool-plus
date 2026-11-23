@@ -20,7 +20,7 @@ describe('background job killed by its deadline (A-9)', () => {
     const config = resolveConfig({})
     // 1s deadline instead of 3s: the subject is "a job killed by its own deadline
     // reports it", and 1000ms is the deadline floor the rest of the suite uses —
-    // the annotation renders `Math.max(1, round(timeoutMs / 1000))`, so 1s keeps the
+    // the annotation renders the effective deadline in seconds, so 1s keeps the
     // same code path while cutting ~2s of real wait out of every run.
     const job = startBashJob({
       sessionId: 'spec',
@@ -32,6 +32,8 @@ describe('background job killed by its deadline (A-9)', () => {
     })
     const value = await job.completion
     expect(value.timedOut).toBe(true)
+    expect(value.timeoutSeconds).toBe(1)
+    expect(value.timeoutDisabled).toBeUndefined()
     // `1 second` (not `1 seconds`) so a future pluralization fix does not break this.
     expect(value.output.text).toContain('[Command timed out after 1 second')
     const outcome = await job.hooks.done

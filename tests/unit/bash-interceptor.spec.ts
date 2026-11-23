@@ -62,11 +62,11 @@ describe('hub 类 3 条规则 → DSH 原生后台任务（A-2 收尾）', () =>
     ['next dev'],
     ['docker compose up'],
     ['pytest --watch'],
-  ])('应拦截：%s → 拦截到 bash，message 引导 run_in_background', (cmd) => {
+  ])('应拦截：%s → 拦截到 bash，message 引导 async', (cmd) => {
     const r = checkBashInterception(cmd, TOOLS_WITH_BASH)
     expect(r.block).toBe(true)
     expect(r.suggestedTool).toBe('bash')
-    expect(r.message).toContain('run_in_background')
+    expect(r.message).toContain('async: true')
   })
 
   it('不应拦：npm run build（非 dev/start，无 --watch/-w，无任何规则命中）', () => {

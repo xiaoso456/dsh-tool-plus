@@ -25,6 +25,8 @@ export interface BashDescriptionFacts {
   perCallShell: boolean
   /** 超阈值的长命令是否会自动转后台（影响要不要写那段提示）。 */
   autoBackground: boolean
+  /** 模型能否显式 `async: true`：设置页关掉时 schema 里没有该参数，描述也不能提。 */
+  explicitAsync: boolean
 }
 
 /**
@@ -36,6 +38,7 @@ export function bashDescriptionFacts(cfg: RuntimeConfig): BashDescriptionFacts {
   return {
     perCallShell: cfg.autoBackgroundMs > 0 || cfg.useShellCommandWrapper === true,
     autoBackground: cfg.autoBackgroundMs > 0,
+    explicitAsync: cfg.enableRunInBackground,
   }
 }
 
@@ -50,12 +53,15 @@ const PER_CALL = 'The bash tool runs a command in a shell; the session working d
 /** 自动后台那一段（只有开着时才成立）。 */
 const AUTO_BACKGROUND = 'Commands exceeding the auto-background threshold are moved to the background automatically. '
 
-/** 输出与后台的说明，两种配置共用。 */
+/** 输出说明，两种配置共用。 */
 const TAIL = 'Long output is minimized and/or truncated to head+tail; '
   + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
   + 're-read elided ranges with the read tool using :N-M selectors on that path. '
-  + 'Set `run_in_background: true` for long-running commands: the call returns a job id immediately; '
+
+/** 显式后台的说明，只在设置页允许模型主动转后台时成立（schema 同时才会带 `async`）。 */
+const EXPLICIT_ASYNC = 'Set `async: true` for long-running commands: the call returns a job id immediately; '
   + 'the result is delivered automatically when it finishes — do not poll for it. '
+  + 'The timeout still applies; pass `timeout: 0` for watchers and long-running jobs. '
 
 /**
  * 工具描述（模型看到的 schema description）。
@@ -67,6 +73,7 @@ export function bashToolDescription(cfg: RuntimeConfig): string {
   return 'Execute a bash command and return its output. '
     + (facts.perCallShell ? PER_CALL : PERSISTENT)
     + TAIL
+    + (facts.explicitAsync ? EXPLICIT_ASYNC : '')
     + (facts.autoBackground ? AUTO_BACKGROUND : '')
     + 'Current harness environment facts are exposed through managed $' + DSH_ENV_PREFIX + '* variables; inspect them when needed.'
 }

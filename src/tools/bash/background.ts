@@ -17,6 +17,7 @@ import { allocateSpillFile, saveOriginalText } from './adapter/spill.ts'
 import { createWarmShell, executeBash, type BashExecutorOptions } from './bash-executor.ts'
 import { defaultInitScriptPath } from './init-script.ts'
 import { TailBuffer } from './streaming-output.ts'
+import { formatTimeoutSeconds, timeoutDetails } from './timeout-meta.ts'
 import type { BashForegroundOutput, ResolvedConfig } from './types.ts'
 import { WarmShellPool } from './warm-shell.ts'
 
@@ -131,6 +132,8 @@ export interface StartBashJobOptions {
   cwd: string
   /** Effective deadline in ms; `undefined`/0 disables the job deadline. */
   timeoutMs: number | undefined
+  /** The deadline the caller asked for, before clamping (OMP `requestedTimeoutSeconds`). */
+  requestedTimeoutMs?: number
   /** Command-scoped environment (already merged with dshEnv). */
   env: Record<string, string> | undefined
   config: ResolvedConfig
@@ -157,7 +160,7 @@ export interface StartBashJobOptions {
  * @returns the registry hooks plus the tool-result completion promise.
  */
 export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
-  const { sessionId, command, cwd, timeoutMs, env, config, job } = options
+  const { sessionId, command, cwd, timeoutMs, requestedTimeoutMs, env, config, job } = options
   const shellKey = `${sessionId}:async:${randomBytes(4).toString('hex')}`
   const abortController = new AbortController()
 
@@ -229,11 +232,14 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
     // killed by its own deadline must SAY so in the delivered text — the
     // sink annotation exists for the foreground path only, so background
     // completions would otherwise go out as raw output with no marker.
+    const timeout = timeoutDetails(timeoutMs, requestedTimeoutMs)
     let text = result.output
     if (timedOut) {
-      const seconds = Math.max(1, Math.round((timeoutMs ?? 0) / 1000))
-      if (!text.includes('[Command timed out after')) {
-        text = `[Command timed out after ${seconds} seconds]\n\n${text}`
+      const message = timeout.timeoutDisabled === true
+        ? '[Command timed out]'
+        : `[Command timed out after ${formatTimeoutSeconds(timeout.timeoutSeconds)} seconds]`
+      if (!text.includes('[Command timed out')) {
+        text = `${message}\n\n${text}`
       }
     }
     // The plugin's completion message joins the ring from inside this producer
@@ -249,7 +255,7 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       exitCode: result.exitCode ?? null,
       timedOut,
       aborted,
-      timeoutMs: timeoutMs ?? null,
+      ...timeout,
       wallTimeMs,
       ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
       ...result.minimized !== undefined ? { minimized: result.minimized } : {},
@@ -275,8 +281,12 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
       // isError → the job manager records the job as failed and delivers the
       // rendered error text, not a plain completion.
       if (value.timedOut) {
-        const seconds = Math.max(1, Math.round((value.timeoutMs ?? 0) / 1000))
-        return { status: 'failed', detail: `Command timed out after ${seconds} seconds` }
+        return {
+          status: 'failed',
+          detail: value.timeoutDisabled === true
+            ? 'Command timed out'
+            : `Command timed out after ${formatTimeoutSeconds(value.timeoutSeconds)} seconds`,
+        }
       }
       const detail = value.exitCode === null ? undefined : `exit code: ${value.exitCode}`
       return { status: 'completed', detail }

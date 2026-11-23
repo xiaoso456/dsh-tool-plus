@@ -71,10 +71,13 @@ export function sweepStaleArtifacts(now: number = Date.now()): number {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         sweepDir(full)
-        // A session directory that lost all its files is pure residue: drop it so
-        // the root does not accumulate one empty directory per past session.
+        // A session directory that lost all its files is residue — but only once
+        // it has been empty for a full stale window. A just-created directory is
+        // empty too, and a concurrent plugin apply() must not delete the
+        // directory a live session is about to write into (the artifacts-seam
+        // spec covers exactly that race).
         try {
-          if (full !== root && fs.readdirSync(full).length === 0) fs.rmdirSync(full)
+          if (full !== root && fs.readdirSync(full).length === 0 && now - fs.statSync(full).mtimeMs > STALE_MS) fs.rmdirSync(full)
         } catch {
           /* ignore */
         }

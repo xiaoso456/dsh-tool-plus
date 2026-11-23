@@ -145,7 +145,16 @@ describeBash('bash-plus composition', () => {
     expect(tool).toBeDefined()
     const properties = (tool?.parameters as { properties?: Record<string, unknown> }).properties ?? {}
     expect(properties).toHaveProperty('command')
-    expect(properties).toHaveProperty('run_in_background')
+    expect(properties).toHaveProperty('async')
+    expect(properties).toHaveProperty('timeout')
+    expect(properties).not.toHaveProperty('timeoutMs')
+    expect((properties.description as { required?: boolean }).required).not.toBe(true)
+  })
+
+  it('accepts a call without description (optional on the OMP-shaped surface)', async () => {
+    const result = await call(ctx, 'bash', { command: 'echo no-description' }, agent)
+    expect(result.isError).toBe(false)
+    expect(textOf(result)).toContain('no-description')
   })
 
   it('describes shell persistence truthfully when auto-background is off', () => {
@@ -236,11 +245,11 @@ describeBash('bash-plus composition', () => {
     }
   })
 
-  it('supports run_in_background through ctx.jobs and job reads', async () => {
+  it('supports async through ctx.jobs and job reads', async () => {
     const started = await call(ctx, 'bash', {
       command: 'echo job-output-line && sleep 0.2',
       description: 'background echo',
-      run_in_background: true,
+      async: true,
     }, agent)
     expect(started.isError).toBe(false)
     // dsh 0.2.1 replaced the `bash-<counter>` identity with the short-UUID
@@ -261,7 +270,7 @@ describeBash('bash-plus composition', () => {
     const started = await call(ctx, 'bash', {
       command: 'seq 1 30000',
       description: 'large background output',
-      run_in_background: true,
+      async: true,
     }, agent)
     expect(started.isError).toBe(false)
     const id = textOf(started).match(/job (bash-[0-9a-z]+)/)?.[1]
@@ -277,14 +286,14 @@ describeBash('bash-plus composition', () => {
   })
 
   it('clamps tiny timeouts up to 1s instead of failing instantly', async () => {
-    const result = await call(ctx, 'bash', { command: 'sleep 0.5', description: 'sleep', timeoutMs: 1 }, agent)
+    const result = await call(ctx, 'bash', { command: 'sleep 0.5', description: 'sleep', timeout: 0.001 }, agent)
     expect(result.isError).toBe(false)
     expect(textOf(result)).not.toContain('[timed out')
   }, 15_000)
 
   it('reports timeouts with the timed-out marker', async () => {
-    const result = await call(ctx, 'bash', { command: 'sleep 5', description: 'sleep long', timeoutMs: 1000 }, agent)
-    expect(textOf(result)).toContain('[timed out after 1000ms]')
+    const result = await call(ctx, 'bash', { command: 'sleep 5', description: 'sleep long', timeout: 1 }, agent)
+    expect(textOf(result)).toContain('[Command timed out after 1 seconds]')
   })
 
   it('rejects a second bash tool registration', async () => {
@@ -316,13 +325,13 @@ describeBash('bash-plus background capacity', () => {
     const first = await call(ctx, 'bash', {
       command: 'sleep 0.5',
       description: 'first background job',
-      run_in_background: true,
+      async: true,
     }, agent)
     expect(first.isError).toBe(false)
     const second = await call(ctx, 'bash', {
       command: 'echo should-not-run',
       description: 'second background job',
-      run_in_background: true,
+      async: true,
     }, agent)
     expect(second.isError).toBe(true)
     expect(textOf(second)).toContain('at capacity (maxBackgroundJobs: 1)')
@@ -401,8 +410,8 @@ describeBash('bash-plus auto-backgrounding', () => {
       // 默认配置下前台命令也走作业 shell。
       const foreground = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix' }, testAgent)
       expect(textOf(foreground)).toMatch(/P=[^\n]*Git/)
-      // 显式 run_in_background 也必须同样 source。
-      const background = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix bg', run_in_background: true }, testAgent)
+      // 显式 async 也必须同样 source。
+      const background = await call(harness.ctx, 'bash', { command: 'printf "P=%s" "${TOOL_PLUS_PATH_PREFIX:-}"', description: 'prefix bg', async: true }, testAgent)
       const id = textOf(background).match(/job (bash-[0-9a-z]+)/)?.[1]
       expect(id).toBeTruthy()
       await waitForJob(harness.ctx, id!, testAgent, 20_000)
@@ -422,7 +431,7 @@ describeBash('bash-plus auto-backgrounding', () => {
     }
   }, 40_000)
   it('hands back a job id when the command outlives the window', async () => {
-    const result = await call(ctx, 'bash', { command: 'sleep 3', description: 'slow', timeoutMs: 60_000 }, agent)
+    const result = await call(ctx, 'bash', { command: 'sleep 3', description: 'slow', timeout: 60 }, agent)
     expect(result.isError).toBe(false)
     expect(textOf(result)).toContain('Backgrounded as job')
   }, 30_000)

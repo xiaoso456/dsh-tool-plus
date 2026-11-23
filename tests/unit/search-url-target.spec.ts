@@ -119,4 +119,20 @@ describe('artifacts seam', () => {
     expect(fs.existsSync(old)).toBe(false)
     fs.rmSync(fresh, { force: true })
   })
+
+  it('sweepStaleArtifacts 不删刚创建的空会话目录（并发 apply 不能删掉在用的目录）', () => {
+    const dir = ensureArtifactsDir('fresh-empty-spec')!
+    fs.rmSync(dir, { recursive: true, force: true })
+    fs.mkdirSync(dir)
+    sweepStaleArtifacts()
+    expect(fs.existsSync(dir)).toBe(true)
+  })
+
+  it('sweepStaleArtifacts 删掉已经空置超过 24h 的会话目录', () => {
+    const dir = ensureArtifactsDir('stale-empty-spec')!
+    const stale = new Date(Date.now() - 25 * 60 * 60 * 1000)
+    fs.utimesSync(dir, stale, stale)
+    sweepStaleArtifacts()
+    expect(fs.existsSync(dir)).toBe(false)
+  })
 })

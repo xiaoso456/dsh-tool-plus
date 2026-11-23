@@ -35,4 +35,18 @@ describe('bash 描述随配置分支', () => {
     expect(bashSystemPromptText(cfg({ autoBackgroundMs: 0, useShellCommandWrapper: true })))
       .toContain('does not persist between calls')
   })
+
+  it('广告的是 OMP 形状的 async / timeout 参数面', () => {
+    const text = bashToolDescription(cfg())
+    expect(text).toContain('`async: true`')
+    expect(text).toContain('`timeout: 0`')
+    expect(text).not.toContain('run_in_background')
+  })
+
+  it('设置页关掉 enableRunInBackground 后，描述不再提 async（schema 里也没有该参数）', () => {
+    const text = bashToolDescription(cfg({ enableRunInBackground: false }))
+    expect(text).not.toContain('`async: true`')
+    expect(text).not.toContain('job id')
+    expect(text).not.toContain('`timeout: 0`')
+  })
 })

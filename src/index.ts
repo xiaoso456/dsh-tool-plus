@@ -25,6 +25,7 @@ import { extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
+import { timeoutDetails } from './tools/bash/timeout-meta.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { defaultInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
@@ -71,17 +72,24 @@ function sessionStateFor(sessionId: string, headerCwd: string | undefined): Sess
 }
 function validateBashArgs(args: BashToolArgs): void {
   if (args.command.trim().length === 0) throw new Error('invalid command: expected a non-empty string')
-  if (args.description.trim().length === 0) throw new Error('invalid description: expected a non-empty string')
-  if (args.timeoutMs !== undefined && (!Number.isFinite(args.timeoutMs) || args.timeoutMs < 0)) throw new Error(`invalid timeoutMs: expected a non-negative number, got ${JSON.stringify(args.timeoutMs)}`)
+  if (args.description !== undefined && typeof args.description !== 'string') throw new Error('invalid description: expected a string when provided')
+  if (args.timeout !== undefined && (!Number.isFinite(args.timeout) || args.timeout < 0)) throw new Error(`invalid timeout: expected a non-negative number of seconds, got ${JSON.stringify(args.timeout)}`)
+}
+
+/** Trim a provided description; absent or blank both mean “no description”. */
+function optionalDescription(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length === 0 ? undefined : trimmed
 }
 function normalizeBashEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
   if (env === undefined || Object.keys(env).length === 0) return undefined
   for (const key of Object.keys(env)) if (!BASH_ENV_NAME_PATTERN.test(key)) throw new Error(`Invalid bash env name: ${key}`)
   return env
 }
-function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTimeMs: number, timeoutMs: number | undefined): BashForegroundOutput {
+function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTimeMs: number, timeoutMs: number | undefined, requestedTimeoutMs?: number): BashForegroundOutput {
   return {
-    kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.timedOut ?? false, aborted: false, timeoutMs: timeoutMs ?? null, wallTimeMs,
+    kind: 'foreground', exitCode: result.exitCode ?? null, timedOut: result.timedOut ?? false, aborted: false, ...timeoutDetails(timeoutMs, requestedTimeoutMs), wallTimeMs,
     ...result.workingDir !== undefined ? { workingDir: result.workingDir } : {},
     ...result.minimized !== undefined ? { minimized: result.minimized } : {},
     ...result.rmSafeInjectionFailed === true ? { rmSafeInjectionFailed: true } : {},
@@ -100,14 +108,15 @@ function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTi
   }
 }
 function presentBashCall(args: BashToolArgs): GenericCallView | TerminalCallView {
-  if (args.run_in_background === true) return { card: 'generic', title: args.command, kind: 'execute', rawInput: args.command, content: [{ type: 'text', text: args.description }] }
-  return { card: 'terminal', title: args.command, description: args.description, ...args.workdir !== undefined ? { cwd: args.workdir } : {} }
+  const description = optionalDescription(args.description)
+  if (args.async === true) return { card: 'generic', title: args.command, kind: 'execute', rawInput: args.command, content: [{ type: 'text', text: description ?? '' }] }
+  return { card: 'terminal', title: args.command, ...description !== undefined ? { description } : {}, ...args.workdir !== undefined ? { cwd: args.workdir } : {} }
 }
 function presentBashResult(args: unknown, result: ToolResult): ToolResultView | undefined {
   const block = result.content.length === 1 ? result.content[0] : undefined
   if (block === undefined || block.type !== 'text') return undefined
   const raw = block.text
-  const isBackground = typeof args === 'object' && args !== null && (args as { run_in_background?: unknown }).run_in_background === true
+  const isBackground = typeof args === 'object' && args !== null && (args as { async?: unknown }).async === true
   if (isBackground || result.isError || raw.startsWith('Backgrounded as job')) return { card: 'generic', content: [{ type: 'text', text: `\`\`\`console\n${raw.replace(/\n+$/, '')}\n\`\`\`` }] }
   const { body, ...exit } = parseExitStatus(raw)
   return { card: 'terminal', output: body, ...exit }
@@ -221,17 +230,17 @@ export function apply(ctx: Context, config: Config = {}): void {
     description: bashToolDescription(cfg),
     parameters: {
       command: { type: 'string', required: true, description: 'The bash command to execute.' },
-      description: { type: 'string', required: true, description: 'Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".' },
-      timeoutMs: { type: 'number', description: 'Timeout in milliseconds; 0 disables the command deadline; nonzero values are clamped to the configured range.' },
+      description: { type: 'string', description: 'Optional one-line description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".' },
+      timeout: { type: 'number', description: 'Timeout in seconds; 0 disables the command deadline; nonzero values are clamped to the configured range.' },
       workdir: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against the session cwd.' },
       env: { type: 'object', additionalProperties: true, description: 'Extra environment variables for this command only (not persisted in the session).' },
-      ...cfg.enableRunInBackground ? { run_in_background: { type: 'boolean' as const, description: 'Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies.' } } : {},
+      ...cfg.enableRunInBackground ? { async: { type: 'boolean' as const, description: 'Run the command as a background job and return its job id immediately (collect with job_output, stop with job_kill). The timeout still applies; pass timeout: 0 for watchers and long-running jobs.' } } : {},
     },
     output: {
       schema: {
         oneOf: [
           { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', required: true, const: 'background' }, jobId: { type: 'string', required: true } } },
-          { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', required: true, const: 'foreground' }, exitCode: { required: true, oneOf: [{ type: 'integer' }, { type: 'null' }] }, timedOut: { type: 'boolean', required: true }, aborted: { type: 'boolean', required: true }, timeoutMs: { required: true, oneOf: [{ type: 'number' }, { type: 'null' }] }, wallTimeMs: { type: 'number', required: true }, workingDir: { type: 'string' }, minimized: { type: 'object', additionalProperties: false, properties: { filter: { type: 'string', required: true }, inputBytes: { type: 'number', required: true }, outputBytes: { type: 'number', required: true } } }, output: { type: 'object', additionalProperties: false, required: true, properties: { text: { type: 'string', required: true }, truncated: { type: 'boolean', required: true }, spillPath: { type: 'string' }, originalSpillPath: { type: 'string' }, totalLines: { type: 'number' }, totalBytes: { type: 'number' }, outputLines: { type: 'number' }, outputBytes: { type: 'number' }, elidedLines: { type: 'number' }, elidedBytes: { type: 'number' } } } } },
+          { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', required: true, const: 'foreground' }, exitCode: { required: true, oneOf: [{ type: 'integer' }, { type: 'null' }] }, timedOut: { type: 'boolean', required: true }, aborted: { type: 'boolean', required: true }, timeoutSeconds: { type: 'number' }, requestedTimeoutSeconds: { type: 'number' }, timeoutDisabled: { type: 'boolean' }, wallTimeMs: { type: 'number', required: true }, workingDir: { type: 'string' }, minimized: { type: 'object', additionalProperties: false, properties: { filter: { type: 'string', required: true }, inputBytes: { type: 'number', required: true }, outputBytes: { type: 'number', required: true } } }, output: { type: 'object', additionalProperties: false, required: true, properties: { text: { type: 'string', required: true }, truncated: { type: 'boolean', required: true }, spillPath: { type: 'string' }, originalSpillPath: { type: 'string' }, totalLines: { type: 'number' }, totalBytes: { type: 'number' }, outputLines: { type: 'number' }, outputBytes: { type: 'number' }, elidedLines: { type: 'number' }, elidedBytes: { type: 'number' } } } } },
         ],
       },
       render: (_args, value) => [{ type: 'text', text: value.kind === 'background' ? `Backgrounded as job ${value.jobId}; result will be delivered automatically when it finishes. Continue with other work — do not poll for it.` : renderBashResult(value) }],
@@ -283,13 +292,15 @@ export function apply(ctx: Context, config: Config = {}): void {
         const interception = checkBashInterception(command, availableTools)
         if (interception.block) throw new Error(interception.message)
       }
-      const rawTimeoutMs = args.timeoutMs ?? cfg.defaultTimeoutMs
-      const timeoutDisabled = rawTimeoutMs === 0
-      // `timeoutMs: 0` passes through as a real disable (the executor skips
-      // both its watchdog and the native timeoutMs); explicit values are
-      // capped before the 1s floor so a maxTimeoutMs below 1s cannot produce
-      // a sub-floor deadline.
-      const timeoutMs = timeoutDisabled ? 0 : Math.max(1_000, Math.min(rawTimeoutMs, cfg.maxTimeoutMs))
+      // `timeout` is seconds (OMP parity): omitted uses the configured
+      // default, 0 is a real disable (the executor skips both its watchdog and
+      // the native timeoutMs), and explicit values are capped before the 1s
+      // floor so a maxTimeoutMs below 1s cannot produce a sub-floor deadline.
+      const requestedTimeoutMs = args.timeout === undefined ? cfg.defaultTimeoutMs : Math.round(args.timeout * 1_000)
+      // Only an explicit `0` (or a zero default) disables the deadline; a tiny
+      // positive `timeout` floors to 1s instead of silently becoming 0.
+      const timeoutDisabled = requestedTimeoutMs === 0 && (args.timeout === undefined || args.timeout === 0)
+      const timeoutMs = timeoutDisabled ? 0 : Math.max(1_000, Math.min(requestedTimeoutMs, cfg.maxTimeoutMs))
       // Read the service through `ctx.get` rather than `ctx.shellEnv`: a host
       // reload retires this plugin's fiber while callers may still hold the
       // tools it registered, and property access on a retired fiber throws
@@ -316,13 +327,15 @@ export function apply(ctx: Context, config: Config = {}): void {
         return live < cfg.maxBackgroundJobs
       }
       const startManagedJob = (job?: JobHandle): ManagedBashJob =>
-        // Background jobs: unset timeout = no deadline (upstream bash.ts
-        // `timeout: options.timeoutMs ?? 0`), not the foreground default.
+        // Background jobs keep the same deadline as the foreground path (OMP
+        // `async` semantics): omitted `timeout` means the configured default,
+        // and `timeout: 0` is the only way to run without a deadline.
         startBashJob({
           sessionId,
           command,
           cwd: commandCwd,
-          timeoutMs: args.timeoutMs ?? 0,
+          timeoutMs,
+          requestedTimeoutMs,
           env,
           config: cfg,
           ...job !== undefined ? { job } : {},
@@ -342,9 +355,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         ...Number.isSafeInteger(cfg.outputMaxBytes) && cfg.outputMaxBytes > 0 ? { outputLimitBytes: cfg.outputMaxBytes } : {},
         run,
       })
-      const backgroundRequested = args.run_in_background === true
+      const backgroundRequested = args.async === true
       if (backgroundRequested) {
-        if (!cfg.enableRunInBackground) throw new Error('run_in_background is disabled for this deployment (enableRunInBackground: false)')
+        if (!cfg.enableRunInBackground) throw new Error('async is disabled for this deployment (enableRunInBackground: false)')
         if (jobs === undefined) throw new Error('background jobs unavailable: load @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs')
         if (!backgroundSlotsAvailable()) throw new Error(`background jobs at capacity (maxBackgroundJobs: ${cfg.maxBackgroundJobs})`)
         if (exec.signal.aborted) throw abortError()
@@ -364,7 +377,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           const result = await executeBash(command, { cwd: commandCwd, timeout: timeoutMs, sessionKey: sessionId, env, signal: exec.signal, minimizerSettings: { enabled: cfg.minimizer.enabled, settingsPath: undefined, only: cfg.minimizer.only, except: cfg.minimizer.except, maxCaptureBytes: cfg.minimizer.maxCaptureBytes, sourceOutlineLevel: 'default', legacyFilters: undefined }, minimizerEnabled: cfg.minimizer.enabled, spillThreshold: cfg.outputSinkTailBytes, headBytes: cfg.outputSinkHeadBytes, useShellCommandWrapper: cfg.useShellCommandWrapper, snapshotEnabled: cfg.snapshotEnabled, initScriptEnabled: cfg.bashInitEnabled, initScriptPath: defaultInitScriptPath(), rmSafe: cfg.rmSafe, nonInteractiveEnv: cfg.nonInteractiveEnv, artifactPath: allocateSpillFile(), onMinimizedSave: (text) => saveOriginalText(text) })
           if (result.cancelled && exec.signal.aborted) throw abortError()
           if (result.workingDir !== undefined) state.cwd = result.workingDir
-          return buildForeground(result, performance.now() - startedAt, timeoutMs)
+          return buildForeground(result, performance.now() - startedAt, timeoutMs, requestedTimeoutMs)
         }
         // The registry wait IS the window (0.1.7): a live wait released by the
         // settlement marks it `awaited`, so a run that finishes inside the
@@ -397,7 +410,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const wallTimeMs = performance.now() - startedAt
       if (result.cancelled && exec.signal.aborted) throw abortError()
       if (result.workingDir !== undefined) state.cwd = result.workingDir
-      return buildForeground(result, wallTimeMs, timeoutMs)
+      return buildForeground(result, wallTimeMs, timeoutMs, requestedTimeoutMs)
     },
     presentCall: presentBashCall,
     presentResult: presentBashResult,

@@ -256,12 +256,19 @@ function RowTitle(props: {
   t: (key: BashPlusLocaleKey) => string
   labelKey: BashPlusLocaleKey
   tipKey?: BashPlusLocaleKey
-  htmlFor: string
+  /** Text-entry/select rows: clicking the title focuses the control. */
+  htmlFor?: string
+  /** Switch rows: the title names the control via aria-labelledby instead of
+   *  being a <label>, so clicking it stays inert and cannot flip the switch. */
+  id?: string
 }): ReactNode {
+  const text = props.t(props.labelKey)
   return (
     <span className="tp-rowTitleLine">
-      <label className="tp-rowTitle" htmlFor={props.htmlFor}>{props.t(props.labelKey)}</label>
-      {props.tipKey === undefined ? null : <InfoTip text={props.t(props.tipKey)} label={props.t(props.labelKey) + ' ' + props.t('tipLabel')} />}
+      {props.htmlFor === undefined
+        ? <span className="tp-rowTitle" id={props.id}>{text}</span>
+        : <label className="tp-rowTitle" htmlFor={props.htmlFor}>{text}</label>}
+      {props.tipKey === undefined ? null : <InfoTip text={props.t(props.tipKey)} label={text + ' ' + props.t('tipLabel')} />}
     </span>
   )
 }
@@ -387,19 +394,19 @@ export function ToggleRow(props: {
   onReset: (field: string) => void
 }): ReactNode {
   const { t, control, disabled, onToggle, onReset } = props
-  const inputId = useId()
+  const titleId = useId()
   const descId = useId()
   return (
     <div className="tp-row">
       <div className="tp-rowText">
-        <RowTitle t={t} labelKey={control.labelKey} tipKey={control.tipKey} htmlFor={inputId} />
+        <RowTitle t={t} labelKey={control.labelKey} tipKey={control.tipKey} id={titleId} />
         <div className="tp-rowDesc" id={descId}>{t(control.hintKey)}</div>
       </div>
       <RowBadges t={t} overridden={control.overridden} disabled={disabled} onReset={() => onReset(control.field)} />
       <span className="tp-switch">
         <input
-          id={inputId}
           type="checkbox"
+          aria-labelledby={titleId}
           aria-describedby={descId}
           disabled={disabled}
           checked={control.checked}

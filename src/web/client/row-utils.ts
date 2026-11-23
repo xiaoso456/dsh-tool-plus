@@ -329,8 +329,12 @@ export interface ShellStatus {
   timedOut: boolean
 }
 
-/** `[timed out after 30000ms]` — `@deepseek-ai/dsh-shell/render`'s own literal. */
-const TIMEOUT_MARKER = /^\[timed out after [^\]\n]*\]$/
+/**
+ * `[Command timed out after 30 seconds]` (OMP's literal, plus the bare
+ * `[Command timed out]` when the deadline was disabled), and the host shell's
+ * older `[timed out after 30000ms]` literal for results rendered by dsh.
+ */
+const TIMEOUT_MARKER = /^\[(?:Command timed out(?: after [^\]\n]* seconds)?|timed out after [^\]\n]*)\]$/
 /** `[killed by signal: SIGTERM]`. */
 const SIGNAL_MARKER = /^\[killed by signal: ([^\]\n]+)\]$/
 /** `[exit code: 1]`, or `[exit code: null]` for an unknown status. */

@@ -6,12 +6,12 @@
  * presentation metadata is a lossless narrowing of that value.
  *
  * Two properties matter to the card:
- *  - a `timeoutMs: 0` call (the documented way to disable the deadline) is a
+ *  - a `timeout: 0` call (the documented way to disable the deadline) is a
  *    perfectly valid call; the shipped terminal card treats the option as
  *    illegal and drops the whole card, so the run state cannot come from the
  *    arguments;
  *  - a timed-out or aborted run has no exit code of its own, and its result text
- *    (`[timed out after …]`, `[exit code: null]`) is not something the shipped
+ *    (`[Command timed out after …]`, `[exit code: null]`) is not something the shipped
  *    card parses — the run state has to travel as data.
  *
  * @module @xiaoso/dsh-tool-plus/web/host/bash
