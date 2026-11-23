@@ -11,6 +11,7 @@
  * @module tests
  */
 
+import type { JobHandle } from '@deepseek-ai/dsh-jobs'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/config/settings.ts'
 import { startBashJob } from '../../src/tools/bash/background.ts'
@@ -38,5 +39,30 @@ describe('background job killed by its deadline (A-9)', () => {
     expect(value.output.text).toContain('[Command timed out after 1 second')
     const outcome = await job.hooks.done
     expect(outcome.status).toBe('failed')
+  }, 30000)
+
+  it('appends the clamp notice without repeating the streamed output', async () => {
+    const appended: string[] = []
+    const job = startBashJob({
+      sessionId: 'spec-clamp',
+      command: 'printf done',
+      cwd: process.cwd(),
+      timeoutMs: 1000,
+      requestedTimeoutMs: 60_000,
+      env: undefined,
+      config: resolveConfig({}),
+      job: {
+        id: 'job-spec',
+        append: (text: string) => { appended.push(text) },
+        updateProgress: () => {},
+      } as unknown as JobHandle,
+    })
+    await job.completion
+    await job.hooks.done
+    const text = appended.join('')
+    expect(text).toContain('[Timeout clamped to 1s (requested 60s).]')
+    // The command's output arrived through the live stream; the completion
+    // append must carry only the notice, not a second copy of the body.
+    expect(text.match(/done/g) ?? []).toHaveLength(1)
   }, 30000)
 })

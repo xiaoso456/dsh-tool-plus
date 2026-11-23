@@ -15,6 +15,7 @@
 
 import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type { RuntimeConfig } from '../../config/settings.ts'
+import { formatTimeoutSeconds } from './timeout-meta.ts'
 
 /** 描述里与持久性有关的两个事实。 */
 export interface BashDescriptionFacts {
@@ -58,10 +59,23 @@ const TAIL = 'Long output is minimized and/or truncated to head+tail; '
   + 'whenever anything is dropped, the full raw stream is saved to a log file whose path is printed with the result — '
   + 're-read elided ranges with the read tool using :N-M selectors on that path. '
 
-/** 显式后台的说明，只在设置页允许模型主动转后台时成立（schema 同时才会带 `async`）。 */
-const EXPLICIT_ASYNC = 'Set `async: true` for long-running commands: the call returns a job id immediately; '
-  + 'the result is delivered automatically when it finishes — do not poll for it. '
-  + 'The deadline still applies to background jobs; pass `timeout: 0` to disable it for watchers and long-running jobs. '
+/**
+ * 显式后台的说明，只在设置页允许模型主动转后台时成立（schema 同时才会带 `async`）。
+ * 省略 `timeout` 时的死线由 defaultTimeoutMs 与 maxTimeoutMs 共同决定，必须写出来：
+ * OMP 的 bash.md 同样渲染 default Ns，否则模型不知道默认死线是多少。
+ * @param cfg - 解析后的运行时配置。
+ * @returns 与当前配置相符的说明段落。
+ */
+function explicitAsyncGuidance(cfg: RuntimeConfig): string {
+  const prefix = 'Set `async: true` for long-running commands: the call returns a job id immediately; '
+    + 'the result is delivered automatically when it finishes — do not poll for it. '
+  if (cfg.defaultTimeoutMs === 0) {
+    return prefix + 'No deadline applies by default; pass `timeout: <seconds>` to set one. '
+  }
+  const defaultSeconds = Math.max(1_000, Math.min(cfg.defaultTimeoutMs, cfg.maxTimeoutMs)) / 1000
+  return prefix + `The deadline still applies to background jobs (default ${formatTimeoutSeconds(defaultSeconds)}s); `
+    + 'pass `timeout: 0` to disable it for watchers and long-running jobs. '
+}
 
 /**
  * 工具描述（模型看到的 schema description）。
@@ -73,7 +87,7 @@ export function bashToolDescription(cfg: RuntimeConfig): string {
   return 'Execute a bash command and return its output. '
     + (facts.perCallShell ? PER_CALL : PERSISTENT)
     + TAIL
-    + (facts.explicitAsync ? EXPLICIT_ASYNC : '')
+    + (facts.explicitAsync ? explicitAsyncGuidance(cfg) : '')
     + (facts.autoBackground ? AUTO_BACKGROUND : '')
     + 'Current harness environment facts are exposed through managed $' + DSH_ENV_PREFIX + '* variables; inspect them when needed.'
 }

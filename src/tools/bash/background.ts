@@ -17,7 +17,7 @@ import { allocateSpillFile, saveOriginalText } from './adapter/spill.ts'
 import { createWarmShell, executeBash, type BashExecutorOptions } from './bash-executor.ts'
 import { defaultInitScriptPath } from './init-script.ts'
 import { TailBuffer } from './streaming-output.ts'
-import { formatTimeoutSeconds, timeoutDetails } from './timeout-meta.ts'
+import { formatTimeoutClampNotice, formatTimeoutSeconds, timeoutDetails } from './timeout-meta.ts'
 import type { BashForegroundOutput, ResolvedConfig } from './types.ts'
 import { WarmShellPool } from './warm-shell.ts'
 
@@ -242,14 +242,29 @@ export function startBashJob(options: StartBashJobOptions): ManagedBashJob {
         text = `${message}\n\n${text}`
       }
     }
+    const clamp = timeout.requestedTimeoutSeconds !== undefined && timeout.timeoutSeconds !== undefined
+      ? formatTimeoutClampNotice(timeout.requestedTimeoutSeconds, timeout.timeoutSeconds)
+      : undefined
+    const clampNotice = clamp === undefined ? undefined : '[' + clamp + ']'
+    if (clampNotice !== undefined) text = text.length > 0 ? `${text}\n${clampNotice}` : clampNotice
     // The plugin's completion message joins the ring from inside this producer
     // promise, so it is in place before `done` settles and the registry closes
     // the stream. Below the configured trigger the policy returns the preview
     // unchanged: the streamed chunks already are that text, and a second copy
     // would only duplicate it for the model.
     const previewText = preview.text()
-    const message = options.formatCompletion?.(previewText, result.spillPath) ?? previewText
-    if (job !== undefined && message !== previewText) job.append(message)
+    const formatted = options.formatCompletion?.(previewText, result.spillPath) ?? previewText
+    if (job !== undefined) {
+      if (formatted !== previewText) {
+        // The truncation policy rewrote the body (spill path, elided middle):
+        // deliver that text, with the clamp notice when there is one.
+        job.append(clampNotice === undefined ? formatted : `${formatted}\n${clampNotice}`)
+      } else if (clampNotice !== undefined) {
+        // The body already streamed; a second copy would duplicate it in the
+        // completion notice and in the next `job_output` read.
+        job.append(clampNotice)
+      }
+    }
     return {
       kind: 'foreground',
       exitCode: result.exitCode ?? null,

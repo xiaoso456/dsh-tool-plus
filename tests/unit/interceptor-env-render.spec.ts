@@ -200,6 +200,20 @@ describe('renderBashResult', () => {
     expect(text).toContain('Re-read elided ranges from the full-output file with the read tool')
   })
 
+  it('reports a clamped deadline with both values', () => {
+    const value: BashForegroundOutput = {
+      kind: 'foreground',
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      timeoutSeconds: 1,
+      requestedTimeoutSeconds: 60,
+      wallTimeMs: 10,
+      output: { text: 'ok', truncated: false },
+    }
+    expect(renderBashResult(value)).toContain('[Timeout clamped to 1s (requested 60s).]')
+  })
+
   it('reports an unavailable spill path when truncation produced no file', () => {
     const value: BashForegroundOutput = {
       kind: 'foreground',

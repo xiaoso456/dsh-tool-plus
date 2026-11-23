@@ -201,6 +201,23 @@ describe('timeout policy wiring (S-4)', () => {
     expect(recorded[0]!.options?.timeout).toBe(1_000)
   })
 
+  it('tells the model when the deadline was clamped', async () => {
+    h = await harness({ autoBackgroundMs: 0, maxTimeoutMs: 500 })
+    const result = await call(h.ctx, { command: 'echo hi', description: 'clamped', timeout: 60 }, h.agent)
+    expect(textOf(result)).toContain('[Timeout clamped to 1s (requested 60s).]')
+  })
+
+  it('names a clamped deadline on the async hand-off', async () => {
+    h = await harness({ autoBackgroundMs: 0, maxTimeoutMs: 500 })
+    const result = await call(
+      h.ctx,
+      { command: 'echo bg', description: 'bg clamped', async: true, timeout: 60 },
+      h.agent,
+    )
+    expect(textOf(result)).toContain('Backgrounded as job')
+    expect(textOf(result)).toContain('[Timeout clamped to 1s (requested 60s).]')
+  })
+
   it('auto-background wait with timeout: 0 uses the full autoBackgroundMs window (no instant backgrounding)', async () => {
     h = await harness({ autoBackgroundMs: 1_000 })
     recorded.length = 0

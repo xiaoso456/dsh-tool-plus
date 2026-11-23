@@ -11,7 +11,7 @@
 
 import { parseExitStatus } from '@deepseek-ai/dsh-shell'
 import { outputMeta } from '../omp/tools/output-meta.ts'
-import { formatTimeoutSeconds } from './timeout-meta.ts'
+import { formatTimeoutClampNotice, formatTimeoutSeconds } from './timeout-meta.ts'
 import type { BashForegroundOutput, CollectedOutput } from './types.ts'
 
 /** Format a byte count for human-readable display. */
@@ -102,6 +102,12 @@ export function renderBashResult(value: BashForegroundOutput): string {
   else if (value.output.spillPath !== undefined) notices.push(`[full raw stream saved: ${value.output.spillPath}]`)
   if (value.rmSafeInjectionFailed === true) {
     notices.push('[Safe rm injection failed: rm deletes permanently — use `command rm` to bypass]')
+  }
+  // OMP parity: when the requested deadline was clamped, the model must know
+  // which deadline actually governed the run (the value carries both seconds).
+  if (value.requestedTimeoutSeconds !== undefined && value.timeoutSeconds !== undefined) {
+    const clamp = formatTimeoutClampNotice(value.requestedTimeoutSeconds, value.timeoutSeconds)
+    if (clamp !== undefined) notices.push('[' + clamp + ']')
   }
 
   const markers: string[] = []

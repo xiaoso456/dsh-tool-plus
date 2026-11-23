@@ -25,7 +25,7 @@ import { extractCdWorkdir } from './tools/bash/cd-workdir.ts'
 import { runtimeLogger, setRuntimeLogger } from './tools/bash/logger.ts'
 import { resolveToCwd } from './tools/omp/tools/path-utils.ts'
 import { parseExitStatus, renderBashResult } from './tools/bash/render.ts'
-import { timeoutDetails } from './tools/bash/timeout-meta.ts'
+import { formatTimeoutClampNotice, timeoutDetails } from './tools/bash/timeout-meta.ts'
 import { installBashPlusSettings, resolveConfig, type Config, type RuntimeConfig } from './config/settings.ts'
 import { defaultInitScriptPath } from './tools/bash/init-script.ts'
 import { bashSystemPromptText, bashToolDescription } from './tools/bash/description.ts'
@@ -100,6 +100,22 @@ function buildForeground(result: Awaited<ReturnType<typeof executeBash>>, wallTi
       ...result.elidedBytes !== undefined ? { elidedBytes: result.elidedBytes } : {},
     },
   }
+}
+/**
+ * Text for an async hand-off. The deadline still governs the job, so a clamped
+ * request is named here too — the start reply has no result value to render.
+ * @param args - the call's arguments.
+ * @param jobId - the managed job's id.
+ * @param cfg - the effective runtime config.
+ * @returns the hand-off text, with the clamp notice when one applies.
+ */
+function backgroundStartText(args: BashToolArgs, jobId: string, cfg: RuntimeConfig): string {
+  const base = `Backgrounded as job ${jobId}; result will be delivered automatically when it finishes. Continue with other work — do not poll for it.`
+  const requestedMs = args.timeout === undefined ? cfg.defaultTimeoutMs : Math.round(args.timeout * 1_000)
+  if (requestedMs === 0) return base
+  const effectiveMs = Math.max(1_000, Math.min(requestedMs, cfg.maxTimeoutMs))
+  if (effectiveMs === requestedMs) return base
+  return base + '\n[' + formatTimeoutClampNotice(requestedMs / 1000, effectiveMs / 1000) + ']'
 }
 function presentBashCall(args: BashToolArgs): GenericCallView | TerminalCallView {
   const description = optionalDescription(args.description)
@@ -236,7 +252,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', required: true, const: 'foreground' }, exitCode: { required: true, oneOf: [{ type: 'integer' }, { type: 'null' }] }, timedOut: { type: 'boolean', required: true }, aborted: { type: 'boolean', required: true }, timeoutSeconds: { type: 'number' }, requestedTimeoutSeconds: { type: 'number' }, timeoutDisabled: { type: 'boolean' }, wallTimeMs: { type: 'number', required: true }, workingDir: { type: 'string' }, minimized: { type: 'object', additionalProperties: false, properties: { filter: { type: 'string', required: true }, inputBytes: { type: 'number', required: true }, outputBytes: { type: 'number', required: true } } }, output: { type: 'object', additionalProperties: false, required: true, properties: { text: { type: 'string', required: true }, truncated: { type: 'boolean', required: true }, spillPath: { type: 'string' }, originalSpillPath: { type: 'string' }, totalLines: { type: 'number' }, totalBytes: { type: 'number' }, outputLines: { type: 'number' }, outputBytes: { type: 'number' }, elidedLines: { type: 'number' }, elidedBytes: { type: 'number' } } } } },
         ],
       },
-      render: (_args, value) => [{ type: 'text', text: value.kind === 'background' ? `Backgrounded as job ${value.jobId}; result will be delivered automatically when it finishes. Continue with other work — do not poll for it.` : renderBashResult(value) }],
+      render: (args, value) => [{ type: 'text', text: value.kind === 'background' ? backgroundStartText(args, value.jobId, cfg) : renderBashResult(value) }],
       // Card metadata for the plugin's own terminal row: the value already
       // carries the run state, so nothing is read back or recomputed.
       presentationMeta: (_args: unknown, value: unknown) => bashCardMeta(value),
@@ -424,7 +440,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:read',
     order: TOOL_SECTION_ORDERS.read,
-    text: 'Use the read tool — not shell cat/head/tail — to inspect files. `path` accepts an inline selector: :N (single line), :N-M (range), :N+K (K lines from N), :N- (to EOF), comma multi-range, :raw (verbatim). Archive members use "archive.zip:inner/path".',
+    text: 'Use the read tool — not shell cat/head/tail — to inspect files. `path` accepts an inline selector: :N (single line), :N-M (range), :N+K (K lines from N), :N- (to EOF), comma multi-range, :raw (verbatim). Archive members use "archive.zip:inner/path". Never open guessed files; use ranges, not whole files.',
   })
   ctx.systemPrompt.section({
     name: 'tool:write',
@@ -439,11 +455,11 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:grep',
     order: TOOL_SECTION_ORDERS.grep,
-    text: 'Use the grep tool — not shell grep/rg — to search file contents. Returns path\\nLine N: text grouped output. Use `glob` for file discovery.',
+    text: 'Use the grep tool — not shell grep/rg/awk — to search file contents. Returns path\\nLine N: text grouped output. Use `glob` for file discovery.',
   })
   ctx.systemPrompt.section({
     name: 'tool:glob',
     order: TOOL_SECTION_ORDERS.glob,
-    text: 'Use the glob tool — not shell find/fd — to find files by pattern. Pattern with no "/" matches basenames at any depth. Results are files only, mtime-sorted.',
+    text: 'Use the glob tool — not shell find/fd or `ls **/*.ext` — to find files by pattern. Pattern with no "/" matches basenames at any depth. Results are files only, mtime-sorted.',
   })
 }

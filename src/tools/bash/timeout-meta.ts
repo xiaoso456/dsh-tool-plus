@@ -39,3 +39,19 @@ export function timeoutDetails(timeoutMs: number | undefined, requestedTimeoutMs
 export function formatTimeoutSeconds(seconds: number | undefined): string {
   return seconds === undefined ? '?' : String(seconds)
 }
+
+/**
+ * The notice OMP appends when the requested deadline was clamped. The caller
+ * brackets it; the text itself stays inside the notice line, never the marker
+ * line.
+ * @param requestedSeconds - the deadline the caller asked for.
+ * @param effectiveSeconds - the deadline the run actually had.
+ * @returns the human-readable clamp notice, or `undefined` when nothing changed.
+ */
+export function formatTimeoutClampNotice(
+  requestedSeconds: number,
+  effectiveSeconds: number,
+): string | undefined {
+  if (requestedSeconds === effectiveSeconds) return undefined
+  return `Timeout clamped to ${formatTimeoutSeconds(effectiveSeconds)}s (requested ${formatTimeoutSeconds(requestedSeconds)}s).`
+}

@@ -43,6 +43,12 @@ describe('bash 描述随配置分支', () => {
     expect(text).not.toContain('run_in_background')
   })
 
+  it('写明省略 timeout 时的默认死线（按 maxTimeoutMs 钳制）', () => {
+    expect(bashToolDescription(cfg())).toContain('(default 3600s)')
+    expect(bashToolDescription(cfg({ maxTimeoutMs: 60_000 }))).toContain('(default 60s)')
+    expect(bashToolDescription(cfg({ defaultTimeoutMs: 0 }))).toContain('No deadline applies by default')
+  })
+
   it('设置页关掉 enableRunInBackground 后，描述不再提 async（schema 里也没有该参数）', () => {
     const text = bashToolDescription(cfg({ enableRunInBackground: false }))
     expect(text).not.toContain('`async: true`')
