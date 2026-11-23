@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.3] - 2026-11-23
+
+> 测试版：bash 参数面与 OMP 对齐，工具说明从系统提示下沉到工具描述。
+
+### Changed
+
+- **BREAKING bash 参数对齐 OMP**：`timeoutMs` → `timeout`（秒；`0` 禁用，省略取默认，钳到 `[1s, maxTimeoutMs]`）；`workdir` → `cwd`；`run_in_background` → `async`；删除 `env`（临时环境变量不再支持）；`description` 改为可选。结果里的 `timeoutMs` 改为 `timeoutSeconds` / `requestedTimeoutSeconds` / `timeoutDisabled`。
+- **bash 超时与后台提示补齐**：省略 timeout 时描述写默认死线；钳制发生时在结果、`async` 交接和后台完成通知里报出实际值；后台完成只追加提示行，不重复流式正文。
+- **系统提示词按 OMP 改为路由**：bash/read/write/edit/glob/grep 六段只保留“用哪个工具”的短规则，完整用法进工具描述；默认配置下六段从 1462 字符降到 542。
+- **工具描述对齐 OMP 18.12.6**：bash 描述按 OMP `bash.md` 的要点重写为 DSH 版本（默认死线、后台、输出截断）；edit replace 描述不再无条件推荐 `ast_edit`，`ast_edit` 关闭时删掉该交叉引用。
+
+### Fixed
+
+- **edit 推荐不存在的工具**：`ast_edit` 默认关闭时，replace 描述里不再出现 `` `ast_edit` for structure-aware codemods ``。
+- **提示词边界**：补 read/grep/glob 的“不要猜文件 / 不要用 awk / 不要用 `ls **/*.ext`”规则；edit 的 critical 段补 `perl` / `python`；`async` 的死线措辞与 schema 同步。
+
 ## [0.3.0-beta.2] - 2026-11-23
 
 > 测试版：bash 工具描述去重，行为无变化。
