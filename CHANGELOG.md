@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.4] - 2026-11-24
+
+> 测试版：bash 的 `description` 默认恢复必填，可在设置里关闭。
+
+### Added
+
+- **`bash 命令说明必填` 设置**：默认开启。关闭后 bash 的 `description` 回到 OMP 原版的可选参数，schema 与参数说明同步切换；默认/关闭两种状态都有 schema 与实际调用的测试。
+
+### Changed
+
+- **bash 的 `description` 默认恢复必填**：beta.3 为了对齐 OMP 把它改成可选，但 PTC 下模型会误以为内层 `bash.description` 和 `run_code.description` 一样可选，漏掉外层必填项而被参数校验拒绝。现在默认必填；确实需要 OMP 行为的可在设置里关闭。
+
+[对比 0.3.0-beta.3](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.3.0-beta.3...tool-plus-v0.3.0-beta.4)
+
 ## [0.3.0-beta.3] - 2026-11-23
 
 > 测试版：bash 参数面与 OMP 对齐，工具说明从系统提示下沉到工具描述。
