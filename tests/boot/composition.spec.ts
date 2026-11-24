@@ -164,28 +164,29 @@ describeBash('bash-plus composition', () => {
     expect(properties).not.toHaveProperty('workdir')
     expect(properties).not.toHaveProperty('env')
     expect(properties).not.toHaveProperty('timeoutMs')
-    expect(parameters.required).toContain('description')
+    expect(parameters.required ?? []).not.toContain('description')
+    expect(parameters.properties.description?.description).toMatch(/^Optional one-line/)
   })
 
-  it('rejects a call without description by default', async () => {
+  it('accepts a call without description by default', async () => {
     const parameters = bashParameters(ctx)
-    expect(parameters.required).toContain('description')
-    expect(parameters.properties.description?.description).toMatch(/^One-line/)
+    expect(parameters.required ?? []).not.toContain('description')
+    expect(parameters.properties.description?.description).toMatch(/^Optional one-line/)
     const result = await call(ctx, 'bash', { command: 'echo no-description' }, agent)
-    expect(result.isError).toBe(true)
-    expect(textOf(result)).toContain('description')
+    expect(result.isError).toBe(false)
+    expect(textOf(result)).toContain('no-description')
   })
 
-  it('accepts a call without description when the requirement is disabled', async () => {
-    const harness = await setup(0, { bashDescriptionRequired: false })
-    const optionalAgent = registerFakeAgent(harness.ctx, `boot-optional-${callCounter}`, agentFibers)
+  it('rejects a call without description when the requirement is enabled', async () => {
+    const harness = await setup(0, { bashDescriptionRequired: true })
+    const requiredAgent = registerFakeAgent(harness.ctx, `boot-required-${callCounter}`, agentFibers)
     try {
       const parameters = bashParameters(harness.ctx)
-      expect(parameters.required ?? []).not.toContain('description')
-      expect(parameters.properties.description?.description).toMatch(/^Optional one-line/)
-      const result = await call(harness.ctx, 'bash', { command: 'echo no-description' }, optionalAgent)
-      expect(result.isError).toBe(false)
-      expect(textOf(result)).toContain('no-description')
+      expect(parameters.required).toContain('description')
+      expect(parameters.properties.description?.description).toMatch(/^One-line/)
+      const result = await call(harness.ctx, 'bash', { command: 'echo no-description' }, requiredAgent)
+      expect(result.isError).toBe(true)
+      expect(textOf(result)).toContain('description')
     } finally {
       await harness.dispose()
     }

@@ -313,7 +313,7 @@ function fieldDefault<T extends ToolPlusFieldValue>(name: string, fallback: T): 
  * edits and the specs pass in.
  */
 export const Config = z.object({
-  bashDescriptionRequired: z.boolean().default(fieldDefault('bashDescriptionRequired', true)).volatile(),
+  bashDescriptionRequired: z.boolean().default(fieldDefault('bashDescriptionRequired', false)).volatile(),
   enableRunInBackground: z.boolean().default(fieldDefault('enableRunInBackground', true)).volatile(),
   autoBackgroundMs: z.number().default(fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS)).volatile(),
   defaultTimeoutMs: z.number().default(fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS)).volatile(),
@@ -436,7 +436,7 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     maxCaptureBytes: 512 * 1024,
   })
   return {
-    bashDescriptionRequired: config.bashDescriptionRequired ?? fieldDefault('bashDescriptionRequired', true),
+    bashDescriptionRequired: config.bashDescriptionRequired ?? fieldDefault('bashDescriptionRequired', false),
     enableRunInBackground: config.enableRunInBackground ?? fieldDefault('enableRunInBackground', true),
     autoBackgroundMs: config.autoBackgroundMs ?? fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS),
     defaultTimeoutMs: config.defaultTimeoutMs ?? fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS),

@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.5] - 2026-11-24
+
+> 测试版：bash 的 `description` 默认回到可选，设置里仍可改回必填。
+
+### Changed
+
+- **bash 的 `description` 默认改为可选**：beta.4 默认必填，但实测收益不明显，反而多一个必填参数；现在默认按 OMP 原版作为可选参数。设置项「bash 命令说明必填」保留，需要原先行为的打开即可。
+- **默认值与提示文案同步**：schema、`resolveConfig` 与设置页说明都改为默认关闭；测试覆盖默认省略 `description` 可调用、打开开关后恢复 required 且缺参被拒。
+
+[对比 0.3.0-beta.4](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.3.0-beta.4...tool-plus-v0.3.0-beta.5)
+
 ## [0.3.0-beta.4] - 2026-11-24
 
 > 测试版：bash 的 `description` 默认恢复必填，可在设置里关闭。
