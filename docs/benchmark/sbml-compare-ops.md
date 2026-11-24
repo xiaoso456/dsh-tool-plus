@@ -1,5 +1,7 @@
 # SWE-bench Multilingual · 五种 harness 运行指标对比
 
+> ⚠️ 这是 0.1.13 时期的旧对比。0.3.0 的三工具面对比（官方 / dsh-ops / Tool Plus，标准与 PTC）见 [sbml-compare-3plugins.md](sbml-compare-3plugins.md)。
+
 > 说明：本文由 AI 基于运行数据整理分析，仅供参考。
 
 对比 **DSH 标准模式（基线）**、**基线 + dsh-ops 0.3.1 插件**、**基线 + dsh-ops 0.4.1（replace 配置）**、

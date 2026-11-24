@@ -22,6 +22,8 @@ Essential tools enhancement for DeepSeek Harness: bash takes over the shell work
 
 ![dsh tool plus: dsh on Windows, now with bash and common Linux commands](./assets/hero.en.png)
 
+> ⚠️ **0.3.0 notice**: this release changes the tool surface, default configuration and output shapes fairly aggressively, and includes some experimental features. It differs substantially from 0.2.x — read the [CHANGELOG](CHANGELOG.md) before upgrading.
+
 ## Installation
 
 > ⚠️ **Restart dsh after the first install and after every upgrade.**
@@ -95,35 +97,40 @@ All under Settings → Tool Plus:
 
 ## Performance
 
-On Linux, comparing the official standard mode with this plugin's Standard enhanced preset (SWE-bench Multilingual, 20 tasks × 3 rounds). Numbers are from plugin 0.1.13; 0.2.x has not been re-measured.
+A SWE-bench Multilingual comparison (20 tasks × 3 rounds, muse-spark-1.2) of three tool surfaces — official, dsh-ops 0.5.5 and Tool Plus 0.3.0-beta.3 — in both standard and PTC modes. Model, tasks and driver are identical, only the tool surface and call mode change.
 
-| Metric | Official tool surface | This plugin (command interception on) | This plugin (command interception off, default) |
+| Metric | Official | dsh-ops 0.5.5 | Tool Plus |
 |---|---|---|---|
-| Resolve rate | 83.3% | **83.3%** | 81.7% (1 task lower, within normal variance) |
-| Steps / task | 24.4 | 29.7 (+21.7%) | 25.3 (+3.8%) |
-| Total tokens / task | **729,434** | 954,100 (+30.8%) | 779,799 (+6.9%) |
-| System prompt / step (incl. tool definitions) | **4,642** | 6,305 (+35.8%) | 6,305 (+35.8%) |
-| System prompt total / task (per step × steps) | **113,265** | 187,259 (+65.3%) | 159,622 (+40.9%) |
-| Net tokens / task (excl. system prompt) | **616,169** | 766,841 (+24.5%) | 620,177 (+0.7%) |
-| Average context length at task end (tokens) | **42,817** | 48,645 (+13.6%) | 44,781 (+4.6%) |
-| `read` calls | 225 | 459 | **198** |
-| `bash` time per call | 3,140 ms | **2,391 ms** | 2,045 ms |
-| `bash` tokens returned per call | 790 tok | **343 tok** | 638 tok |
-| Average time / task | **123 s** | 135 s | 151 s |
+| **Standard mode** | — | — | — |
+| Passed | 52/60 | 50/60 | 54/60 |
+| Tool error rate | 1.45% | 0.42% | 1.27% |
+| Tokens/task | 1,587,695 | 1,604,745 (+1.1%) | **1,291,880 (−18.6%)** |
+| Input tokens/task | 57,918 | 56,825 (−1.9%) | **45,218 (−21.9%)** |
+| Output tokens/task | 10,758 | 11,793 (+9.6%) | **10,491 (−2.5%)** |
+| Cache hit rate | 96.3% | 96.4% | **96.5%** |
+| Final context (avg) | 60,634 | 57,829 (−4.6%) | **45,984 (−24.2%)** |
+| Final context (max) | 151,784 | 121,073 (−20.2%) | **91,484 (−39.7%)** |
+| Tool execution/task | 78 s | 86 s (+10.3%) | **71 s (−9.4%)** |
+| Wall clock/task | 199 s | 212 s (+6.6%) | **197 s (−1.0%)** |
+| Cost/task | $0.0110 | $0.0111 | **$0.0091** |
+| **PTC mode** | — | — | — |
+| Passed | 52/60 | 52/60 | 54/60 |
+| PTC failure rate | 3.69% | 3.54% | 7.33% |
+| Tokens/task | 1,487,869 | **1,303,306 (−12.4%)** | 1,459,520 (−1.9%) |
+| Input tokens/task | 66,050 | 62,604 (−5.2%) | **53,886 (−18.4%)** |
+| Output tokens/task | 12,248 | **11,889 (−2.9%)** | 12,037 (−1.7%) |
+| Cache hit rate | 95.5% | 95.2% | **96.3%** |
+| Final context (avg) | 67,719 | 65,531 (−3.2%) | **59,030 (−12.8%)** |
+| Final context (max) | 177,232 | 164,354 (−7.3%) | **147,912 (−16.5%)** |
+| Tool execution/task | 95 s | 88 s (−6.9%) | **85 s (−10.5%)** |
+| Wall clock/task | 218 s | **196 s (−10.0%)** | 213 s (−2.2%) |
+| Cost/task | $0.0119 | $0.0111 | **$0.0106** |
 
-Notes:
+Parentheses show the change from the same-mode official baseline; bold marks the better value in each row. The standard-mode tool error rate aggregates the per-tool failures in report §8.3, counting only results whose body starts with `Error:`; dsh-ops' `ops_*` errors bypass that rule, so its figure is understated. The PTC failure rate is the per-`run_code`-call failure rate. Tokens = input + cache read + output; input is the uncached portion and output includes thinking, so cache hit = cache read ÷ (input + cache read). Standard mode cuts tokens 18.6% (input −21.9%, cache reads −18.6%), at the cost of 47% more read calls; PTC is roughly flat on tokens (input −18.4%, cache reads −1.1%), and executes faster but takes more steps and carries higher fixed overhead. The pass-count differences were checked and are random run-to-run noise. Full per-task, per-tool and cost breakdown: [report](docs/benchmark/sbml-compare-3plugins.md) (Chinese).
 
-1. Average time is measured end to end and moves with token rate and network speed; use it for horizontal comparison only
-2. This benchmark uses little context and does not represent large tasks
-3. The figures were cross-checked by a model; small slips are possible without changing the overall conclusion
+> Final context is the context size at each session's last step; one Tool Plus standard-mode subagent session is excluded.
 
-Conclusions:
-
-1. The resolve rate matches the official tools (the interception-off group is 1 task lower, within normal variance)
-2. `bash` itself is leaner and faster, but the tokens it saves are roughly cancelled out by the thicker tool definitions (the plugin adds capabilities)
-3. On Linux the combined performance is on par with the official standard mode, with a richer feature set; Windows is not suitable for the standard benchmark, so the only claim there is a **personal impression** that it is more pleasant to use than PowerShell
-
-Full data and the per-task matrix: [docs/benchmark/sbml-compare-ops.md](docs/benchmark/sbml-compare-ops.md) (Chinese).
+> These figures come from 0.3.0-beta.3. The 7.33% PTC failure rate includes 63 errors caused by the missing `description` argument; excluding them it is 4.03%, in line with the baselines. That failure mode does not represent the current defaults.
 
 ## Notes
 
