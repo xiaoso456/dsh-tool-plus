@@ -240,7 +240,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     description: bashToolDescription(cfg),
     parameters: {
       command: { type: 'string', required: true, description: 'The bash command to execute.' },
-      description: { type: 'string', description: 'Optional one-line description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".' },
+      description: {
+        type: 'string',
+        ...(cfg.bashDescriptionRequired ? { required: true } : {}),
+        description: `${cfg.bashDescriptionRequired ? 'One-line' : 'Optional one-line'} description of what this command does in active voice, 5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; "git status" → "Show working tree status"; "npm install" → "Install package dependencies".`,
+      },
       timeout: { type: 'number', description: 'Timeout in seconds; 0 disables the command deadline; nonzero values are clamped to the configured range.' },
       cwd: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against the session cwd.' },
       ...cfg.enableRunInBackground ? { async: { type: 'boolean' as const, description: 'Run the command as a background job and return its job id immediately (collect with job_output, stop with job_kill). The deadline still applies to background jobs; pass timeout: 0 to disable it for watchers and long-running jobs.' } } : {},

@@ -111,6 +111,7 @@ export const TOOL_PLUS_FIELDS: readonly ToolPlusField[] = [
   { name: 'webCards', kind: 'boolean', default: true, labelKey: 'webCards', hintKey: 'webCardsHint', group: 'cards', tool: 'web' },
 
   // Bash: behavior
+  { name: 'bashDescriptionRequired', kind: 'boolean', default: true, labelKey: 'bashDescriptionRequired', hintKey: 'bashDescriptionRequiredHint', group: 'behavior', tool: 'bash' },
   { name: 'enableRunInBackground', kind: 'boolean', default: true, labelKey: 'enableRunInBackground', hintKey: 'enableRunInBackgroundHint', group: 'behavior', tool: 'bash' },
   { name: 'minimizerEnabled', kind: 'boolean', default: true, labelKey: 'minimizerEnabled', hintKey: 'minimizerEnabledHint', group: 'behavior', tool: 'bash' },
   { name: 'interceptorEnabled', kind: 'boolean', default: false, labelKey: 'interceptorEnabled', hintKey: 'interceptorEnabledHint', group: 'behavior', tool: 'bash' },

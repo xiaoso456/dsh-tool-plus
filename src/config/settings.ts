@@ -103,6 +103,7 @@ export interface OutputTruncateConfig {
  * {@link resolveConfig}; the OMP-ported runtime files never see the flat shape.
  */
 export interface RuntimeConfig {
+  bashDescriptionRequired: boolean
   enableRunInBackground: boolean
   autoBackgroundMs: number
   defaultTimeoutMs: number
@@ -211,6 +212,7 @@ export const DEFAULT_WARM_SHELL_TTL_MS = 300_000
  * {@link resolveConfig}.
  */
 export interface Config {
+  bashDescriptionRequired?: boolean
   enableRunInBackground?: boolean
   autoBackgroundMs?: number
   defaultTimeoutMs?: number
@@ -311,6 +313,7 @@ function fieldDefault<T extends ToolPlusFieldValue>(name: string, fallback: T): 
  * edits and the specs pass in.
  */
 export const Config = z.object({
+  bashDescriptionRequired: z.boolean().default(fieldDefault('bashDescriptionRequired', true)).volatile(),
   enableRunInBackground: z.boolean().default(fieldDefault('enableRunInBackground', true)).volatile(),
   autoBackgroundMs: z.number().default(fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS)).volatile(),
   defaultTimeoutMs: z.number().default(fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS)).volatile(),
@@ -433,6 +436,7 @@ export function resolveConfig(input: Config | LiveConfig): RuntimeConfig {
     maxCaptureBytes: 512 * 1024,
   })
   return {
+    bashDescriptionRequired: config.bashDescriptionRequired ?? fieldDefault('bashDescriptionRequired', true),
     enableRunInBackground: config.enableRunInBackground ?? fieldDefault('enableRunInBackground', true),
     autoBackgroundMs: config.autoBackgroundMs ?? fieldDefault('autoBackgroundMs', DEFAULT_AUTO_BACKGROUND_MS),
     defaultTimeoutMs: config.defaultTimeoutMs ?? fieldDefault('defaultTimeoutMs', DEFAULT_TIMEOUT_MS),

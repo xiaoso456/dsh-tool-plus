@@ -42,7 +42,7 @@ const describeBash = bashAvailable ? describe : describe.skip
 
 const testToolSignal = new AbortController().signal
 
-async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: number } = {}): Promise<{ ctx: Context; dispose: () => Promise<void> }> {
+async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: number; bashDescriptionRequired?: boolean } = {}): Promise<{ ctx: Context; dispose: () => Promise<void> }> {
   const ctx = new Context()
   const fibers = [
     await ctx.plugin(SystemPrompt),
@@ -63,6 +63,18 @@ async function setup(autoBackgroundMs: number, extra: { maxBackgroundJobs?: numb
       for (const fiber of fibers.reverse()) await fiber.dispose()
     },
   }
+}
+
+interface BashParameters {
+  properties: Record<string, { description?: string }>
+  required?: string[]
+}
+
+/** The registered bash schema as the host exposes it (required is normalized to a top-level array). */
+function bashParameters(ctx: Context): BashParameters {
+  const parameters = ctx.tools.get('bash')?.parameters
+  if (!parameters) throw new Error('bash tool is not registered')
+  return parameters as unknown as BashParameters
 }
 
 /** Fake Agent with the shared identity and a dedicated lifecycle fiber. */
@@ -143,7 +155,8 @@ describeBash('bash-plus composition', () => {
   it('registers the bash tool under the dsh tool registry', () => {
     const tool = ctx.tools.get('bash')
     expect(tool).toBeDefined()
-    const properties = (tool?.parameters as { properties?: Record<string, unknown> }).properties ?? {}
+    const parameters = bashParameters(ctx)
+    const properties = parameters.properties
     expect(properties).toHaveProperty('command')
     expect(properties).toHaveProperty('async')
     expect(properties).toHaveProperty('timeout')
@@ -151,13 +164,31 @@ describeBash('bash-plus composition', () => {
     expect(properties).not.toHaveProperty('workdir')
     expect(properties).not.toHaveProperty('env')
     expect(properties).not.toHaveProperty('timeoutMs')
-    expect((properties.description as { required?: boolean }).required).not.toBe(true)
+    expect(parameters.required).toContain('description')
   })
 
-  it('accepts a call without description (optional on the OMP-shaped surface)', async () => {
+  it('rejects a call without description by default', async () => {
+    const parameters = bashParameters(ctx)
+    expect(parameters.required).toContain('description')
+    expect(parameters.properties.description?.description).toMatch(/^One-line/)
     const result = await call(ctx, 'bash', { command: 'echo no-description' }, agent)
-    expect(result.isError).toBe(false)
-    expect(textOf(result)).toContain('no-description')
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('description')
+  })
+
+  it('accepts a call without description when the requirement is disabled', async () => {
+    const harness = await setup(0, { bashDescriptionRequired: false })
+    const optionalAgent = registerFakeAgent(harness.ctx, `boot-optional-${callCounter}`, agentFibers)
+    try {
+      const parameters = bashParameters(harness.ctx)
+      expect(parameters.required ?? []).not.toContain('description')
+      expect(parameters.properties.description?.description).toMatch(/^Optional one-line/)
+      const result = await call(harness.ctx, 'bash', { command: 'echo no-description' }, optionalAgent)
+      expect(result.isError).toBe(false)
+      expect(textOf(result)).toContain('no-description')
+    } finally {
+      await harness.dispose()
+    }
   })
 
   it('describes shell persistence truthfully when auto-background is off', () => {
