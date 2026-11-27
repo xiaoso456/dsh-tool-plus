@@ -10,8 +10,10 @@
  *     `state-error-primary/secondary`），而它在 4 个客户端文件里被当成"错误色"用了很久
  *     ——变量取不到值会让**整条声明在计算值阶段失效**，颜色静默回落继承色。清单快照自
  *     `@deepseek-ai/dsh-client-ui-theme` 0.1.5-rc.1 的调色板定义（79 个 alias + 我们用到
- *     的 static 中性色）；宿主以后新增 token 时这里要跟着改一次，那一步是**故意**的：
- *     改它就是承认"我核对过它确实存在"。
+ *    的 static 中性色）；宿主以后新增 token 时这里要跟着改一次，那一步是**故意**的：
+ *     改它就是承认"我核对过它确实存在"。`switch-thumb` 是 2026-11-27 补的：宿主自己的
+ *     `ui-primitives/Switch.module.css` 用它画关闭态的钮，并在 dsh 0.2.2-rc.3 的
+ *     `app.asar` 调色板里核对过。
  *  2. **按钮与悬浮说明的形态约定**（照宿主自己的写法）：次级按钮＝透明底 + 细描边 +
  *     主文字色；危险按钮静止态与邻居同款、只在悬停变危险色；说明卡必须 portal + fixed
  *     + z-index 高于抽屉遮罩，且用不会随主题翻转的静态前景色。
@@ -96,6 +98,7 @@ const OFFICIAL_TOKENS = new Set<string>([
   '--dsw-alias-state-warn-primary',
   '--dsw-alias-state-warn-secondary',
   '--dsw-alias-state-warn-tertiary',
+  '--dsw-alias-switch-thumb',
   '--dsw-alias-toast-bg',
   '--dsw-alias-tooltip-bg',
 ])

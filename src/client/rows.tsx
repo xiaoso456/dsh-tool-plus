@@ -128,13 +128,13 @@ html[data-tp-pointer] .tp-input.tp-invalid:focus-visible{outline:none}
 .tp-selectTrigger[aria-expanded="true"] .tp-selectChevron{transform:rotate(180deg)}
 .tp-switch{position:relative;width:40px;height:24px;flex:none}
 .tp-switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
-.tp-switchTrack{position:absolute;inset:0;border-radius:999px;background:var(--dsw-alias-label-tertiary);transition:background .18s ease;pointer-events:none}
-.tp-row:hover .tp-switchTrack{background:var(--dsw-alias-label-secondary)}
+.tp-switchTrack{position:absolute;inset:0;border-radius:999px;background:var(--dsw-alias-border-l3);transition:background .18s ease;pointer-events:none}
+.tp-row:hover .tp-switchTrack{background:var(--dsw-alias-border-l4)}
 .tp-switch input:checked+.tp-switchTrack{background:var(--dsw-alias-brand-primary)}
 .tp-row:hover .tp-switch input:checked+.tp-switchTrack{background:var(--dsw-alias-brand-primary)}
 .tp-switch input:focus-visible+.tp-switchTrack{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
-.tp-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:var(--dsw-alias-bg-layer-3);transition:transform .2s cubic-bezier(.34,1.3,.5,1);transform-origin:left center;pointer-events:none}
-.tp-switch input:checked~.tp-thumb{transform:translateX(16px);transform-origin:right center}
+.tp-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:var(--dsw-alias-switch-thumb);transition:transform .2s cubic-bezier(.34,1.3,.5,1),background .18s ease;transform-origin:left center;pointer-events:none}
+.tp-switch input:checked~.tp-thumb{transform:translateX(16px);transform-origin:right center;background:var(--dsw-alias-label-primary-foreground)}
 .tp-switch input:active:not(:disabled)~.tp-thumb{transform:scaleX(1.2)}
 .tp-switch input:checked:active:not(:disabled)~.tp-thumb{transform:translateX(16px) scaleX(1.2)}
 .tp-switch input:disabled{cursor:default}
