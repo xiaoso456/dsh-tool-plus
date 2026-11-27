@@ -17,7 +17,7 @@ import { narrowEditCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
   argText, cardMeta, cardState, cardTitle, diffBlockLabels, displayPath, isErrorResult, isSubCall,
-  parseCardArgs,
+  parseCardArgs, withIntent,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
@@ -67,7 +67,7 @@ function FileMutationCard(props: RowProps & { title: string }) {
       state={cardState(block)}
       title={title}
       tool={toolName}
-      summary={summary}
+      summary={withIntent(args, summary)}
       summarySuffix={`· +${totals.added} -${totals.removed}`}
       filePath={single}
       openFile={openFile}

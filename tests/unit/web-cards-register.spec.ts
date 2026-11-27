@@ -101,6 +101,8 @@ interface CardStub {
   liveKeys(): string[]
   /** Make another component win `key` in `entriesOfSlot` (outranks our rank). */
   hijack(key: string, priority?: number): void
+  /** Make `slots.register` throw for `key` at this module's own rank. */
+  blockCell(key: string, message?: string): void
   /** Replace the settings value and fire the subscribers. */
   setSettings(value: CardSettings | undefined): void
   /** Fire the current subscribers without changing the value. */
@@ -123,6 +125,7 @@ function createStub(): CardStub {
   const effectDisposers: Array<() => void> = []
   const live: SlotEntry[] = []
   const foreign = new Map<string, SlotEntry>()
+  const blocked = new Map<string, string>()
   const listeners: Array<() => void> = []
   let settingsValue: CardSettings | undefined
 
@@ -168,6 +171,10 @@ function createStub(): CardStub {
           }
         },
         register: (options: SlotEntryOptions, component: unknown) => {
+          const blockedMessage = blocked.get(options.key)
+          if (blockedMessage !== undefined && options.priority === CARD_TAKEOVER_PRIORITY) {
+            throw new Error(blockedMessage)
+          }
           const entry: SlotEntry = { options, component }
           registerCalls.push(entry)
           live.push(entry)
@@ -223,6 +230,12 @@ function createStub(): CardStub {
         options: { name: SLOT, key, priority, locale: LOCALE_NS },
         component: () => null,
       })
+    },
+    blockCell: (key: string, message = `keyed slot "${SLOT}" already has an entry for key "${key}"`
+      + ` at priority ${CARD_TAKEOVER_PRIORITY} (registered by another plugin)`) => {
+      // The host's keyed-slot rejection, verbatim enough for the module's
+      // collision test (slot, key and rank in one message).
+      blocked.set(key, message)
     },
     setSettings: (value: CardSettings | undefined) => {
       settingsValue = value
@@ -344,6 +357,31 @@ describe('registerToolCards', () => {
     expect(stub.liveEntries()).toHaveLength(8)
     expect(error).toHaveBeenCalledTimes(1)
     expect(String(error.mock.calls[0]?.[0])).toContain('write')
+  })
+
+  it('warns for a cell another entry already holds and keeps every other card', () => {
+    const stub = createStub()
+    const warn = spyWarn()
+    const error = spyError()
+    stub.blockCell('write')
+
+    expect(() => registerToolCards(stub.ctx)).not.toThrow()
+
+    // 同格冲突只丢那一张：整批注册不能被一个 cell 带走。
+    expect(stub.liveEntries()).toHaveLength(7)
+    expect(stub.liveKeys()).not.toContain('write')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain('write')
+    // 「没抢到格」的错误诊断只针对注册上的格；被跳过的那张已经告警过。
+    expect(error).not.toHaveBeenCalled()
+  })
+
+  it('still lets a registration failure that is not a cell collision through', () => {
+    const stub = createStub()
+    spyWarn()
+    stub.blockCell('edit', 'tool.call.toolview is not declared by the host')
+
+    expect(() => registerToolCards(stub.ctx)).toThrow(/not declared/)
   })
 
   it('does not complain when the winners are all its own rows', () => {

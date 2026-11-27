@@ -37,7 +37,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the `ctx.configForms` Context merge (the shared configuration
 // form that replaced the removed `ctx.settingsScope` binder in dsh 0.1.7).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { CARD_TAKEOVER_PRIORITY, CARD_TOOL_KEYS } from '../contract.ts'
+import { CARD_TAKEOVER_PRIORITY, type CardToolKey } from '../contract.ts'
 import { CARD_LOCALE_NS, cardLocales } from './labels.ts'
 import AstEditRow from './rows/AstEditRow.tsx'
 import FileMutationRow from './rows/FileMutationRow.tsx'
@@ -56,6 +56,23 @@ const SETTINGS_NS = 'tool-plus'
 const OWN_COMPONENTS: ReadonlySet<unknown> = new Set([
   WriteRow, FileMutationRow, AstEditRow, ReadRow, SearchRow, TerminalRow,
 ])
+
+/**
+ * One entry per registered cell: the wire tool key and the row that renders it.
+ *
+ * The file tools come first, so a partially installed batch is still a readable
+ * one (this order is the registration order the tests pin).
+ */
+const CARD_ROWS: ReadonlyArray<readonly [CardToolKey, unknown]> = [
+  ['write', WriteRow],
+  ['edit', FileMutationRow],
+  ['ast_edit', AstEditRow],
+  ['read', ReadRow],
+  ['grep', SearchRow],
+  ['glob', SearchRow],
+  ['ast_grep', SearchRow],
+  ['bash', TerminalRow],
+]
 
 /** Settings document read back by the switch (one field is consulted). */
 interface CardSettings {
@@ -76,24 +93,23 @@ export function registerToolCards(ctx: ClientContext): void {
   let disposeEntries: (() => void) | undefined
 
   const installEntries = (): (() => void)[] => {
-    const disposers = [
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'write', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, WriteRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'edit', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, FileMutationRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'ast_edit', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, AstEditRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'read', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, ReadRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'grep', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, SearchRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'glob', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, SearchRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'ast_grep', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, SearchRow),
-      ctx.slots.register({ name: TOOLVIEW_SLOT, key: 'bash', priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS }, TerminalRow),
-    ]
-    if (!winnersAreOurs(ctx)) {
+    const disposers: (() => void)[] = []
+    const installed: CardToolKey[] = []
+    for (const [key, row] of CARD_ROWS) {
+      const dispose = registerCard(ctx, key, row)
+      if (dispose === null) continue
+      disposers.push(dispose)
+      installed.push(key)
+    }
+    const lost = lostCardKeys(ctx, installed)
+    if (lost.length > 0) {
       // Some other entry outranks us (or a boundary retired one of our rows).
       // Our entries stay: the host then renders a mixed view, which is exactly
       // the visible signal that the takeover assumption broke. Silently
       // rolling back to the shipped rows would hide a host semantics change.
       console.error(
         `[tool-plus] web tool cards did not win ${TOOLVIEW_SLOT} at priority ${String(CARD_TAKEOVER_PRIORITY)} for:`
-          + ` ${lostCardKeys(ctx).join(', ')}. Keeping our entries; another component renders those cells.`,
+          + ` ${lost.join(', ')}. Keeping our entries; another component renders those cells.`,
       )
     }
     return disposers
@@ -136,31 +152,66 @@ function cardsEnabled(value: CardSettings | undefined): boolean {
 }
 
 /**
- * Read the current cell winners back and report whether every one of them is a
- * row this module registered.
+ * Register one row, yielding the cell when another entry already holds it.
  *
- * Called immediately after registering, while the ledger is synchronously
- * consistent: a cell whose winner is some other component means our entry did
- * not take the cell — something outranks it, or a boundary retired it.
- * @param ctx - the browser plugin context owning this registration.
- * @returns `true` when every card key resolves to one of this module's rows.
+ * A keyed slot accepts one entry per (key, priority) and throws on a second
+ * one; letting that throw escape would abort the whole batch, so a single
+ * contested cell would cost this plugin every card. The cell is left to
+ * whoever holds it — with a warning naming it — and every other row installs.
+ * @param ctx - the browser plugin context owning the registration.
+ * @param key - the wire tool key whose cell this row wants.
+ * @param row - the row component.
+ * @returns the entry's disposer, or `null` when the cell was skipped.
  */
-function winnersAreOurs(ctx: ClientContext): boolean {
-  return lostCardKeys(ctx).length === 0
+function registerCard(ctx: ClientContext, key: CardToolKey, row: unknown): (() => void) | null {
+  try {
+    return ctx.slots.register(
+      { name: TOOLVIEW_SLOT, key, priority: CARD_TAKEOVER_PRIORITY, locale: CARD_LOCALE_NS },
+      row as never,
+    )
+  } catch (error) {
+    if (!isSameRankCollision(error, key)) throw error
+    console.warn(
+      `[tool-plus] ${TOOLVIEW_SLOT} cell "${key}" is already held at priority ${String(CARD_TAKEOVER_PRIORITY)};`
+        + ' leaving it to that entry and keeping every other card.',
+    )
+    return null
+  }
 }
 
 /**
- * The card keys whose current cell winner is not one of this module's rows.
+ * Whether an error is the host's "this cell already has an entry" rejection.
+ *
+ * The host error carries no code, so the message is matched on the slot, the
+ * exact key and this module's rank together — a foreign failure (a missing
+ * declaration, a bad component) still propagates.
+ * @param error - the thrown value.
+ * @param key - the wire tool key the registration wanted.
+ * @returns `true` when another entry holds that exact cell.
+ */
+function isSameRankCollision(error: unknown, key: string): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message
+  return message.includes(`keyed slot "${TOOLVIEW_SLOT}"`)
+    && message.includes(`entry for key "${key}"`)
+    && message.includes(`at priority ${String(CARD_TAKEOVER_PRIORITY)}`)
+}
+
+/**
+ * The attempted card keys whose current cell winner is not one of this
+ * module's rows.
  *
  * The takeover assumption is unverified host behaviour, so a lost cell is
- * reported by name rather than swallowed.
+ * reported by name rather than swallowed. A skipped cell never reaches here:
+ * its warning already named it.
  * @param ctx - the browser plugin context owning this registration.
- * @returns the lost keys, in contract order (empty when every cell is ours).
+ * @param keys - the cells this installation attempted, in registration order.
+ * @returns the lost keys, in that order (empty when every cell is ours).
  */
-function lostCardKeys(ctx: ClientContext): string[] {
+function lostCardKeys(ctx: ClientContext, keys: readonly string[]): string[] {
   const winners = ctx.slots.entriesOfSlot(TOOLVIEW_SLOT)
   const lost: string[] = []
-  for (const key of CARD_TOOL_KEYS) {
+  for (const key of keys) {
     const winner = winners.find(entry => entry.options.key === key)
     if (winner === undefined || !OWN_COMPONENTS.has(winner.component)) lost.push(key)
   }

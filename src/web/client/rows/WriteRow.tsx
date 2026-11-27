@@ -16,7 +16,7 @@ import { narrowWriteCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
   argText, cardMeta, cardState, cardTitle, displayPath, isErrorResult, lineCount, isSubCall,
-  parseCardArgs, resultText,
+  parseCardArgs, resultText, withIntent,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 
@@ -63,7 +63,7 @@ function WriteCard(props: RowProps & { title: string }) {
       state={cardState(block)}
       title={title}
       tool={toolName}
-      summary={displayPath(path, cwd)}
+      summary={withIntent(args, displayPath(path, cwd))}
       summarySuffix={`· ${lines + skip}`}
       filePath={path}
       openFile={openFile}

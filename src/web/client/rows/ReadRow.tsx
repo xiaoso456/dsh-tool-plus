@@ -28,7 +28,7 @@ import { narrowReadCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
   cardMeta, cardState, cardTitle, displayPath, isErrorResult, isSubCall, parseCardArgs, readBlockLabels,
-  resultText, type CardBlockView, type CardOpenFileOptions, type CardTranslate,
+  resultText, withIntent, type CardBlockView, type CardOpenFileOptions, type CardTranslate,
 } from '../row-utils.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
 import { imageCardMaterial, imageFitBox, type CardImageMaterial } from './image-card.ts'
@@ -88,6 +88,7 @@ function ReadCard(props: RowProps & { title: string }) {
       <ImageReadCard
         t={t}
         block={block}
+        args={args}
         material={material}
         title={title}
         toolName={toolName}
@@ -106,7 +107,7 @@ function ReadCard(props: RowProps & { title: string }) {
       // The head reports the call verbatim (selector included, so a windowed
       // read is distinguishable from a whole-file one); the link below keeps the
       // projected path, which is the part that must name a real file.
-      summary={readCardSummary(args, meta.path, cwd)}
+      summary={withIntent(args, readCardSummary(args, meta.path, cwd))}
       filePath={meta.path}
       filePathLine={meta.offset}
       openFile={openFile}
@@ -130,6 +131,8 @@ interface ImageReadCardProps {
   t: CardTranslate
   /** The frozen settled node, for its result text. */
   block: CardBlockView
+  /** The call's parsed arguments (the head states their intent, when any). */
+  args: Record<string, unknown> | null
   /** The derived image material (never empty). */
   material: CardImageMaterial
   /** Resolved card title. */
@@ -182,7 +185,7 @@ function sameImageState(left: ImageState, right: ImageState): boolean {
  * @param props - see {@link ImageReadCardProps}.
  * @returns the image card.
  */
-function ImageReadCard({ t, block, material, title, toolName, inspect, openFile, loadImage }: ImageReadCardProps) {
+function ImageReadCard({ t, block, args, material, title, toolName, inspect, openFile, loadImage }: ImageReadCardProps) {
   const images = material.images
   const text = resultText(block)
   return (
@@ -191,7 +194,7 @@ function ImageReadCard({ t, block, material, title, toolName, inspect, openFile,
       state={cardState(block)}
       title={title}
       tool={toolName}
-      summary={material.label}
+      summary={withIntent(args, material.label)}
       filePath={material.path}
       openFile={openFile}
       inspect={inspect}

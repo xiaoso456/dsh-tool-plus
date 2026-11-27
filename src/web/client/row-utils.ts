@@ -245,6 +245,25 @@ export function argText(args: Record<string, unknown> | null, name: string): str
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/**
+ * Prefix a row's own fact with the intent the call states, when it states one.
+ *
+ * A tool schema may carry a `description` saying what the step is for — bash
+ * has it in its own schema, and a layer on top may add it to other tools. The
+ * head then states that intent first and the row's fact after it, the rule the
+ * bash card has always used (`读前 20 行确认行号 · src/a.ts`). A call without
+ * the argument — the normal case — keeps its head exactly as before.
+ * @param args - the call's parsed arguments, or `null`.
+ * @param summary - the row's own collapsed fact.
+ * @returns `intent · summary`, or `summary` alone.
+ */
+export function withIntent(args: Record<string, unknown> | null, summary: string): string {
+  const stated = argText(args, 'description')
+  if (stated === null) return summary
+  const intent = firstLine(stated)
+  return intent === '' ? summary : `${intent} · ${summary}`
+}
+
 /** Options object passed to the owner's `openFile` (a line to land on). */
 export interface CardOpenFileOptions { line?: number }
 

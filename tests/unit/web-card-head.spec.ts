@@ -28,9 +28,10 @@ import { CARD_TOOL_KEYS, type SearchCardMeta } from '../../src/web/contract.ts'
 import { en, zh } from '../../src/web/client/labels.ts'
 import { astEditRuleLine, bashCardSummary } from '../../src/web/client/rows/command-card-facts.ts'
 import { readCardSummary } from '../../src/web/client/rows/read-card-facts.ts'
+import { fallbackCardSummary } from '../../src/web/client/rows/fallback-card-facts.ts'
 import { searchCardSuffix } from '../../src/web/client/rows/search-card-facts.ts'
 import { leadingGlyph, leadingKind } from '../../src/web/client/rows/card-leading.ts'
-import type { CardState, CardTranslate } from '../../src/web/client/row-utils.ts'
+import { withIntent, type CardState, type CardTranslate } from '../../src/web/client/row-utils.ts'
 import { DEFAULT_OUTPUT_TRUNCATE, resolveConfig } from '../../src/config/settings.ts'
 
 // ---------------------------------------------------------------- shared fixtures
@@ -198,6 +199,40 @@ describe('web card head', () => {
       })
     })
 
+
+    // A tool's schema may carry a `description` saying what the step is for —
+    // bash has it natively, and a layer on top may add it to other tools. The
+    // head states that intent first and the row's own fact after it, the rule
+    // the bash card has always used. A call without the argument keeps its head
+    // byte-for-byte: this is a shape the head accepts, not a new requirement.
+    describe('withIntent', () => {
+      it('leaves the head alone when the call states no description', () => {
+        expect(withIntent(null, 'src/a.ts')).toBe('src/a.ts')
+        expect(withIntent({}, 'src/a.ts')).toBe('src/a.ts')
+        expect(withIntent({ description: '' }, 'src/a.ts')).toBe('src/a.ts')
+        expect(withIntent({ description: '   ' }, 'src/a.ts')).toBe('src/a.ts')
+        expect(withIntent({ description: 42 }, 'src/a.ts')).toBe('src/a.ts')
+      })
+
+      it('puts the intent first, then the row\'s own fact', () => {
+        expect(withIntent({ description: '读前 20 行，确认是否带行号' }, 'AGENTS.md:1-20'))
+          .toBe('读前 20 行，确认是否带行号 · AGENTS.md:1-20')
+      })
+
+      it('keeps the head on one line', () => {
+        expect(withIntent({ description: '第一行\n第二行' }, 'src/a.ts')).toBe('第一行 · src/a.ts')
+      })
+
+      it('holds on the degraded head too: the generic shell reads the same intent', () => {
+        // A sub-call, a running call and a failed one all land on the generic
+        // shell; it draws its fact through `statedFact`, which must follow the
+        // same rule or exactly those calls lose the intent.
+        expect(fallbackCardSummary('read', { path: 'src/a.ts', description: '读前 20 行' }, '/w/app', t.zh))
+          .toBe('读前 20 行 · src/a.ts')
+        expect(fallbackCardSummary('read', { path: 'src/a.ts' }, '/w/app', t.zh)).toBe('src/a.ts')
+      })
+    })
+
     // The search cards' collapsed trailing fragment is the scope a grep /
     // ast_grep call actually searched, and the result count (or "no results")
     // every search shape needs before it is expanded. A search's subject on the
@@ -323,16 +358,16 @@ describe('web card head', () => {
         expect(source, `${file} must import ${helper}`).toMatch(new RegExp(`import\\s*\\{[^}]*\\b${helper}\\b[^}]*\\}`))
       })
 
-      it('leaves the write and edit card heads alone: they already state their facts', () => {
-        // Both heads show the path and the size of the change, and both were
-        // audited as complete fact-carriers; a facts helper here would be a
-        // regression by definition.
-        // The assertion names the helper they actually use — `not.toContain` on a
-        // module name would stay green even if a head called the count instead.
-        for (const file of ['WriteRow.tsx', 'FileMutationRow.tsx']) {
-          expect(rowSource(file), file).not.toContain('card-facts')
-          expect(rowSource(file), file).toMatch(/displayPath\(/)
+      it('states the call\'s intent on every row that draws its head from arguments', () => {
+        // The head shows the row's own fact; when the call carries a
+        // `description`, it is stated in front of that fact, so the intent the
+        // model wrote for this step stays visible. The write and edit rows keep
+        // their path/count fact — the intent only goes in front of it.
+        for (const file of ['ReadRow.tsx', 'WriteRow.tsx', 'FileMutationRow.tsx', 'SearchRow.tsx']) {
+          expect(rowSource(file), `${file} must call withIntent`).toMatch(/withIntent\(/)
         }
+        expect(rowSource('WriteRow.tsx')).toMatch(/withIntent\(args, displayPath\(/)
+        expect(rowSource('FileMutationRow.tsx')).toMatch(/withIntent\(args, summary\)/)
       })
 
       it('opens every hand-written trailing fragment with the row\'s own dot', () => {

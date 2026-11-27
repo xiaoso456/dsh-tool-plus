@@ -15,7 +15,7 @@ import { narrowSearchCardMeta } from '../../contract.ts'
 import { CARD_LOCALE_NS } from '../labels.ts'
 import {
   argText, argsSummary, cardMeta, cardState, cardTitle, isErrorResult, isSubCall, parseCardArgs,
-  searchBlockLabels,
+  searchBlockLabels, withIntent,
 } from '../row-utils.ts'
 import { searchCardSuffix } from './search-card-facts.ts'
 import { CardBoundary, GenericCard, ToolCardShell } from '../ToolCardShell.tsx'
@@ -65,7 +65,7 @@ function SearchCard(props: RowProps & { title: string }) {
       state={cardState(block)}
       title={title}
       tool={toolName}
-      summary={subject ?? argsSummary(args, t)}
+      summary={withIntent(args, subject ?? argsSummary(args, t))}
       summarySuffix={searchCardSuffix(args, meta, cwd, t)}
       inspect={inspect}
     >

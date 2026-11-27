@@ -25,7 +25,7 @@
  * @module @xiaoso/dsh-tool-plus/web/client/rows/fallback-card-facts
  */
 
-import { argText, argsSummary, displayPath, firstLine, type CardTranslate } from '../row-utils.ts'
+import { argText, argsSummary, displayPath, firstLine, withIntent, type CardTranslate } from '../row-utils.ts'
 import { bashCardSummary } from './command-card-facts.ts'
 import { readCardSummary } from './read-card-facts.ts'
 
@@ -94,7 +94,7 @@ function statedFact(
       // The call verbatim — selector, archive member and all — because that is
       // the question the model asked; a URL read has no path at all.
       const asked = pickKeys(args, ['path', 'file_path', 'url'])
-      return asked === null ? null : readCardSummary(args, asked, cwd)
+      return asked === null ? null : withIntent(args, readCardSummary(args, asked, cwd))
     }
     case 'bash': {
       // Same head the real terminal card builds: intent, then what ran.
@@ -107,7 +107,7 @@ function statedFact(
       // Our write engine reads `path`; the built-in tool's spelling is the
       // fallback for a transcript recorded before the takeover.
       const path = pickKeys(args, ['path', 'file_path'])
-      return path === null ? null : displayPath(path, cwd)
+      return path === null ? null : withIntent(args, displayPath(path, cwd))
     }
     case 'edit': {
       // `file_path` FIRST, unlike the shipped table: our edit engine reads
@@ -115,17 +115,17 @@ function statedFact(
       // first only because the built-in edit has no `path` parameter at all).
       // A call carrying both would otherwise name a file it never touched.
       const path = pickKeys(args, ['file_path', 'path'])
-      return path === null ? null : displayPath(path, cwd)
+      return path === null ? null : withIntent(args, displayPath(path, cwd))
     }
     case 'ast_edit': {
       const path = firstPath(args, 'paths')
-      return path === null ? null : displayPath(path, cwd)
+      return path === null ? null : withIntent(args, displayPath(path, cwd))
     }
     case 'grep':
     case 'glob':
     case 'ast_grep': {
       const subject = queriesSubject(args) ?? pickKeys(args, ['query', 'pattern', 'pat', 'url', 'path'])
-      return subject === null ? null : displayPath(subject, cwd)
+      return subject === null ? null : withIntent(args, displayPath(subject, cwd))
     }
     default:
       return null

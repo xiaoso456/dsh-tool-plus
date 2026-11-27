@@ -5,6 +5,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0-beta.6] - 2026-11-27
+
+> 测试版：卡片行头会显示调用里写的“这一步做什么”，个别卡片被别的插件占位时也不再整批消失。
+
+### Added
+
+- **卡片行头支持说明文字**：调用里带说明（模型写的“这一步做什么”）时，收起的行头按「说明 · 路径/命令」显示；不带说明时与原来完全一致。bash 卡片本来就这样显示，现在读取、写入、编辑、搜索的卡片也一样。
+
+### Fixed
+
+- **一张卡片被别的插件占位时，其余卡片照常显示**：以前遇到这种情况会整批卡片都不出现，现在只跳过那一张，其余卡片正常工作。
+
+[对比 0.3.0-beta.5](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.3.0-beta.5...tool-plus-v0.3.0-beta.6)
+
 ## [0.3.0-beta.5] - 2026-11-24
 
 > 测试版：bash 的 `description` 默认回到可选，设置里仍可改回必填。
