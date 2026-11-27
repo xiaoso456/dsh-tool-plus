@@ -5,6 +5,47 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-11-27
+
+> 正式版：read、grep、glob、edit、write 按上游 Oh My Pi 18.12.6 重做，bash 参数对齐，卡片的显示和几处提示词也一并修正。
+
+### Added
+
+- **read、grep、ast_grep 支持 URL 目标**：内联行选择器（`:50-80`、`:5`、`:-20`、逗号多段）和 `:raw` 都能用。
+- **read 支持更多文件类型**：归档（zip、tar、7z 等二十余种）、EPUB、PPTX、XLSX、JSON 和 JSONL。JSON 支持 `?q=`、`?raw`、`?compact`、`?offset=`、`?limit=`。
+- **glob 条数可配**：设置页新增「默认条数」和「上限」，默认 100、上限 200（硬顶 2000）。请求超过上限时会提示已夹取。
+- **两个实验性开关**：「多条目预检」默认关，写盘前先把所有条目算一遍，任一失败就整体拒绝；「详细失败提示」默认开，匹配失败时附上最接近的整块，可以直接当 `old_string` 重试。
+- **写入通道和重试可配**：可选 DSH 原子写（默认）或上游原生直写，edit 和 write 共用；重试次数可配。
+- **「bash 命令说明必填」设置**：默认关。打开后 bash 的 `description` 变为必填。
+- **卡片行头显示调用里的说明**：调用带「这一步做什么」时，行头按「说明 · 路径/命令」显示；不带时和原来一样。
+
+### Changed
+
+- **bash 参数改用 OMP 的命名**：`timeout`（秒）、`cwd`、`async`，`env` 参数移除。
+- **`patch` 只接受结构化的 `edits` 参数**，字符串别名移除。
+- **`ast_edit` 默认关闭**：要用的在设置页「Ast Edit」组打开，和 ast_grep 一致。
+- **工具说明和系统提示按上游 OMP 18.12.6 重写**：六段系统提示只留“用哪个工具”的短规则，完整用法放进工具描述。默认配置下六段从 1462 字符降到 542。
+- **提示词段落顺序回到官方位置**：标准与 PTC 两个预设都按宿主分配表排序，模式规则在前，bash 回到首位。
+- **bash 的 `description` 默认可选**（OMP 原版行为），需要必填的可以在设置里打开。
+- **URL 读取的行数上限跟随 `read.defaultLimit`**，不再写死 300 行。
+- **Windows 下小写字面 `/tmp` 映射到宿主临时目录**：bash 的 `cwd`、前导 `cd`、失效的 `state.cwd` 都按这一条。
+
+### Fixed
+
+- **POSIX 上 bash 丢掉宿主的 PATH**：Linux 和 macOS 上 `cargo`、`go`、`python3`、`javac` 等命令报 `command not found` 的问题已修好。
+- **会话目录失效时 bash 的报错**：启动 shell 前校验最终 `cwd`，失效时提示改用绝对路径，不再注册注定失败的作业。
+- **edit 的模糊匹配补齐弯引号、不换行空格和零宽字符的归一化**；纯 ASCII 行另走快路径。
+- **提示词里三处与实现不符的说法已改正**：glob 承诺了实际不可用的 internal URL，replace 声称“改前没读过会报错”，patch 的失败措辞与引擎输出不符。
+- **`ast_edit` 关闭时，edit 不再推荐它**。
+- **一张卡片被别的插件占位时，其余卡片照常显示**（以前会整批卡片都不出现）。
+- **设置页开关的两种状态配色分开了**：关闭不再和打开一样是浅底深钮。
+
+### 说明
+
+- 原生平台包沿用 `18.12.6-plus.2`，本版只更新根包。
+
+[对比 0.2.1](https://github.com/xiaoso456/dsh-tool-plus/compare/tool-plus-v0.2.1...tool-plus-v0.3.0)
+
 ## [0.3.0-beta.6] - 2026-11-27
 
 > 测试版：卡片行头会显示调用里写的“这一步做什么”，个别卡片被别的插件占位时也不再整批消失。
